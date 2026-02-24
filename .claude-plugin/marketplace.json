@@ -1,0 +1,13 @@
+{
+  "name": "aeko",
+  "owner": {
+    "name": "AEKO"
+  },
+  "plugins": [
+    {
+      "name": "aeko-mcp-server",
+      "source": ".",
+      "description": "AI Engine Optimization — monitor how AI engines recommend your products"
+    }
+  ]
+}
