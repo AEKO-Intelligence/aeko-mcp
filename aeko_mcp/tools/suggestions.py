@@ -32,6 +32,10 @@ def _format_suggestions(data: dict) -> str:
             title = s.get("title") or s.get("type", "Suggestion")
             lines.append(f"### {i}. {title}")
 
+            key = s.get("key")
+            if key:
+                lines.append(f"- **Key**: `{key}`")
+
             description = s.get("description") or s.get("message", "")
             if description:
                 lines.append(description)
@@ -43,6 +47,10 @@ def _format_suggestions(data: dict) -> str:
             entity_url = s.get("entity_url")
             if entity_url:
                 lines.append(f"- **Page**: {entity_url}")
+
+            mcp_hint = s.get("mcp_tool_hint")
+            if mcp_hint:
+                lines.append(f"- **MCP Tool**: {mcp_hint}")
 
             metadata = s.get("metadata", {})
             if metadata.get("ai_readiness_score") is not None:
@@ -74,3 +82,20 @@ def aeko_get_suggestions(domain_id: str) -> str:
     """
     data = client.get("/api/suggestions", params={"domain_id": domain_id})
     return _format_suggestions(data)
+
+
+@mcp.tool()
+def aeko_complete_suggestion(suggestion_key: str) -> str:
+    """Mark a suggestion as completed in the AEKO dashboard.
+
+    Call this after you've finished implementing a suggestion (e.g., after
+    creating a blog article, generating JSON-LD, or optimizing a page).
+
+    Args:
+        suggestion_key: The unique key of the suggestion to mark as complete.
+    """
+    client.post("/api/suggestions/complete", json={
+        "suggestion_key": suggestion_key,
+        "completed_via": "mcp",
+    })
+    return f"Suggestion '{suggestion_key}' marked as completed in AEKO dashboard."

@@ -5,7 +5,7 @@
   },
   "plugins": [
     {
-      "name": "aeko-mcp-server",
+      "name": "aeko-mcp",
       "source": ".",
       "description": "AI Engine Optimization — monitor how AI engines recommend your products"
     }

@@ -8,7 +8,7 @@ client = AekoClient()
 atexit.register(client.close)
 
 # Import tool modules to register all tools with the mcp instance
-from .tools import visibility, content, product, suggestions, research  # noqa: E402, F401
+from .tools import visibility, content, product, suggestions, research, preview, images, generate, report, citability, geo_score, local_content  # noqa: E402, F401
 
 
 if __name__ == "__main__":

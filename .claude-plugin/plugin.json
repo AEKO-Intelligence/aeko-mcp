@@ -1,6 +1,6 @@
 {
-  "name": "aeko-mcp-server",
-  "version": "0.1.0",
+  "name": "aeko-mcp",
+  "version": "0.2.0",
   "description": "AI Engine Optimization — monitor and improve how ChatGPT, Claude, Gemini, and Perplexity recommend your products",
   "author": {
     "name": "AEKO",
@@ -8,5 +8,6 @@
   },
   "homepage": "https://aeko.ai",
   "license": "MIT",
-  "keywords": ["aeo", "ai-visibility", "ecommerce", "mcp"]
+  "keywords": ["aeo", "ai-visibility", "ecommerce", "mcp"],
+  "skills": "./skills/"
 }

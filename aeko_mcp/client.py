@@ -11,7 +11,7 @@ ERROR_MESSAGES = {
 
 class AekoClient:
     def __init__(self):
-        self.api_url = os.environ.get("AEKO_API_URL", "https://api.aeko.ai")
+        self.api_url = os.environ.get("AEKO_API_URL", "https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io")
         self.api_key = os.environ.get("AEKO_API_KEY", "")
         self._client = httpx.Client(
             base_url=self.api_url,
