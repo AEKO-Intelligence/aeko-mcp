@@ -4,9 +4,9 @@
   "description": "AI Engine Optimization — monitor and improve how ChatGPT, Claude, Gemini, and Perplexity recommend your products",
   "author": {
     "name": "AEKO",
-    "url": "https://aeko.ai"
+    "url": "https://aeko-intelligence.com"
   },
-  "homepage": "https://aeko.ai",
+  "homepage": "https://aeko-intelligence.com",
   "license": "MIT",
   "keywords": ["aeo", "ai-visibility", "ecommerce", "mcp"],
   "skills": "./skills/"

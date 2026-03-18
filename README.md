@@ -120,7 +120,7 @@ For end-user guides, see the [AEKO User Guide](https://aeko-intelligence.com/en/
 
 ## Getting an API Key
 
-1. Sign up at [aeko.ai](https://aeko.ai)
+1. Sign up at [aeko-intelligence.com](https://aeko-intelligence.com)
 2. Go to **Settings** > **API Keys**
 3. Create a new API key and copy it
 
