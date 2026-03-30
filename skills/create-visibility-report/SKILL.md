@@ -6,7 +6,7 @@ description: >
   suggestions, product analyses) into a professional report.
   Use when a user wants a full overview of their AI engine visibility.
 argument-hint: <domain-id>
-allowed-tools: Read, Write, Bash(open *), Bash(xdg-open *)
+allowed-tools: aeko_prepare_report, aeko_get_score, aeko_get_metrics, aeko_save_content, Read, Write, Bash(open *), Bash(xdg-open *)
 ---
 
 # Create Visibility Report — AI Engine Visibility Assessment
@@ -24,11 +24,16 @@ This aggregates:
 - Prioritized suggestions
 - Product analyses & competitive insights
 
+Also call:
+- **`aeko_get_score(domain_id)`** — composite AEKO Score (0-100, grade A-F) with 5 component breakdown
+- **`aeko_get_metrics(domain_id)`** — 7-day performance metrics with week-over-week trends
+
 ## Step 2: Generate Executive Summary
 
 Write 2-3 sentences covering:
+- **AEKO Score** — the headline number (score/100, grade) from `aeko_get_score`
 - **Overall assessment** — is the site well-optimized, needs work, or critical?
-- **Key metric** — the most important number (total mentions, citation rate, average page score)
+- **Key trend** — are metrics improving or declining? (from `aeko_get_metrics`)
 - **Biggest win** — what's working well
 - **Biggest risk** — what needs immediate attention
 

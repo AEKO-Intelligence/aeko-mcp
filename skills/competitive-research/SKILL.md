@@ -7,7 +7,7 @@ description: >
   recommendations. Use when a user wants to understand how competitors
   are performing in AI engine results.
 argument-hint: <competitor-name-or-url> [--domain-id <uuid>]
-allowed-tools: aeko_get_suggestions, aeko_search_research_prompts, aeko_get_product_analysis, aeko_get_visibility_summary, WebFetch, WebSearch
+allowed-tools: aeko_get_suggestions, aeko_search_research_prompts, aeko_get_product_analysis, aeko_get_visibility_summary, aeko_get_score, aeko_get_metrics, WebFetch, WebSearch
 ---
 
 # Competitive Research — AI Visibility Gap Analysis
@@ -27,11 +27,13 @@ If only a name is given, construct the likely URL. If only a URL is given, extra
 
 If the user provided their own domain-id, gather internal context:
 
-1. Call `aeko_get_visibility_summary` for the user's domain — establishes baseline
-2. Call `aeko_get_suggestions` — check for any existing competitive gap suggestions
-3. Call `aeko_search_research_prompts` with the competitor name — find prompts where the competitor appears
+1. Call `aeko_get_score` for the user's domain — establishes baseline AEKO Score
+2. Call `aeko_get_metrics` — get 7-day trends to show trajectory
+3. Call `aeko_get_visibility_summary` — detailed mentions, citations, sentiment
+4. Call `aeko_get_suggestions` — check for any existing competitive gap suggestions
+5. Call `aeko_search_research_prompts` with the competitor name — find prompts where the competitor appears
 
-This gives you the user's current position to compare against.
+This gives you the user's current position and trajectory to compare against.
 
 ## Step 3: Research competitor's web presence
 

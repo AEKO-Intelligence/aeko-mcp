@@ -72,6 +72,8 @@ Add to your `claude_desktop_config.json`:
 
 | Tool | Description |
 |------|-------------|
+| `aeko_get_score` | Composite AEKO Score (0-100, grade A-F) with 5 component breakdown |
+| `aeko_get_metrics` | 7-day performance metrics with week-over-week trends |
 | `aeko_get_visibility_summary` | Brand visibility metrics across AI engines |
 | `aeko_get_domain_info` | Domain details and AI-readiness status |
 | `aeko_get_page_analysis` | AI-readiness analysis for store pages |
@@ -79,12 +81,17 @@ Add to your `claude_desktop_config.json`:
 | `aeko_get_product_analysis` | Competitive analysis for a product |
 | `aeko_get_suggestions` | Prioritized optimization suggestions |
 | `aeko_complete_suggestion` | Mark a suggestion as completed |
-| `aeko_search_research_prompts` | Search research prompt library |
+| `aeko_search_research_prompts` | Search research prompt library (with Korean translations) |
 | `aeko_get_tracked_prompts` | List actively tracked prompts |
+| `aeko_get_citability` | AI citability score for a specific page |
+| `aeko_score_text` | Score arbitrary text for AI citability |
+| `aeko_check_brand_entity` | Check Wikipedia/Wikidata brand entity recognition |
 | `aeko_preview_optimized_page` | Generate HTML preview comparing original vs optimized content |
 | `aeko_prepare_llms_txt` | Generate llms.txt content for AI crawler access |
-| `aeko_prepare_robots_txt_fix` | Generate robots.txt fixes for AI crawlers |
+| `aeko_prepare_robots_txt_fix` | Analyze robots.txt for AI crawler blocks and suggest fixes |
+| `aeko_validate_llms_txt` | Validate an existing llms.txt for format compliance |
 | `aeko_prepare_json_ld` | Generate JSON-LD structured data for products |
+| `aeko_prepare_report` | Aggregate all domain data for report generation |
 | `aeko_list_product_images` | List product images in a directory |
 | `aeko_read_product_image` | Read and return a product image |
 | `aeko_save_content` | Save generated content to a file |
@@ -106,6 +113,7 @@ Skills are guided workflows that combine AEKO data with content generation. Use 
 | Create Social Content | `/create-social-content` | Generate social media content from AEKO data |
 | Create Marketing Materials | `/create-marketing-materials` | Generate marketing collateral using AEKO insights |
 | AEO Audit Local | `/aeo-audit-local` | Batch citability audit of local content files |
+| Create Visibility Report | `/create-visibility-report` | Full AI visibility report with AEKO Score and metrics |
 | Competitive Research | `/competitive-research` | AI visibility gap analysis against a competitor |
 
 ### Example usage

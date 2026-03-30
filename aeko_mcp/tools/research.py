@@ -28,6 +28,7 @@ def _format_prompts(data: dict) -> str:
     for i, p in enumerate(prompts, 1):
         platform = PLATFORM_DISPLAY.get(p.get("ai_platform", ""), p.get("ai_platform", "Unknown"))
         prompt_text = p.get("prompt_en") or p.get("raw_prompt", "")
+        prompt_ko = p.get("prompt_ko")
         country = p.get("country", "N/A")
         query_type = p.get("query_type") or "N/A"
         funnel = p.get("funnel_stage") or "N/A"
@@ -37,6 +38,8 @@ def _format_prompts(data: dict) -> str:
 
         lines.append(f"## {i}. {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
         lines.append("")
+        if prompt_ko:
+            lines.append(f"- **Korean**: {prompt_ko[:100]}{'...' if len(prompt_ko) > 100 else ''}")
         lines.append(f"- **ID**: `{p.get('id', 'N/A')}`")
         lines.append(f"- **Platform**: {platform}")
         lines.append(f"- **Country**: {country}")
@@ -62,6 +65,9 @@ def _format_prompts(data: dict) -> str:
             snippet = resp.get("response_snippet_en") or resp.get("response_snippet", "")
             if snippet:
                 lines.append(f"- Snippet: {snippet[:200]}{'...' if len(snippet) > 200 else ''}")
+            snippet_ko = resp.get("response_snippet_ko")
+            if snippet_ko:
+                lines.append(f"- Snippet (KO): {snippet_ko[:200]}{'...' if len(snippet_ko) > 200 else ''}")
 
             # Mention metrics
             metrics = resp.get("mention_metrics", [])
@@ -163,13 +169,16 @@ def _format_tracked_prompts(data: list) -> str:
 
     for i, p in enumerate(data, 1):
         prompt_text = p.get("prompt_en") or p.get("raw_prompt", "N/A")
-        # Truncate for table
         if len(prompt_text) > 60:
             prompt_text = prompt_text[:57] + "..."
         platform = PLATFORM_DISPLAY.get(p.get("ai_platform", ""), p.get("ai_platform", "N/A"))
         country = p.get("country", "N/A")
         status = p.get("status", "tracked")
         lines.append(f"| {i} | {prompt_text} | {platform} | {country} | {status} |")
+        prompt_ko = p.get("prompt_ko")
+        if prompt_ko:
+            ko_text = (prompt_ko[:57] + "...") if len(prompt_ko) > 60 else prompt_ko
+            lines.append(f"|   | *{ko_text}* |   |   |   |")
 
     lines.append("")
     lines.append("Use individual prompt IDs to get detailed response data.")
@@ -227,3 +236,66 @@ def aeko_get_tracked_prompts() -> str:
     """
     data = client.get("/api/tracked-prompts")
     return _format_tracked_prompts(data)
+
+
+def _format_trend(value: float | None) -> str:
+    if value is None:
+        return "— (no prior data)"
+    if value > 0:
+        return f"+{value:.1f}% ↑"
+    if value < 0:
+        return f"{value:.1f}% ↓"
+    return "0% →"
+
+
+def _format_metrics(data: dict) -> str:
+    lines = ["# Performance Metrics (Last 7 Days)", ""]
+
+    lines.append("| Metric | Value | vs Previous 7 Days |")
+    lines.append("|--------|-------|--------------------|")
+
+    mentions = data.get("total_mentions", 0)
+    citations = data.get("total_citations", 0)
+    sentiment = data.get("avg_sentiment_score")
+    visibility = data.get("avg_visibility_score")
+    position = data.get("avg_position")
+    share_pct = data.get("mention_share_pct")
+    share_total = data.get("mention_share_total")
+
+    lines.append(f"| Mentions | {mentions} | {_format_trend(data.get('mentions_diff'))} |")
+    lines.append(f"| Citations | {citations} | {_format_trend(data.get('citations_diff'))} |")
+
+    if sentiment is not None:
+        lines.append(f"| Avg Sentiment | {sentiment:.1f}% | {_format_trend(data.get('sentiment_diff'))} |")
+
+    if visibility is not None:
+        lines.append(f"| Avg Visibility | {visibility:.1f} | {_format_trend(data.get('visibility_diff'))} |")
+
+    if position is not None:
+        lines.append(f"| Avg Position | {position:.1f} | — |")
+
+    if share_pct is not None and share_total is not None:
+        lines.append(f"| Mention Share | {share_pct:.1f}% ({share_total} tracked) | — |")
+
+    lines.append("")
+
+    current = data.get("data_points_current", 0)
+    previous = data.get("data_points_previous", 0)
+    lines.append(f"*Based on {current} data points (current) vs {previous} (previous period).*")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def aeko_get_metrics(domain_id: str) -> str:
+    """Get 7-day performance metrics with week-over-week trends.
+
+    Shows total mentions, citations, average sentiment, visibility score,
+    and mention share — each with percentage change vs the previous 7-day
+    period. Use this to answer "am I improving?"
+
+    Args:
+        domain_id: UUID of the domain to analyze.
+    """
+    data = client.get("/api/tracked-prompts/metrics", params={"domain_id": domain_id})
+    return _format_metrics(data)
