@@ -4,7 +4,8 @@ Wraps the AEKO backend's /api/store-integrations/{id}/products/{ext_id}
 endpoint (and audit + revert endpoints) so Claude Desktop can apply
 pdp_update suggestions directly to a merchant's live store.
 
-Six tools total:
+Seven tools total:
+  - aeko_list_store_integrations  ← discovery (read-only, all tiers)
   - aeko_update_product_description
   - aeko_update_product_jsonld
   - aeko_update_product_tags
@@ -12,9 +13,11 @@ Six tools total:
   - aeko_list_store_writes
   - aeko_revert_store_write
 
-All writes require a Growth+ plan at the AEKO backend — Starter calls
-return a 403 from the backend which surfaces as a RuntimeError with a
-clear upgrade message.
+All write tools require a Growth+ plan at the AEKO backend — Starter
+calls return a 403 from the backend which surfaces as a RuntimeError
+with the full upgrade-pitch message. ``aeko_list_store_integrations``
+is available on every tier so Starter users can still see what's
+connected.
 """
 from typing import Any
 
@@ -58,6 +61,64 @@ def _update_product(
 
 
 @mcp.tool()
+def aeko_list_store_integrations() -> str:
+    """List every Cafe24 / Shopify store connected to the current user's AEKO account.
+
+    This is the starting point for any write-back workflow — call this
+    first to discover the ``integration_id`` you need for
+    ``aeko_update_product_*``. Each row also shows whether the granted
+    OAuth scopes include write access (Cafe24: ``mall.write_product``,
+    Shopify: ``write_products``). If the integration doesn't have write
+    scopes yet, the user needs to reconnect from the AEKO dashboard
+    Settings → Store Integrations tab.
+
+    Returns markdown with one block per integration. Available on every
+    subscription tier (the write tools themselves are Growth+).
+    """
+    result, err = _safe(client.get, "/api/store-integrations")
+    if err:
+        return f"# Failed to list store integrations\n\n```\n{err}\n```"
+    # The backend returns a JSON array at the top level.
+    items = result if isinstance(result, list) else []
+    if not items:
+        return (
+            "# No connected stores\n\n"
+            "Connect a Cafe24 or Shopify store from the AEKO dashboard "
+            "Settings → Store Integrations tab, then call this tool again."
+        )
+
+    lines = [f"# Connected stores ({len(items)})", ""]
+    for item in items:
+        integration_id = item.get("id", "?")
+        platform = item.get("platform", "?")
+        store = item.get("store_identifier", "?")
+        scopes = item.get("scopes") or ""
+
+        if platform == "cafe24":
+            write_enabled = "mall.write_product" in scopes
+        elif platform == "shopify":
+            write_enabled = "write_products" in scopes
+        else:
+            write_enabled = False
+
+        write_badge = "✅ Write enabled" if write_enabled else "⚠️ Read-only (reconnect in Settings to enable writes)"
+
+        lines.append(f"## `{integration_id}`")
+        lines.append(f"- **Platform**: {platform}")
+        lines.append(f"- **Store**: `{store}`")
+        lines.append(f"- **Write-back**: {write_badge}")
+        if item.get("last_synced_at"):
+            lines.append(f"- **Last synced**: {item['last_synced_at']}")
+        lines.append("")
+
+    lines.append(
+        "Pass the `id` value above as `integration_id` to "
+        "`aeko_update_product_description`, `aeko_update_product_tags`, etc."
+    )
+    return "\n".join(lines)
+
+
+@mcp.tool()
 def aeko_update_product_description(
     integration_id: str,
     external_product_id: str,
@@ -66,8 +127,9 @@ def aeko_update_product_description(
     """Replace the full description HTML for a product on a connected store.
 
     Args:
-        integration_id: UUID of the store integration (from aeko_list_campaigns or
-            the Settings page). One per user/domain pair.
+        integration_id: UUID of the store integration. Call
+            ``aeko_list_store_integrations`` first to discover it. One
+            integration per user/domain pair.
         external_product_id: The product's platform-native id — Cafe24
             product_no or Shopify product id.
         description_html: The new description HTML. May include a
