@@ -579,7 +579,7 @@ def aeko_inspect_product_page(product_id: str) -> str:
 
 
 @mcp.tool()
-def aeko_read_product_page_image(product_id: str, image_index: int = 1) -> Image | str:
+def aeko_read_product_page_image(product_id: str, image_index: int = 1) -> Image:
     """Download one image from the live product page and return it as an MCP Image.
 
     This bridges the gap between product-page inspection and actual visual
@@ -592,36 +592,35 @@ def aeko_read_product_page_image(product_id: str, image_index: int = 1) -> Image
     """
     ctx, err = _resolve_product_context(product_id)
     if err:
-        return f"# Product page image unavailable\n\n```\n{err}\n```"
+        raise ValueError(f"Product page image unavailable: {err}")
     if ctx is None:
-        return "# Product page image unavailable"
+        raise ValueError("Product page image unavailable")
 
     product = ctx["product"]
     url = product.get("product_url") or ""
     if not url:
-        return "# Product page image unavailable\n\nThis product does not have a product URL."
+        raise ValueError("Product page image unavailable: this product does not have a product URL.")
 
     page, page_err = _inspect_page(url)
     if page_err:
-        return f"# Product page image unavailable\n\n```\n{page_err}\n```"
+        raise ValueError(f"Product page image unavailable: {page_err}")
     if page is None:
-        return "# Product page image unavailable"
+        raise ValueError("Product page image unavailable")
 
     images = page.get("images") or []
     if not images:
-        return "# Product page image unavailable\n\nNo image assets were extracted from the live product page."
+        raise ValueError("Product page image unavailable: no image assets were extracted from the live product page.")
     if image_index < 1 or image_index > len(images):
-        return (
-            "# Product page image unavailable\n\n"
-            f"`image_index` must be between 1 and {len(images)} for this page."
+        raise ValueError(
+            f"Product page image unavailable: image_index must be between 1 and {len(images)} for this page."
         )
 
     selected = images[image_index - 1]
     temp_path, download_err = _download_image_to_temp(selected["src"])
     if download_err:
-        return f"# Product page image unavailable\n\n```\n{download_err}\n```"
+        raise ValueError(f"Product page image unavailable: {download_err}")
     if temp_path is None:
-        return "# Product page image unavailable"
+        raise ValueError("Product page image unavailable")
 
     return Image(path=temp_path)
 
