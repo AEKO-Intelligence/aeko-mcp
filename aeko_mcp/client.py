@@ -1,4 +1,6 @@
 import os
+from contextvars import ContextVar
+
 import httpx
 
 # Fallback messages when the backend doesn't surface a useful ``detail``.
@@ -6,12 +8,16 @@ import httpx
 # message wins — so the Growth+ upgrade pitch on store-write endpoints
 # reaches Starter users instead of getting masked by a generic fallback.
 ERROR_MESSAGES = {
-    401: "Authentication failed. Check your AEKO_API_KEY environment variable.",
+    401: "Authentication failed. Your AEKO session may be expired or invalid. Reconnect through your MCP client.",
     403: "Access denied. Your subscription may not include this feature.",
     404: "Resource not found. Check the domain_id or analysis_id.",
     500: "AEKO server error. Please try again later.",
     502: "Upstream store API failed (Cafe24 / Shopify). The merchant's store token may need to be reconnected in Settings → Store Integrations.",
 }
+
+
+_request_auth_token: ContextVar[str | None] = ContextVar("aeko_request_auth_token", default=None)
+_request_auth_active: ContextVar[bool] = ContextVar("aeko_request_auth_active", default=False)
 
 
 def _extract_detail_message(resp: httpx.Response) -> str | None:
@@ -62,16 +68,29 @@ def _format_http_error(e: httpx.HTTPStatusError) -> str:
 class AekoClient:
     def __init__(self):
         self.api_url = os.environ.get("AEKO_API_URL", "https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io")
-        self.api_key = os.environ.get("AEKO_API_KEY", "")
-        self._client = httpx.Client(
-            base_url=self.api_url,
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            timeout=30.0,
-        )
+        self.auth_token = os.environ.get("AEKO_AUTH_TOKEN", "")
+        self._client = httpx.Client(base_url=self.api_url, timeout=30.0)
+
+    def set_request_auth_token(self, token: str | None):
+        token_ctx = _request_auth_token.set(token)
+        active_ctx = _request_auth_active.set(True)
+        return token_ctx, active_ctx
+
+    def reset_request_auth_token(self, ctx_tokens) -> None:
+        token_ctx, active_ctx = ctx_tokens
+        _request_auth_token.reset(token_ctx)
+        _request_auth_active.reset(active_ctx)
+
+    def _headers(self) -> dict[str, str]:
+        if _request_auth_active.get():
+            token = _request_auth_token.get()
+        else:
+            token = self.auth_token
+        return {"Authorization": f"Bearer {token}"} if token else {}
 
     def get(self, path: str, params: dict | None = None) -> dict:
         try:
-            resp = self._client.get(path, params=params)
+            resp = self._client.get(path, params=params, headers=self._headers())
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as e:
@@ -81,7 +100,7 @@ class AekoClient:
 
     def post(self, path: str, json: dict | None = None) -> dict:
         try:
-            resp = self._client.post(path, json=json)
+            resp = self._client.post(path, json=json, headers=self._headers())
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         except httpx.HTTPStatusError as e:
@@ -91,7 +110,7 @@ class AekoClient:
 
     def put(self, path: str, json: dict | None = None) -> dict:
         try:
-            resp = self._client.put(path, json=json)
+            resp = self._client.put(path, json=json, headers=self._headers())
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         except httpx.HTTPStatusError as e:
@@ -101,7 +120,7 @@ class AekoClient:
 
     def delete(self, path: str, params: dict | None = None) -> dict:
         try:
-            resp = self._client.delete(path, params=params)
+            resp = self._client.delete(path, params=params, headers=self._headers())
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         except httpx.HTTPStatusError as e:

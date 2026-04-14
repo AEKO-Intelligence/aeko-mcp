@@ -2,7 +2,9 @@
 
 MCP server for [AEKO](https://aeko-intelligence.com) — monitor and optimize how AI engines (ChatGPT, Claude, Gemini, Perplexity) recommend your products in international markets.
 
-## Quick Start (Claude Code Plugin)
+## Quick Start
+
+### Claude Code Plugin
 
 ```bash
 # Add the marketplace
@@ -12,11 +14,42 @@ MCP server for [AEKO](https://aeko-intelligence.com) — monitor and optimize ho
 /plugin install aeko-mcp@AEKO-Intelligence
 ```
 
-Then set your API key:
+For local stdio installs only, set your AEKO bearer token:
 
 ```bash
-export AEKO_API_KEY="your-api-key"
+export AEKO_AUTH_TOKEN="your-aeko-bearer-token"
 ```
+
+### Codex Desktop / Codex CLI
+
+Install the package, then add the AEKO MCP server to Codex for local stdio mode:
+
+```bash
+pip install aeko-mcp
+
+codex mcp add aeko \
+  --env AEKO_AUTH_TOKEN=your-aeko-bearer-token \
+  --env AEKO_API_URL=https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io \
+  -- python -m aeko_mcp
+```
+
+This repo also includes a Codex plugin manifest at `.codex-plugin/plugin.json`.
+For repo-local discovery, it also includes `.agents/plugins/marketplace.json`.
+
+### Remote HTTP Server
+
+The same package can also run as a remote streamable HTTP MCP server:
+
+```bash
+pip install aeko-mcp
+
+aeko-mcp \
+  --transport streamable-http \
+  --host 0.0.0.0 \
+  --port 8000
+```
+
+Clients can then connect to `http://localhost:8000/mcp`.
 
 ## Manual Setup
 
@@ -41,6 +74,12 @@ pip install -e .
 python -m aeko_mcp
 ```
 
+To run it over HTTP instead of stdio:
+
+```bash
+python -m aeko_mcp --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
 ### Add to Claude Desktop
 
 Add to your `claude_desktop_config.json`:
@@ -52,7 +91,7 @@ Add to your `claude_desktop_config.json`:
       "command": "python",
       "args": ["-m", "aeko_mcp"],
       "env": {
-        "AEKO_API_KEY": "your-api-key",
+        "AEKO_AUTH_TOKEN": "your-aeko-bearer-token",
         "AEKO_API_URL": "https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io"
       }
     }
@@ -60,61 +99,107 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
+### Add to Codex Manually
+
+Codex does not use Claude's `claude_desktop_config.json`. Use the Codex CLI instead:
+
+```bash
+codex mcp add aeko \
+  --env AEKO_AUTH_TOKEN=your-aeko-bearer-token \
+  --env AEKO_API_URL=https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io \
+  -- python -m aeko_mcp
+```
+
+If you are hosting AEKO MCP remotely, add it as an HTTP MCP instead:
+
+```bash
+codex mcp add --transport http aeko http://localhost:8000/mcp
+```
+
+Or, from this repo checkout without installing globally (run from the repo root):
+
+```bash
+cd /path/to/aeko-mcp
+
+codex mcp add aeko \
+  --env AEKO_AUTH_TOKEN=your-aeko-bearer-token \
+  --env AEKO_API_URL=https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io \
+  -- uv run --directory "$PWD" python -m aeko_mcp
+```
+
+### Codex Plugin Packaging
+
+This repo now ships the Codex plugin pieces needed for local distribution:
+
+- `.codex-plugin/plugin.json`
+- `.codex-plugin/.mcp.json`
+- `.codex-plugin/skills/`
+- `.agents/plugins/marketplace.json`
+
+The marketplace entry points at the repo root as a local plugin source, so the same checkout can be opened directly in Codex desktop and treated as a plugin-bearing workspace.
+
 ## Configuration
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `AEKO_API_KEY` | Yes | — | Your AEKO API key |
+| `AEKO_AUTH_TOKEN` | Yes for stdio | — | Legacy/local bearer token used by stdio installs and the temporary bridge flow |
 | `AEKO_API_URL` | No | `https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io` | API base URL |
 | `AEKO_CONTENT_DIR` | No | — | Default directory for local content file scanning/reading |
+| `AEKO_MCP_TRANSPORT` | No | `stdio` | Server transport to run from the CLI entrypoint |
+| `AEKO_MCP_HOST` | No | — | Host for `streamable-http` mode |
+| `AEKO_MCP_PORT` | No | — | Port for `streamable-http` mode |
+| `AEKO_MCP_MOUNT_PATH` | No | — | Optional mount path override when running HTTP mode |
+| `AEKO_MCP_STREAMABLE_HTTP_PATH` | No | `/` | Path served by the streamable HTTP app. Defaults to `/` so the embedding ASGI app's own mount prefix (e.g. `app.mount("/mcp", create_streamable_http_app())`) is not doubled. Set to `/mcp` only when running the HTTP server standalone. |
+| `AEKO_MCP_STATELESS_HTTP` | No | `true` | Run streamable HTTP in stateless mode |
+| `AEKO_MCP_JSON_RESPONSE` | No | `true` | Prefer JSON HTTP responses over SSE chunks |
 
 ## Available Tools
 
-| Tool | Description |
-|------|-------------|
-| `aeko_get_score` | Composite AEKO Score (0-100, grade A-F) with 5 component breakdown |
-| `aeko_get_metrics` | 7-day performance metrics with week-over-week trends |
-| `aeko_get_visibility_summary` | Brand visibility metrics across AI engines |
-| `aeko_get_domain_info` | Domain details and AI-readiness status |
-| `aeko_get_page_analysis` | AI-readiness analysis for store pages |
-| `aeko_get_cited_sources` | Pages cited by AI engines as sources |
-| `aeko_get_product_analysis` | Competitive analysis for a product |
-| `aeko_get_suggestions` | Prioritized optimization suggestions |
-| `aeko_complete_suggestion` | Mark a suggestion as completed |
-| `aeko_search_research_prompts` | Search research prompt library (with Korean translations) |
-| `aeko_get_tracked_prompts` | List actively tracked prompts |
-| `aeko_get_citability` | AI citability score for a specific page |
-| `aeko_score_text` | Score arbitrary text for AI citability |
-| `aeko_check_brand_entity` | Check Wikipedia/Wikidata brand entity recognition |
-| `aeko_preview_optimized_page` | Generate HTML preview comparing original vs optimized content |
-| `aeko_prepare_llms_txt` | Generate llms.txt content for AI crawler access |
-| `aeko_prepare_robots_txt_fix` | Analyze robots.txt for AI crawler blocks and suggest fixes |
-| `aeko_validate_llms_txt` | Validate an existing llms.txt for format compliance |
-| `aeko_prepare_json_ld` | Generate JSON-LD structured data for products |
-| `aeko_prepare_report` | Aggregate all domain data for report generation |
-| `aeko_list_product_images` | List product images in a directory |
-| `aeko_read_product_image` | Read and return a product image |
-| `aeko_save_content` | Save generated content to a file |
-| `aeko_scan_content_directory` | Scan a directory for content files (HTML, MD, TXT, etc.) |
-| `aeko_read_content_file` | Read and extract text from a local content file |
-| `aeko_audit_content_file` | Read a local file and score it for AI citability |
+AEKO MCP exposes a growing set of tools covering visibility metrics, suggestions,
+content generation, local file operations, and store-write actions. Rather than
+maintain an always-drifting table here, see the source directory:
+
+- [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each
+  tool is registered with `@mcp.tool()` and its docstring is shown to the
+  AI client at runtime.
+
+Current groups include: `visibility`, `content`, `product`, `suggestions`
+(+ `suggestions_v2` for the categorized brief format), `research`, `preview`,
+`images`, `generate`, `report`, `citability`, `aeko_score`, `local_content`,
+`campaigns`, `content_recommendations`, and `store_write`.
+
+Inside Claude Code or Codex, run the `list tools` equivalent to see the
+live set with descriptions.
 
 ## Skills
 
-Skills are guided workflows that combine AEKO data with content generation. Use them as slash commands in Claude Code.
+Skills are guided workflows that combine AEKO data with content generation.
+Use them as slash commands in Claude Code or `/skill` invocations in Codex.
 
-| Skill | Command | Description |
-|-------|---------|-------------|
-| AEO Audit | `/aeo-audit` | Comprehensive AEO readiness audit for any URL |
-| AEO Optimize | `/aeo-optimize` | Full optimization workflow: audit → generate → preview |
-| Generate JSON-LD | `/generate-jsonld` | Production-ready structured data for products |
-| Generate FAQ | `/generate-faq` | AI-query-matched FAQ content with schema markup |
-| Create Blog Article | `/create-blog-article` | Generate blog content optimized for AI visibility |
-| Create Social Content | `/create-social-content` | Generate social media content from AEKO data |
-| Create Marketing Materials | `/create-marketing-materials` | Generate marketing collateral using AEKO insights |
-| AEO Audit Local | `/aeo-audit-local` | Batch citability audit of local content files |
-| Create Visibility Report | `/create-visibility-report` | Full AI visibility report with AEKO Score and metrics |
-| Competitive Research | `/competitive-research` | AI visibility gap analysis against a competitor |
+- [`skills/`](skills/) — Claude Code skills
+- [`.codex-plugin/skills/`](.codex-plugin/skills/) — Codex skills (kept in
+  parity with the Claude set)
+
+Currently available skills (Claude unless noted):
+
+| Skill | Purpose |
+|-------|---------|
+| `/aeo-audit` | Audit any URL for AEO readiness |
+| `/aeo-audit-local` | Batch citability audit of a local directory |
+| `/aeo-optimize` | Full optimize: audit → generate → preview |
+| `/generate-jsonld` | Production-ready JSON-LD for products |
+| `/generate-faq` | AI-query-matched FAQ + FAQPage JSON-LD |
+| `/create-blog-article` | Blog content tuned for AI visibility |
+| `/create-social-content` | Social posts from AEKO data |
+| `/create-marketing-materials` | Marketing collateral with AEKO insights |
+| `/create-visibility-report` | Full AI visibility report |
+| `/competitive-research` | AI visibility gap analysis vs a competitor |
+| `/aeko-action-center` | Review and route categorized suggestions |
+| `/aeko-update-pdp` | Execute a PDP update suggestion end-to-end |
+| `/aeko-fix-store-level` | Execute a store-level (llms.txt, robots.txt, schema) fix |
+| `/aeko-create-own-content` | Draft own-site content from a v2 brief |
+| `/aeko-create-external-content` | Draft external-media content from a v2 brief |
+| `/aeko-draft-from-campaign` | Draft content from a campaign recommendation |
 
 ### Example usage
 
@@ -124,13 +209,62 @@ Skills are guided workflows that combine AEKO data with content generation. Use 
 
 Claude will fetch your AEKO data, generate optimized content (description, JSON-LD, FAQ), and open a browser preview showing the before/after comparison.
 
+## Codex Support
+
+The shared MCP server in `aeko_mcp/` is portable across Claude and Codex.
+
+- Claude packaging lives in `.claude-plugin/`
+- Codex packaging lives in `.codex-plugin/`
+- Claude skills remain under `skills/`
+- Codex skills live under `.codex-plugin/skills/`
+- Repo-local Codex marketplace metadata lives in `.agents/plugins/marketplace.json`
+
+The two skill directories are kept in parity — both sides see the same
+skill set. See [`.codex-plugin/skills/`](.codex-plugin/skills/) for the
+current list.
+
 For end-user guides, see the [AEKO User Guide](https://aeko-intelligence.com/en/docs).
 
-## Getting an API Key
+## Authentication
 
-1. Sign up at [aeko-intelligence.com](https://aeko-intelligence.com)
-2. Go to **Settings** > **API Keys**
-3. Create a new API key and copy it
+**Recommended — browser OAuth 2.1 flow (no token to paste):**
+
+1. Sign up at [aeko-intelligence.com](https://aeko-intelligence.com).
+2. Add AEKO as a remote MCP server in your client:
+   ```bash
+   claude mcp add --transport http aeko https://aeko-intelligence.com/mcp
+   # or
+   codex mcp add --transport http aeko https://aeko-intelligence.com/mcp
+   ```
+3. Your client opens a browser to AEKO, you sign in, approve access — done.
+   The MCP client registers itself via [RFC 7591 Dynamic Client Registration](https://www.rfc-editor.org/rfc/rfc7591),
+   obtains an access token via [OAuth 2.1](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1) + PKCE,
+   and refreshes it automatically. Nothing to copy, nothing to paste.
+
+**Legacy — manual agent token (stdio or clients without OAuth support):**
+
+1. Sign in to AEKO Settings → Agents.
+2. Open the **Advanced / Legacy — Agent Token** section and mint a 1-hour token.
+3. Paste it into your client as the `AEKO_AUTH_TOKEN` env var (for stdio) or as
+   the bearer token (for HTTP clients that accept a static header).
+
+Tokens of both kinds are short-lived and scoped to your AEKO account — revoke
+access anytime from AEKO Settings.
+
+## Hosting
+
+`aeko-mcp` now supports both deployment modes:
+
+- Local stdio MCP for hosts that launch a local process
+- Remote streamable HTTP MCP for hosts that connect to a URL
+
+If you want to embed AEKO MCP inside another ASGI app, import these helpers:
+
+```python
+from aeko_mcp.server import create_streamable_http_app, mcp_lifespan
+```
+
+Mount the app at your preferred path and run `mcp_lifespan()` in the host app lifespan.
 
 ## License
 

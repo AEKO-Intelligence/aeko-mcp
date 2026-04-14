@@ -1,3 +1,4 @@
-from .server import mcp
+from .server import main
 
-mcp.run()
+
+main()

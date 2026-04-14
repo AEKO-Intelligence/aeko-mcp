@@ -4,8 +4,11 @@
       "command": "uv",
       "args": [
         "run",
-        "--directory", "${CLAUDE_PLUGIN_ROOT}",
-        "python", "-m", "aeko_mcp"
+        "--directory",
+        "..",
+        "python",
+        "-m",
+        "aeko_mcp"
       ],
       "env": {
         "AEKO_AUTH_TOKEN": "",

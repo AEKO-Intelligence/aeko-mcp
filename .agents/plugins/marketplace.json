@@ -1,0 +1,20 @@
+{
+  "name": "aeko-local",
+  "interface": {
+    "displayName": "AEKO Local"
+  },
+  "plugins": [
+    {
+      "name": "aeko-mcp",
+      "source": {
+        "source": "local",
+        "path": "."
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

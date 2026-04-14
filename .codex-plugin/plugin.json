@@ -1,0 +1,32 @@
+{
+  "name": "aeko-mcp",
+  "version": "0.2.0",
+  "description": "AI Engine Optimization for cross-border commerce via AEKO MCP tools and Codex skills",
+  "author": {
+    "name": "AEKO",
+    "url": "https://aeko-intelligence.com"
+  },
+  "homepage": "https://aeko-intelligence.com",
+  "repository": "https://github.com/AEKO-Intelligence/aeko-mcp",
+  "license": "MIT",
+  "keywords": ["aeo", "ai-visibility", "ecommerce", "mcp", "codex"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "AEKO",
+    "shortDescription": "AEO workflows and AEKO data tools for Codex",
+    "longDescription": "Use AEKO in Codex to audit product pages, generate structured data, review optimization suggestions, and improve AI visibility across ChatGPT, Claude, Gemini, and Perplexity.",
+    "developerName": "AEKO",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://aeko-intelligence.com",
+    "privacyPolicyURL": "https://aeko-intelligence.com/en/privacy",
+    "termsOfServiceURL": "https://aeko-intelligence.com/en/terms",
+    "defaultPrompt": [
+      "Run an AEO audit on this product page.",
+      "Generate Product JSON-LD for this PDP.",
+      "Review AEKO suggestions for this domain."
+    ],
+    "brandColor": "#0F766E"
+  }
+}
