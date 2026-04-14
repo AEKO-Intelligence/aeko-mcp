@@ -70,9 +70,38 @@ def create_streamable_http_app(
             await app(scope, receive, send)
             return
 
+        method = scope.get("method", "").upper()
         headers = dict(scope.get("headers", []))
         raw_auth = headers.get(b"authorization", b"").decode()
         token_value = raw_auth[7:].strip() if raw_auth.lower().startswith("bearer ") else None
+
+        # Pre-flight gate: without a bearer, return 401 + WWW-Authenticate
+        # so MCP clients can discover the OAuth AS via RFC 9728 and start
+        # the browser flow. FastMCP's own handshake is public by default,
+        # which would otherwise let clients sail past connect without
+        # running OAuth and only hit auth errors mid-tool-call.
+        #
+        # OPTIONS requests (CORS preflight) are allowed through unauth so
+        # browser-based MCP clients can still negotiate headers.
+        if (
+            challenge_value is not None
+            and method != "OPTIONS"
+            and not token_value
+        ):
+            await send({
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"www-authenticate", challenge_value),
+                ],
+            })
+            await send({
+                "type": "http.response.body",
+                "body": b'{"error":"unauthorized","error_description":"Bearer token required for MCP access"}',
+            })
+            return
+
         ctx_token = client.set_request_auth_token(token_value or None)
 
         async def send_with_challenge(message):
