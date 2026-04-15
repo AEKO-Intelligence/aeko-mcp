@@ -813,7 +813,7 @@ def aeko_get_pdp_optimization_brief(
 
     lines.append("## Recommended workflow")
     lines.append("1. Review this brief and confirm the product, strategy, and research depth.")
-    lines.append("2. If you have PDP images locally, use `aeko_list_product_images` and `aeko_read_product_image` to extract factual details.")
+    lines.append("2. Use `aeko_inspect_product_page(...)` and `aeko_read_product_page_image(...)` to extract factual details from the live PDP.")
     if research_depth == "product_page_web":
         lines.append("3. Add official web facts from the brand or manufacturer before drafting.")
     elif research_depth == "product_page_web_competitor":
@@ -833,7 +833,6 @@ def aeko_deploy_pdp_html(
     product_id: str,
     html: str,
     deployment_mode: str = "manual_copy",
-    output_path: str = "",
 ) -> str:
     """Save generated PDP HTML locally or write it back to the store via API.
 
@@ -841,7 +840,6 @@ def aeko_deploy_pdp_html(
         product_id: AEKO store-product UUID.
         html: Final product detail HTML.
         deployment_mode: `manual_copy` or `write_api`.
-        output_path: Optional local save path for `manual_copy`.
     """
     if deployment_mode not in VALID_DEPLOYMENT_MODES:
         valid = ", ".join(sorted(VALID_DEPLOYMENT_MODES))
@@ -858,18 +856,13 @@ def aeko_deploy_pdp_html(
     platform = integration.get("platform", "unknown")
 
     if deployment_mode == "manual_copy":
-        path = output_path or f"pdp/{_slugify(product.get('title') or product.get('external_product_id') or product_id)}.html"
-        file_path = Path(path)
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(html, encoding="utf-8")
-
-        lines = ["# PDP HTML saved for manual deployment", ""]
-        lines.append(f"- **Saved file**: `{path}`")
+        lines = ["# PDP HTML ready for manual deployment", ""]
         lines.append(f"- **Product**: {product.get('title') or 'Untitled product'}")
         lines.append(f"- **Platform**: {platform}")
+        lines.append("- **HTML source**: Use the generated HTML already shown in the MCP conversation.")
         lines.append("")
         lines.append("## Next steps")
-        for step in _platform_publish_instructions(platform, path):
+        for step in _platform_publish_instructions(platform):
             lines.append(step)
         return "\n".join(lines)
 

@@ -6,7 +6,7 @@ description: >
   merchant-safe HTML, and then either save it for manual Cafe24/Shopify paste
   or write it back through the store API.
 argument-hint: [product-id]
-allowed-tools: aeko_list_pdp_candidates, aeko_inspect_product_page, aeko_read_product_page_image, aeko_get_pdp_optimization_brief, aeko_deploy_pdp_html, aeko_list_product_images, aeko_read_product_image, aeko_save_content, aeko_prepare_json_ld, aeko_search_research_prompts, aeko_complete_suggestion, WebSearch, WebFetch
+allowed-tools: aeko_list_pdp_candidates, aeko_inspect_product_page, aeko_read_product_page_image, aeko_get_pdp_optimization_brief, aeko_deploy_pdp_html, aeko_prepare_json_ld, aeko_search_research_prompts, aeko_complete_suggestion, WebSearch, WebFetch
 ---
 
 # AEKO · Optimize Product Detail Page
@@ -81,11 +81,9 @@ If one of the live image URLs looks important, open it directly with:
 
 `aeko_read_product_page_image(product_id=..., image_index=1)`
 
-## Step 6: Extract facts from images when needed
+## Step 6: Extract facts from the live product page
 
-If the user has local PDP images available, use:
-- `aeko_list_product_images`
-- `aeko_read_product_image`
+Use the live page and live PDP images as the factual base.
 
 Extract concrete product-page facts only:
 - materials
@@ -97,8 +95,6 @@ Extract concrete product-page facts only:
 - warnings
 
 Do not invent facts that are not present in AEKO/store data, the product page/images, or the official sources you reviewed.
-
-If the live page image URLs are enough, use them as the basis for “extract from product page” mode even when local images are not available.
 
 ## Step 7: Draft the PDP HTML
 
@@ -126,8 +122,7 @@ If the brief calls for structured data:
 After the HTML is ready, ask the user how they want to deploy:
 
 1. `manual_copy`
-- Save the HTML locally.
-- Tell them exactly where to paste it in Cafe24/Shopify.
+- Tell them exactly where to paste the generated HTML in Cafe24/Shopify.
 
 2. `write_api`
 - Push it to the connected store immediately through AEKO's store integration.
@@ -146,5 +141,5 @@ Finish by reporting:
 - which product was optimized
 - strategy used
 - research depth used
-- where the HTML was saved or whether it was published via API
+- whether the HTML is ready for manual paste or was published via API
 - any follow-up work still recommended

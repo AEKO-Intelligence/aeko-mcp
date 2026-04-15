@@ -68,7 +68,6 @@ def _format_http_error(e: httpx.HTTPStatusError) -> str:
 class AekoClient:
     def __init__(self):
         self.api_url = os.environ.get("AEKO_API_URL", "https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io")
-        self.auth_token = os.environ.get("AEKO_AUTH_TOKEN", "")
         self._client = httpx.Client(base_url=self.api_url, timeout=30.0)
 
     def set_request_auth_token(self, token: str | None):
@@ -82,10 +81,7 @@ class AekoClient:
         _request_auth_active.reset(active_ctx)
 
     def _headers(self) -> dict[str, str]:
-        if _request_auth_active.get():
-            token = _request_auth_token.get()
-        else:
-            token = self.auth_token
+        token = _request_auth_token.get() if _request_auth_active.get() else None
         return {"Authorization": f"Bearer {token}"} if token else {}
 
     def get(self, path: str, params: dict | None = None) -> dict:

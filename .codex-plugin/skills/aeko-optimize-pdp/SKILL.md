@@ -33,7 +33,7 @@ Use this skill when the user wants to optimize one of their own synced product p
 - Use `aeko_read_product_page_image(product_id=..., image_index=1)` when you need to inspect one of the live PDP images directly.
 
 6. Gather facts.
-- If the user has local PDP images, use `aeko_list_product_images` and `aeko_read_product_image`.
+- Use the live page and live PDP images as the factual base.
 - Add official web facts when `product_page_web` or deeper is selected.
 
 7. Draft the HTML.

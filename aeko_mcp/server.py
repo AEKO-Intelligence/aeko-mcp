@@ -125,7 +125,7 @@ def create_streamable_http_app(
 
 
 def run_server(
-    transport: str = "stdio",
+    transport: str = "streamable-http",
     host: str | None = None,
     port: int | None = None,
     mount_path: str | None = None,
@@ -144,9 +144,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the AEKO MCP server")
     parser.add_argument(
         "--transport",
-        choices=("stdio", "streamable-http"),
-        default=os.environ.get("AEKO_MCP_TRANSPORT", "stdio"),
-        help="MCP transport to run. Defaults to stdio.",
+        choices=("streamable-http",),
+        default=os.environ.get("AEKO_MCP_TRANSPORT", "streamable-http"),
+        help="MCP transport to run. AEKO is designed for hosted streamable HTTP.",
     )
     parser.add_argument(
         "--host",
