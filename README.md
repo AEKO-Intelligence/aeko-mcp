@@ -23,8 +23,6 @@ After installing or updating the plugin:
 - choose `aeko`
 - authenticate in the browser when prompted
 
-No `AEKO_API_KEY` or `AEKO_AUTH_TOKEN` is required for the normal Claude Code path.
-
 ### Claude Desktop
 
 Use AEKO as a custom remote connector, not through `claude_desktop_config.json`.
@@ -37,8 +35,6 @@ Use AEKO as a custom remote connector, not through `claude_desktop_config.json`.
 4. Save it
 5. Click `Connect` and complete the browser login flow
 
-This is the OAuth-first setup for Claude Desktop. Do not use the old local env-var config unless you intentionally want the legacy stdio path.
-
 ### Codex Desktop / Codex CLI
 
 Preferred:
@@ -48,14 +44,6 @@ codex mcp add --transport http aeko https://aeko-intelligence.com/mcp
 ```
 
 Then authenticate through the MCP client/browser flow.
-
-### Legacy / local stdio only
-
-Only use this if you explicitly want a local process and a temporary AEKO bearer token:
-
-```bash
-export AEKO_AUTH_TOKEN="your-aeko-bearer-token"
-```
 
 This repo also includes a Codex plugin manifest at `.codex-plugin/plugin.json`.
 For repo-local discovery, it also includes `.agents/plugins/marketplace.json`.
@@ -75,33 +63,11 @@ aeko-mcp \
 
 Clients can then connect to `http://localhost:8000/mcp`.
 
-## Manual Setup
-
-### Option A: pip/uv install
+## Self-Hosting
 
 ```bash
 pip install aeko-mcp
-```
-
-Or with uv:
-
-```bash
-uv pip install aeko-mcp
-```
-
-### Option B: Clone and run
-
-```bash
-git clone https://github.com/AEKO-Intelligence/aeko-mcp.git
-cd aeko-mcp
-pip install -e .
-python -m aeko_mcp
-```
-
-To run it over HTTP instead of stdio:
-
-```bash
-python -m aeko_mcp --transport streamable-http --host 0.0.0.0 --port 8000
+aeko-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
 ### Add to Codex Manually
@@ -110,26 +76,6 @@ For the recommended hosted setup:
 
 ```bash
 codex mcp add --transport http aeko https://aeko-intelligence.com/mcp
-```
-
-For legacy/local stdio only:
-
-```bash
-codex mcp add aeko \
-  --env AEKO_AUTH_TOKEN=your-aeko-bearer-token \
-  --env AEKO_API_URL=https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io \
-  -- python -m aeko_mcp
-```
-
-Or, from this repo checkout without installing globally (run from the repo root):
-
-```bash
-cd /path/to/aeko-mcp
-
-codex mcp add aeko \
-  --env AEKO_AUTH_TOKEN=your-aeko-bearer-token \
-  --env AEKO_API_URL=https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io \
-  -- uv run --directory "$PWD" python -m aeko_mcp
 ```
 
 ### Codex Plugin Packaging
@@ -147,10 +93,8 @@ The marketplace entry points at the repo root as a local plugin source, so the s
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `AEKO_AUTH_TOKEN` | Yes for stdio | — | Legacy/local bearer token used by stdio installs and the temporary bridge flow |
 | `AEKO_API_URL` | No | `https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io` | API base URL |
-| `AEKO_CONTENT_DIR` | No | — | Default directory for local content file scanning/reading |
-| `AEKO_MCP_TRANSPORT` | No | `stdio` | Server transport to run from the CLI entrypoint |
+| `AEKO_MCP_TRANSPORT` | No | `streamable-http` | Server transport to run from the CLI entrypoint |
 | `AEKO_MCP_HOST` | No | — | Host for `streamable-http` mode |
 | `AEKO_MCP_PORT` | No | — | Port for `streamable-http` mode |
 | `AEKO_MCP_MOUNT_PATH` | No | — | Optional mount path override when running HTTP mode |
@@ -169,9 +113,9 @@ maintain an always-drifting table here, see the source directory:
   AI client at runtime.
 
 Current groups include: `visibility`, `content`, `product`, `suggestions`
-(+ `suggestions_v2` for the categorized brief format), `research`, `preview`,
-`images`, `generate`, `report`, `citability`, `aeko_score`, `local_content`,
-`campaigns`, `content_recommendations`, and `store_write`.
+(+ `suggestions_v2` for the categorized brief format), `research`, `generate`,
+`report`, `citability`, `aeko_score`, `campaigns`, `content_recommendations`,
+`store_write`, and `pdp`.
 
 Inside Claude Code or Codex, run the `list tools` equivalent to see the
 live set with descriptions.
@@ -232,7 +176,7 @@ For end-user guides, see the [AEKO User Guide](https://aeko-intelligence.com/en/
 
 ## Authentication
 
-**Recommended — browser OAuth 2.1 flow (no token to paste):**
+Browser OAuth 2.1 flow — nothing to copy or paste.
 
 1. Sign up at [aeko-intelligence.com](https://aeko-intelligence.com).
 2. Add AEKO as a remote MCP server in your client:
@@ -245,24 +189,11 @@ For end-user guides, see the [AEKO User Guide](https://aeko-intelligence.com/en/
 3. Your client opens a browser to AEKO, you sign in, approve access — done.
    The MCP client registers itself via [RFC 7591 Dynamic Client Registration](https://www.rfc-editor.org/rfc/rfc7591),
    obtains an access token via [OAuth 2.1](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1) + PKCE,
-   and refreshes it automatically. Nothing to copy, nothing to paste.
-
-**Legacy — manual agent token (local stdio or clients without OAuth support):**
-
-1. Sign in to AEKO Settings → Agents.
-2. Open the **Advanced / Legacy — Agent Token** section and mint a 1-hour token.
-3. Paste it into your client as the `AEKO_AUTH_TOKEN` env var (for stdio) or as
-   the bearer token (for HTTP clients that accept a static header).
-
-Tokens of both kinds are short-lived and scoped to your AEKO account — revoke
-access anytime from AEKO Settings.
+   and refreshes it automatically.
 
 ## Hosting
 
-`aeko-mcp` now supports both deployment modes:
-
-- Local stdio MCP for hosts that launch a local process
-- Remote streamable HTTP MCP for hosts that connect to a URL
+`aeko-mcp` is designed for remote streamable HTTP MCP hosts.
 
 If you want to embed AEKO MCP inside another ASGI app, import these helpers:
 

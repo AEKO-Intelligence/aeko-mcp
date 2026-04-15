@@ -40,15 +40,13 @@ aeko-mcp is a thin, stateless process. It holds no database. Every call hits the
 ```
 
 - **aeko-mcp is a thin wrapper.** No state, no caching, no offline mode. Every tool is a one-shot HTTP call.
-- **Local-side capabilities** (reading product images, scanning content directories, saving generated HTML/JSON-LD, opening browser previews) are still the reason a local stdio deployment matters. The same codebase can now also be run as a remote streamable HTTP MCP server for login-based hosted setups.
 - **Backend URL** defaults to `https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io`. Override with `AEKO_API_URL`.
 
 ---
 
 ## 3. Authentication
 
-aeko-mcp is both a local stdio MCP and a remote streamable-HTTP MCP.
-Those two modes use different auth paths:
+aeko-mcp is designed to run as a remote streamable-HTTP MCP.
 
 - **Remote HTTP (recommended).** MCP clients discover the AEKO
   Authorization Server via `/.well-known/oauth-protected-resource` +
@@ -60,20 +58,10 @@ Those two modes use different auth paths:
   Tokens are sent on every backend request as `Authorization: Bearer <token>`.
   **Nothing to paste.** This is the flow `claude mcp add --transport http`
   and `codex mcp add --transport http` use.
-- **Local stdio (legacy).** The `AEKO_AUTH_TOKEN`
-  env var is still honored for local process setups and clients without
-  OAuth support. This is the path behind the "Advanced / Legacy — Agent Token"
-  section in AEKO Settings. The token is a short-lived HS256 JWT
-  (prefix `aeko_at1_`) minted from the user's logged-in AEKO session.
-
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `AEKO_AUTH_TOKEN` | **Yes for stdio** | — | Legacy/local bearer token used by stdio installs and the temporary bridge flow |
 | `AEKO_API_URL` | No | Azure Container Apps URL (above) | Override for staging/local backend |
-| `AEKO_CONTENT_DIR` | No | — | Default directory for local content scanning/reading tools |
-| `AEKO_IMAGE_DIR` | No | — | Sandbox root for product image tools |
-| `AEKO_OUTPUT_DIR` | No | `./aeko_output/` | Where `aeko_save_content` writes files |
-| `AEKO_MCP_TRANSPORT` | No | `stdio` | Run local stdio or streamable HTTP |
+| `AEKO_MCP_TRANSPORT` | No | `streamable-http` | Run the remote HTTP server |
 | `AEKO_MCP_STREAMABLE_HTTP_PATH` | No | `/` | Path the streamable HTTP app serves on. Defaults to `/` so embedding apps can `app.mount("/mcp", create_streamable_http_app())` without doubling the prefix. Override to `/mcp` when running standalone. |
 
 ---
@@ -128,27 +116,18 @@ Then authenticate through the MCP client/browser flow.
 Use Cursor's remote MCP support with the same hosted URL:
 - `https://aeko-intelligence.com/mcp`
 
-### Manual install (legacy / local stdio)
+### Self-hosting
 
 ```bash
 pip install aeko-mcp
-# or from source:
-git clone https://github.com/AEKO-Intelligence/aeko-mcp.git
-cd aeko-mcp && pip install -e .
-python -m aeko_mcp
-```
-
-For remote HTTP hosting:
-
-```bash
-python -m aeko_mcp --transport streamable-http --host 0.0.0.0 --port 8000
+aeko-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
 ---
 
 ## 5. Tools exposed
 
-aeko-mcp ships a growing set of tools across several functional groups — visibility, content, product, suggestions, research, preview, images, generate, report, citability, score, local_content, campaigns, content_recommendations, and store_write. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the current source of truth.
+aeko-mcp ships a growing set of tools across several functional groups — visibility, content, product, suggestions, research, generate, report, citability, score, campaigns, content_recommendations, store_write, and pdp. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the current source of truth.
 
 ### Scoring & metrics (3)
 | Tool | Purpose |
@@ -186,15 +165,14 @@ aeko-mcp ships a growing set of tools across several functional groups — visib
 | `aeko_prepare_json_ld` | Gather data for JSON-LD generation with field guidance per schema type (Product, FAQ, Article, Organization, WebSite, HowTo). |
 | `aeko_prepare_report` | Aggregate all domain data for report generation. |
 
-### Local content & preview (6)
+### PDP workflow (5)
 | Tool | Purpose |
 |---|---|
-| `aeko_list_product_images` | List images in a sandboxed directory. |
-| `aeko_read_product_image` | Return an image to Claude as an MCP Image object. |
-| `aeko_save_content` | Save generated content to `AEKO_OUTPUT_DIR` (supports `.md`, `.html`, `.json`, `.txt`). |
-| `aeko_scan_content_directory` | Scan a directory for content files (HTML, MD, TXT, CSV, JSON, PDF, DOCX). |
-| `aeko_read_content_file` | Read and extract text from a local file (HTML/PDF/DOCX extraction). |
-| `aeko_audit_content_file` | Read a local file and score it for AI citability. |
+| `aeko_list_pdp_candidates` | List synced products that are strong candidates for PDP optimization. |
+| `aeko_inspect_product_page` | Fetch the live PDP and extract title/meta/headings/image URLs. |
+| `aeko_read_product_page_image` | Open one extracted live PDP image directly through MCP vision. |
+| `aeko_get_pdp_optimization_brief` | Build the product-first PDP rewrite brief. |
+| `aeko_deploy_pdp_html` | Either instruct manual deployment or write the HTML back to the store via API. |
 
 ### Suggestions & optimization (3)
 | Tool | Purpose |
@@ -246,7 +224,7 @@ aeko-mcp holds no state. Every tool maps to one or more backend HTTP calls.
 | `/api/suggestions/v2/{key}` | GET | `aeko_get_suggestion`, `aeko_get_pdp_brief`, `aeko_get_content_brief`, `aeko_get_store_level_brief` **(backend not yet shipped)** |
 | `/api/prompt-groups` | GET | `aeko_list_prompt_groups` **(backend not yet shipped)** |
 
-Everything is authenticated with `Authorization: Bearer <token>`. In hosted HTTP mode, the MCP client obtains and refreshes that token via AEKO's OAuth flow. In legacy stdio mode, the token can still come from `AEKO_AUTH_TOKEN`. Errors are mapped to user-friendly messages: 401 → reconnect your AEKO session, 403 → subscription or scope may not include this feature, 404 → resource not found, 5xx → server error, try again later. The v2 tools additionally swallow *all* exceptions and return a friendly "endpoint unavailable" markdown block, so the MCP can be shipped before the backend finishes the v2 contract.
+Everything is authenticated with `Authorization: Bearer <token>`. In hosted HTTP mode, the MCP client obtains and refreshes that token via AEKO's OAuth flow. Errors are mapped to user-friendly messages: 401 → reconnect your AEKO session, 403 → subscription or scope may not include this feature, 404 → resource not found, 5xx → server error, try again later. The v2 tools additionally swallow *all* exceptions and return a friendly "endpoint unavailable" markdown block, so the MCP can be shipped before the backend finishes the v2 contract.
 
 ---
 
