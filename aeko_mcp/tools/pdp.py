@@ -34,15 +34,31 @@ class _ProductPageParser(HTMLParser):
         self.description = ""
         self.headings: list[tuple[str, str]] = []
         self.images: list[dict[str, str]] = []
+        self.meta_images: list[str] = []
+        self.jsonld_blocks: list[str] = []
         self._in_title = False
         self._skip_depth = 0
+        self._in_jsonld = False
         self._current_heading_tag = ""
         self._current_heading_parts: list[str] = []
         self._title_parts: list[str] = []
+        self._jsonld_parts: list[str] = []
+
+    @staticmethod
+    def _first_src_from_srcset(value: str) -> str:
+        first = value.split(",")[0].strip()
+        if not first:
+            return ""
+        return first.split()[0].strip()
 
     def handle_starttag(self, tag: str, attrs):
         tag_lower = tag.lower()
         attrs_dict = {key.lower(): value or "" for key, value in attrs}
+
+        if tag_lower == "script" and attrs_dict.get("type", "").lower() == "application/ld+json":
+            self._in_jsonld = True
+            self._jsonld_parts = []
+            return
 
         if tag_lower in {"script", "style", "noscript"}:
             self._skip_depth += 1
@@ -65,6 +81,8 @@ class _ProductPageParser(HTMLParser):
                 name == "description" or prop == "og:description"
             ):
                 self.description = content
+            if content and prop in {"og:image", "twitter:image"}:
+                self.meta_images.append(content)
             return
 
         if tag_lower == "img":
@@ -73,6 +91,9 @@ class _ProductPageParser(HTMLParser):
                 or attrs_dict.get("data-src")
                 or attrs_dict.get("data-original")
                 or attrs_dict.get("data-lazy-src")
+                or attrs_dict.get("data-image")
+                or self._first_src_from_srcset(attrs_dict.get("srcset", ""))
+                or self._first_src_from_srcset(attrs_dict.get("data-srcset", ""))
                 or ""
             ).strip()
             if not src:
@@ -91,6 +112,14 @@ class _ProductPageParser(HTMLParser):
 
     def handle_endtag(self, tag: str):
         tag_lower = tag.lower()
+        if self._in_jsonld and tag_lower == "script":
+            payload = "".join(self._jsonld_parts).strip()
+            if payload:
+                self.jsonld_blocks.append(payload)
+            self._jsonld_parts = []
+            self._in_jsonld = False
+            return
+
         if tag_lower in {"script", "style", "noscript"}:
             self._skip_depth = max(0, self._skip_depth - 1)
             return
@@ -117,6 +146,8 @@ class _ProductPageParser(HTMLParser):
             return
         if self._in_title:
             self._title_parts.append(text)
+        if self._in_jsonld:
+            self._jsonld_parts.append(data)
         if self._current_heading_tag:
             self._current_heading_parts.append(text)
 
@@ -169,6 +200,21 @@ def _dedupe_images(images: list[dict[str, str]], page_url: str, limit: int = 12)
         if len(deduped) >= limit:
             break
     return deduped
+
+
+def _merge_page_images(
+    page_url: str,
+    parsed_images: list[dict[str, str]],
+    meta_images: list[str],
+    fallback_image_url: str | None = None,
+    limit: int = 12,
+) -> list[dict[str, str]]:
+    merged = list(parsed_images)
+    for meta_url in meta_images:
+        merged.append({"src": meta_url, "alt": "", "width": "", "height": ""})
+    if fallback_image_url:
+        merged.append({"src": fallback_image_url, "alt": "", "width": "", "height": ""})
+    return _dedupe_images(merged, page_url, limit=limit)
 
 
 def _safe_get(path: str, params: dict | None = None) -> tuple[dict | list | None, str | None]:
@@ -364,7 +410,7 @@ def _resolve_product_context(product_id: str) -> tuple[dict | None, str | None]:
     }, None
 
 
-def _inspect_page(url: str) -> tuple[dict | None, str | None]:
+def _inspect_page(url: str, fallback_image_url: str | None = None) -> tuple[dict | None, str | None]:
     html, err = _fetch_product_page(url)
     if err:
         return None, err
@@ -373,7 +419,12 @@ def _inspect_page(url: str) -> tuple[dict | None, str | None]:
 
     parser = _ProductPageParser()
     parser.feed(html)
-    images = _dedupe_images(parser.images, url)
+    images = _merge_page_images(
+        url,
+        parser.images,
+        parser.meta_images,
+        fallback_image_url=fallback_image_url,
+    )
     headings = parser.headings[:10]
 
     return {
@@ -383,6 +434,7 @@ def _inspect_page(url: str) -> tuple[dict | None, str | None]:
         "headings": headings,
         "images": images,
         "html_length": len(html),
+        "jsonld_count": len(parser.jsonld_blocks),
     }, None
 
 
@@ -534,7 +586,7 @@ def aeko_inspect_product_page(product_id: str) -> str:
     if not url:
         return "# Product page inspection unavailable\n\nThis product does not have a product URL."
 
-    page, page_err = _inspect_page(url)
+    page, page_err = _inspect_page(url, fallback_image_url=product.get("image_url"))
     if page_err:
         return f"# Product page inspection unavailable\n\n```\n{page_err}\n```"
     if page is None:
@@ -548,6 +600,7 @@ def aeko_inspect_product_page(product_id: str) -> str:
     if page.get("description"):
         lines.append(f"- **Meta description**: {_trim_text(page['description'])}")
     lines.append(f"- **Fetched HTML size**: {page.get('html_length', 0)} chars")
+    lines.append(f"- **JSON-LD blocks found**: {page.get('jsonld_count', 0)}")
     lines.append("")
 
     headings = page.get("headings") or []
@@ -601,7 +654,7 @@ def aeko_read_product_page_image(product_id: str, image_index: int = 1) -> Image
     if not url:
         raise ValueError("Product page image unavailable: this product does not have a product URL.")
 
-    page, page_err = _inspect_page(url)
+    page, page_err = _inspect_page(url, fallback_image_url=product.get("image_url"))
     if page_err:
         raise ValueError(f"Product page image unavailable: {page_err}")
     if page is None:
