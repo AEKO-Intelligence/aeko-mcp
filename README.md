@@ -4,7 +4,7 @@ MCP server for [AEKO](https://aeko-intelligence.com) — monitor and optimize ho
 
 ## Quick Start
 
-### Claude Code Plugin
+### Claude Code
 
 ```bash
 # Add the marketplace
@@ -14,23 +14,47 @@ MCP server for [AEKO](https://aeko-intelligence.com) — monitor and optimize ho
 /plugin install aeko-mcp@AEKO-Intelligence
 ```
 
-For local stdio installs only, set your AEKO bearer token:
+The bundled plugin now connects to the hosted AEKO MCP endpoint:
+- `https://aeko-intelligence.com/mcp`
 
-```bash
-export AEKO_AUTH_TOKEN="your-aeko-bearer-token"
-```
+After installing or updating the plugin:
+- restart Claude Code or run `/reload-plugins`
+- open `/mcp`
+- choose `aeko`
+- authenticate in the browser when prompted
+
+No `AEKO_API_KEY` or `AEKO_AUTH_TOKEN` is required for the normal Claude Code path.
+
+### Claude Desktop
+
+Use AEKO as a custom remote connector, not through `claude_desktop_config.json`.
+
+1. Open `Customize > Connectors`
+2. Click `Add custom connector`
+3. Enter:
+   - Name: `AEKO`
+   - URL: `https://aeko-intelligence.com/mcp`
+4. Save it
+5. Click `Connect` and complete the browser login flow
+
+This is the OAuth-first setup for Claude Desktop. Do not use the old local env-var config unless you intentionally want the legacy stdio path.
 
 ### Codex Desktop / Codex CLI
 
-Install the package, then add the AEKO MCP server to Codex for local stdio mode:
+Preferred:
 
 ```bash
-pip install aeko-mcp
+codex mcp add --transport http aeko https://aeko-intelligence.com/mcp
+```
 
-codex mcp add aeko \
-  --env AEKO_AUTH_TOKEN=your-aeko-bearer-token \
-  --env AEKO_API_URL=https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io \
-  -- python -m aeko_mcp
+Then authenticate through the MCP client/browser flow.
+
+### Legacy / local stdio only
+
+Only use this if you explicitly want a local process and a temporary AEKO bearer token:
+
+```bash
+export AEKO_AUTH_TOKEN="your-aeko-bearer-token"
 ```
 
 This repo also includes a Codex plugin manifest at `.codex-plugin/plugin.json`.
@@ -80,40 +104,21 @@ To run it over HTTP instead of stdio:
 python -m aeko_mcp --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
-### Add to Claude Desktop
-
-Add to your `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "aeko": {
-      "command": "python",
-      "args": ["-m", "aeko_mcp"],
-      "env": {
-        "AEKO_AUTH_TOKEN": "your-aeko-bearer-token",
-        "AEKO_API_URL": "https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io"
-      }
-    }
-  }
-}
-```
-
 ### Add to Codex Manually
 
-Codex does not use Claude's `claude_desktop_config.json`. Use the Codex CLI instead:
+For the recommended hosted setup:
+
+```bash
+codex mcp add --transport http aeko https://aeko-intelligence.com/mcp
+```
+
+For legacy/local stdio only:
 
 ```bash
 codex mcp add aeko \
   --env AEKO_AUTH_TOKEN=your-aeko-bearer-token \
   --env AEKO_API_URL=https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io \
   -- python -m aeko_mcp
-```
-
-If you are hosting AEKO MCP remotely, add it as an HTTP MCP instead:
-
-```bash
-codex mcp add --transport http aeko http://localhost:8000/mcp
 ```
 
 Or, from this repo checkout without installing globally (run from the repo root):
@@ -236,12 +241,13 @@ For end-user guides, see the [AEKO User Guide](https://aeko-intelligence.com/en/
    # or
    codex mcp add --transport http aeko https://aeko-intelligence.com/mcp
    ```
+   For Claude Desktop, add `https://aeko-intelligence.com/mcp` as a custom connector from `Customize > Connectors`.
 3. Your client opens a browser to AEKO, you sign in, approve access — done.
    The MCP client registers itself via [RFC 7591 Dynamic Client Registration](https://www.rfc-editor.org/rfc/rfc7591),
    obtains an access token via [OAuth 2.1](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1) + PKCE,
    and refreshes it automatically. Nothing to copy, nothing to paste.
 
-**Legacy — manual agent token (stdio or clients without OAuth support):**
+**Legacy — manual agent token (local stdio or clients without OAuth support):**
 
 1. Sign in to AEKO Settings → Agents.
 2. Open the **Advanced / Legacy — Agent Token** section and mint a 1-hour token.

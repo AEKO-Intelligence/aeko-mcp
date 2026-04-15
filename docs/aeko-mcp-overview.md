@@ -6,7 +6,7 @@
 
 ## 1. What aeko-mcp is
 
-**aeko-mcp** is a Model Context Protocol server that turns an AI coding assistant (Claude Code, Claude Desktop, Cursor) into a full AEKO operator. It exposes AEKO's backend — visibility data, tracked prompts, citability scoring, and optimization suggestions — as native tools the LLM can call, and it ships a set of guided **skills** (slash commands) that walk the LLM through end-to-end workflows like auditing a product page or drafting an article optimized for AI citations.
+**aeko-mcp** is a Model Context Protocol server that turns an AI assistant (Claude Code, Claude Desktop, Codex, Cursor) into a full AEKO operator. It exposes AEKO's backend — visibility data, tracked prompts, citability scoring, and optimization suggestions — as native tools the LLM can call, and it ships a set of guided **skills** (slash commands) that walk the LLM through end-to-end workflows like auditing a product page or drafting an article optimized for AI citations.
 
 In practice, it is the bridge between the user's local computer (files, browser previews, generated content) and AEKO's insight layer. The user stays in Claude Code, asks for an AEO audit or content draft, and aeko-mcp silently fetches the right data and saves the output to disk.
 
@@ -60,9 +60,9 @@ Those two modes use different auth paths:
   Tokens are sent on every backend request as `Authorization: Bearer <token>`.
   **Nothing to paste.** This is the flow `claude mcp add --transport http`
   and `codex mcp add --transport http` use.
-- **Local stdio (and legacy HTTP clients).** The `AEKO_AUTH_TOKEN`
-  env var is still honored — this is the path the bundled Claude plugin
-  uses and the path behind the "Advanced / Legacy — Agent Token"
+- **Local stdio (legacy).** The `AEKO_AUTH_TOKEN`
+  env var is still honored for local process setups and clients without
+  OAuth support. This is the path behind the "Advanced / Legacy — Agent Token"
   section in AEKO Settings. The token is a short-lived HS256 JWT
   (prefix `aeko_at1_`) minted from the user's logged-in AEKO session.
 
@@ -90,36 +90,45 @@ Those two modes use different auth paths:
 /plugin install aeko-mcp@AEKO-Intelligence
 ```
 
-Then set your AEKO bearer token:
+The bundled plugin points at the hosted AEKO MCP URL:
+- `https://aeko-intelligence.com/mcp`
 
-```bash
-export AEKO_AUTH_TOKEN="your-aeko-bearer-token"
-```
+After installing or updating the plugin:
+- restart Claude Code or run `/reload-plugins`
+- open `/mcp`
+- choose `aeko`
+- complete the browser OAuth flow
+
+No env var setup is required for the normal Claude Code path.
 
 ### Claude Desktop
 
-Edit `claude_desktop_config.json`:
+Use AEKO as a **custom remote connector**, not through `claude_desktop_config.json`:
 
-```json
-{
-  "mcpServers": {
-    "aeko": {
-      "command": "python",
-      "args": ["-m", "aeko_mcp"],
-      "env": {
-        "AEKO_AUTH_TOKEN": "your-aeko-bearer-token",
-        "AEKO_API_URL": "https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io"
-      }
-    }
-  }
-}
+1. Open `Customize > Connectors`
+2. Click `Add custom connector`
+3. Enter `https://aeko-intelligence.com/mcp`
+4. Save it
+5. Click `Connect` and complete the browser OAuth flow
+
+This is the OAuth-first Desktop path.
+
+### Codex
+
+Add AEKO as a remote MCP server:
+
+```bash
+codex mcp add --transport http aeko https://aeko-intelligence.com/mcp
 ```
+
+Then authenticate through the MCP client/browser flow.
 
 ### Cursor
 
-Cursor reads the same MCP config shape as Claude Desktop. Add the `aeko` server block to Cursor's MCP settings file with the same `command` / `args` / `env`.
+Use Cursor's remote MCP support with the same hosted URL:
+- `https://aeko-intelligence.com/mcp`
 
-### Manual install (any MCP host)
+### Manual install (legacy / local stdio)
 
 ```bash
 pip install aeko-mcp

@@ -14,8 +14,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "AEKO",
-    "shortDescription": "AEO workflows and AEKO data tools for Codex",
-    "longDescription": "Use AEKO in Codex to audit product pages, generate structured data, review optimization suggestions, and improve AI visibility across ChatGPT, Claude, Gemini, and Perplexity.",
+    "shortDescription": "AEO workflows and AEKO data tools for Codex via hosted MCP",
+    "longDescription": "Use AEKO in Codex through the hosted AEKO MCP server to audit product pages, review suggestions, generate structured data, and improve AI visibility with browser-based OAuth login.",
     "developerName": "AEKO",
     "category": "Productivity",
     "capabilities": ["Interactive", "Write"],
