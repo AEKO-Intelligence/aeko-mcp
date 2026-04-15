@@ -9,7 +9,7 @@
     {
       "name": "aeko-mcp",
       "description": "AI Engine Optimization — generate AEO-optimized content and track how AI engines recommend your products across ChatGPT, Claude, Gemini, and Perplexity",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "source": "./"
     }
   ]

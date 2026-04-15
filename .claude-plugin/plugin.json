@@ -1,6 +1,6 @@
 {
   "name": "aeko-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "AI Engine Optimization — generate AEO-optimized content and track how AI engines recommend your products across ChatGPT, Claude, Gemini, and Perplexity",
   "author": {
     "name": "AEKO",
@@ -9,5 +9,6 @@
   "homepage": "https://aeko-intelligence.com",
   "license": "MIT",
   "keywords": ["aeo", "ai-visibility", "ecommerce", "mcp"],
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
 }

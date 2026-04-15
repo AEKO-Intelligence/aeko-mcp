@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "aeko": {
+      "type": "http",
+      "url": "https://aeko-intelligence.com/mcp"
+    }
+  }
+}
