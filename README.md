@@ -25,15 +25,17 @@ After installing or updating the plugin:
 
 ### Claude Desktop
 
-Use AEKO as a custom remote connector, not through `claude_desktop_config.json`.
+Claude Desktop supports the same plugin marketplace as Claude Code, so the install flow below gives you both the AEKO skills and the hosted MCP in one go.
 
-1. Open `Customize > Connectors`
-2. Click `Add custom connector`
-3. Enter:
-   - Name: `AEKO`
-   - URL: `https://aeko-intelligence.com/mcp`
-4. Save it
-5. Click `Connect` and complete the browser login flow
+1. Open Claude Desktop → **Settings → Plugins**
+2. Click **Browse plugins → Add marketplace**
+3. Paste the GitHub repo: `AEKO-Intelligence/aeko-mcp`
+4. From the marketplace, install **aeko-mcp**
+5. Once installed, click **Manage → Connectors**
+6. Find **AEKO** in the list and click **Connect**
+7. Complete the browser OAuth flow → done
+
+After the first connect, AEKO tools and skills are available in any Claude Desktop chat. Re-authenticate from the same Connectors panel if the session ever expires.
 
 ### Codex Desktop / Codex CLI
 
