@@ -1,60 +1,97 @@
 ---
 name: aeko-action-center
 description: >
-  Top-level entry point for AEKO optimization work. Shows categorized
-  suggestions (PDP update, own content, external content, store-level)
-  and routes the user to the right specialist skill.
-argument-hint: [domain-id] [group-id]
-allowed-tools: Read
+  Top-level router for AEKO optimization work. Lists pending Action-tab
+  and Technical-tab items for a domain, previews their plan/guide summary,
+  and prints ready-to-copy commands that route the user to aeko-run-action
+  or aeko-fix-technical. Pure dispatcher — never executes items itself.
+argument-hint: "[domain-id] [tab]"
+allowed-tools: aeko_list_action_items, aeko_list_technical_items, aeko_get_domain_info
 ---
 
 # AEKO Action Center
 
-You are the routing entry point for AEKO optimization work. Your job is to help the user pick what to tackle today and hand them off to the specialist skill.
+> ⚠️ **Stage-1 preview.** Depends on new tools `aeko_list_action_items` / `aeko_list_technical_items` (see `docs/contracts/action-item-contract.md`). Not runnable until Stage 1 tool stubs land.
 
-## Step 1: Resolve the domain
 
-Parse arguments for a domain UUID. If none is supplied, ask the user or call `aeko_get_domain_info` to help them pick one.
+Router for the new three-tab Optimize model. You help the user pick one pending item and hand off to the correct executor skill. You do NOT generate artifacts, call write-back tools, or mark items complete.
 
-## Step 2: Offer prompt-group scoping (optional)
+Contract reference: `docs/contracts/action-item-contract.md`.
 
-Call `aeko_list_prompt_groups(domain_id)`. If groups exist, show them and ask whether the user wants to scope today's work to a group (e.g. "mattress category"). If they pick one, remember the `group_id`.
+## Inputs
 
-If the endpoint is unavailable, continue without group scoping — that's fine.
+- `domain-id` (optional) — UUID of the domain. If missing, ask the user.
+- `tab` (optional) — `action` | `technical` | `both` (default: `both`).
 
-## Step 3: Fetch categorized suggestions
+## Step 1 — Resolve the domain
 
-Call `aeko_get_suggestions_v2(domain_id, group_id=<optional>)`.
+Parse `$1` for a UUID. If absent:
+- Ask the user to provide a domain UUID, OR
+- Call `aeko_get_domain_info` with a guess if one is obvious from context.
 
-**If the tool reports the v2 endpoint is unavailable** (message starts with "Suggestions v2 unavailable"):
-- Tell the user plainly that the backend hasn't shipped the v2 contract yet.
-- Call `aeko_get_suggestions(domain_id)` instead and surface the flat legacy list.
-- Do **not** route to `/aeko-update-pdp`, `/aeko-create-own-content`, `/aeko-create-external-content`, or `/aeko-fix-store-level` — those all require v2 briefs and will dead-end.
-- Instead, point the user at the existing skills: `/aeo-optimize`, `/aeo-audit`, `/generate-jsonld`, `/create-blog-article`. Pick the one that matches the top-priority legacy suggestion's `mcp_tool_hint` or `category`.
-- Stop after this; no further routing in legacy mode.
+Do not proceed without a concrete `domain_id`.
 
-## Step 4: Summarize the 4 buckets
+## Step 2 — Fetch pending items for the chosen tabs
 
-Present a short summary: how many suggestions live in each of the four categories, and which category has the highest-priority items.
+Based on `$2`:
+- `action` → call `aeko_list_action_items(domain_id, status="pending")`
+- `technical` → call `aeko_list_technical_items(domain_id, status="pending")`
+- `both` / unset → call both in parallel
 
-The 4 categories and their specialist skills:
+Each summary (`AekoItemSummary` from the contract) carries: `id`, `tab`, `title`, `priority`, `execution_class`, `artifact_type`, `write_mode`, `preview`, `updated_at`.
 
-| Category | Skill |
-|---|---|
-| Own Store · Product Detail Update | `/aeko-update-pdp` |
-| Own Store · Content | `/aeko-create-own-content` |
-| Other Media · Content | `/aeko-create-external-content` |
-| Own Store · Store-Level | `/aeko-fix-store-level` |
+If either backend endpoint is unavailable (stub error), report it plainly to the user and continue with whichever tab did return data. Do NOT fall back to any retired tool (`aeko_get_suggestions_v2`, `aeko_get_suggestions`, campaigns). Those no longer drive routing.
 
-## Step 5: Print ready-to-copy commands for each bucket
+## Step 3 — Summarize
 
-For each of the 4 categories that has at least one suggestion, print a **ready-to-copy code block** with the exact slash command + top-priority `suggestion_key` from that bucket. Example:
+Print a short header:
+
+```
+Domain: <domain_id>
+Action tab: N pending (top priority: <critical|high|medium|low>)
+Technical tab: M pending (top priority: ...)
+```
+
+## Step 4 — Print ready-to-copy commands
+
+For each tab with ≥1 pending item, group items by priority (critical → low) and print a fenced code block per item, highest-priority-first. Cap at 10 items per tab; if there are more, append a line noting how many are hidden.
+
+Format for Action items:
 
 ````
-# Own Store · Product Detail Update (3 suggestions, top priority: critical)
-/aeko-update-pdp sugg_abc123
+# Action · <artifact_type> · <priority>
+# <title>
+# execution_class: <execution_class> | write_mode: <write_mode or "n/a"> | updated <relative time>
+# preview: <first 120 chars of preview>
+/aeko-run-action <item_id>
 ````
 
-Do this for all non-empty buckets, highest-priority-first. Then ask the user which one they want to tackle today. They will copy the command block from your message and run it themselves — this skill is a router, not a dispatcher. Do not execute the specialist skill yourself.
+Format for Technical items:
 
-If the user asks you to "just run them all," tell them to run each specialist skill one at a time so they can review the output between runs.
+````
+# Technical · <artifact_type> · <priority>
+# <title>
+# execution_class: technical_artifact | updated <relative time>
+# preview: <first 120 chars of preview>
+/aeko-fix-technical <item_id>
+````
+
+Note: `deploy_mode` is only available inside the full guide.md frontmatter (fetched by `aeko-fix-technical`), not in `AekoItemSummary`. The router does not render it. If the user wants to know whether a Technical item auto-deploys, they'll see it after invoking `/aeko-fix-technical <item_id>`.
+
+After printing, ask which one the user wants to tackle. They copy the command block and run it themselves.
+
+## Step 5 — If asked to "run them all"
+
+Refuse: tell the user to run each executor one item at a time so they can review the output between runs. Writes to the store and content artifacts should not batch.
+
+## Error paths
+
+- `domain_id` missing → ask for it; stop.
+- Both list endpoints unavailable → surface both error messages; tell the user the new Action/Technical surface isn't backing yet; stop.
+- Zero pending items → congratulate the user; suggest checking the Brand Kit (`/aeko-brand-kit <domain_id>`) or running a domain-wide report (`/create-visibility-report <domain_id>`).
+
+## What this skill never does
+
+- Never calls `aeko_get_action_plan` / `aeko_get_technical_guide` — those belong to the executor skills.
+- Never calls `aeko_complete_item`, `aeko_create_shadow_product`, or any write-back tool.
+- Never executes the item. Always stops at routing.

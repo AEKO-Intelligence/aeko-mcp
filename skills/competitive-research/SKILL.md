@@ -7,10 +7,13 @@ description: >
   recommendations. Use when a user wants to understand how competitors
   are performing in AI engine results.
 argument-hint: <competitor-name-or-url> [--domain-id <uuid>]
-allowed-tools: aeko_get_suggestions, aeko_search_research_prompts, aeko_get_product_analysis, aeko_get_visibility_summary, aeko_get_score, aeko_get_metrics, WebFetch, WebSearch
+allowed-tools: aeko_list_action_items, aeko_search_research_prompts, aeko_get_product_analysis, aeko_get_visibility_summary, aeko_get_score, aeko_get_metrics, aeko_get_brand_kit, WebFetch, WebSearch
 ---
 
 # Competitive Research — AI Visibility Gap Analysis
+
+> ⚠️ **Stage-1 dependencies.** Steps that call `aeko_list_action_items` or `aeko_get_brand_kit` depend on Stage-1 tool stubs (see `docs/contracts/action-item-contract.md`). If those tools are not yet wired, skip those steps silently and continue the research — do NOT dead-end the whole run. The web-research portions (WebSearch / WebFetch) and the legacy AEKO tools (`aeko_get_score`, `aeko_get_visibility_summary`, `aeko_get_metrics`, `aeko_get_product_analysis`, `aeko_search_research_prompts`) work today and should proceed regardless.
+
 
 You are performing competitive research to help the user understand and outperform a competitor in AI engine visibility.
 
@@ -30,10 +33,11 @@ If the user provided their own domain-id, gather internal context:
 1. Call `aeko_get_score` for the user's domain — establishes baseline AEKO Score
 2. Call `aeko_get_metrics` — get 7-day trends to show trajectory
 3. Call `aeko_get_visibility_summary` — detailed mentions, citations, sentiment
-4. Call `aeko_get_suggestions` — check for any existing competitive gap suggestions
+4. Call `aeko_list_action_items(domain_id, status="pending")` — surface any pending Action-tab items that already reference this competitor or similar market gaps
 5. Call `aeko_search_research_prompts` with the competitor name — find prompts where the competitor appears
+6. Call `aeko_get_brand_kit(domain_id)` — check whether this competitor is already listed in the user's Brand Kit competitors field
 
-This gives you the user's current position and trajectory to compare against.
+This gives you the user's current position, trajectory, existing work in flight, and whether the competitor is already tracked.
 
 ## Step 3: Research competitor's web presence
 
@@ -120,12 +124,12 @@ Identify 3-5 content pieces the user should create based on:
 
 ## Step 7: Suggest follow-up actions
 
-Based on findings, recommend specific AEKO skills:
+Based on findings, recommend the new AEKO surface:
 
-- `/aeo-optimize` — if specific pages need optimization
-- `/create-blog-article` — if content gaps were identified
-- `/generate-jsonld` — if structured data is missing
-- `/generate-faq` — if FAQ content would close a gap
-- `/aeo-audit` — if the user wants to audit their own pages for comparison
+- `/aeko-brand-kit <domain-id> edit` — add or refine this competitor (and any newly surfaced ones) in the Brand Kit competitors list, so future Plan.md generations reference accurate competitive context
+- `/aeko-action-center <domain-id>` — check whether backend has already queued Action items that address any gaps found here; if yes, route the user to `/aeko-run-action <item-id>`
+- `/aeo-audit <user-url>` — self-audit a key page for comparison against the competitor's structured-data profile
+
+If backend has NOT yet queued items for the gaps identified, flag this to the user: gaps surface in this skill, but items are created by the web UI's Action tab. The user should create Action items for the top gaps there, then run `/aeko-run-action` when ready.
 
 Frame recommendations as a prioritized action plan with estimated impact.

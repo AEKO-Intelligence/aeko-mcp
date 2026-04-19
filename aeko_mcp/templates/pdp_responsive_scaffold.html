@@ -1,0 +1,59 @@
+<!--
+  AEKO PDP Responsive Scaffold v1
+  Mandatory shell for any PDP HTML produced by aeko-run-action.
+
+  Rules (all enforced by the skill):
+    - Mobile-first, fluid; no fixed-pixel widths on containers
+    - <img> uses max-width:100%; height:auto; display:block; margin:0 auto
+    - Every <img> has a non-empty alt attribute (AEO-critical)
+    - Semantic tags only (section, h2, h3, p, ul, ol, li)
+    - No <script>, no external CSS, no <link> to stylesheets
+    - Inline styles OR one scoped <style> block only
+
+  Replace all {{placeholders}} with real content. Add / remove <section>s
+  as the plan's sections_required dictates. Keep the outer <article> wrapper.
+-->
+<article style="max-width:100%; margin:0 auto; font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif; line-height:1.6; color:#222;">
+
+  <section>
+    <h2 style="font-size:1.4em; margin:1em 0 0.5em;">{{primary_headline}}</h2>
+    <p>{{lede_paragraph}}</p>
+  </section>
+
+  <section>
+    <h3 style="font-size:1.15em; margin:1.2em 0 0.4em;">{{benefit_section_title}}</h3>
+    <ul style="padding-left:1.2em; margin:0.2em 0 1em;">
+      <li>{{benefit_1}}</li>
+      <li>{{benefit_2}}</li>
+      <li>{{benefit_3}}</li>
+    </ul>
+  </section>
+
+  <section>
+    <h3 style="font-size:1.15em; margin:1.2em 0 0.4em;">{{usage_or_spec_title}}</h3>
+    <p>{{usage_or_spec_body}}</p>
+  </section>
+
+  <section>
+    <img
+      src="{{hero_image_url}}"
+      alt="{{hero_image_alt_aeo_friendly}}"
+      style="max-width:100%; height:auto; display:block; margin:0 auto;"
+    />
+  </section>
+
+  <section>
+    <h3 style="font-size:1.15em; margin:1.2em 0 0.4em;">{{faq_title}}</h3>
+    <p><strong>{{faq_q_1}}</strong></p>
+    <p>{{faq_a_1}}</p>
+    <p><strong>{{faq_q_2}}</strong></p>
+    <p>{{faq_a_2}}</p>
+  </section>
+
+  <section>
+    <p style="margin-top:1.5em;">
+      <a href="{{cta_link}}" style="display:inline-block; padding:0.7em 1.2em; border:1px solid #222; text-decoration:none; color:#222;">{{cta_text}}</a>
+    </p>
+  </section>
+
+</article>

@@ -100,6 +100,13 @@ Ask the user what format they prefer:
 - **HTML** (.html) — best for email or web viewing
 - **Plain text** (.txt) — simplest format
 
-Save via **`aeko_save_content(file_path, content)`**.
+Save via **`aeko_save_content(file_path, content)`** or the `Write` tool.
 
 Suggested filename: `visibility-report-{domain-name}-{date}.md`
+
+## Step 9: Next steps
+
+After the report, offer:
+- `/aeko-action-center <domain-id>` — if the report surfaces prioritized gaps, check whether the web UI has already queued Action items that address them
+- `/aeko-brand-kit <domain-id>` — if Brand Kit fields showed up as missing/weak in the report
+- `/competitive-research <competitor>` — if the report's competitive section needs deeper per-competitor analysis

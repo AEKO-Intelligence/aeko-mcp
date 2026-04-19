@@ -256,6 +256,11 @@ For each fix, provide:
 3. **How to fix it** — exact code or content change needed
 4. **Score impact** — estimated improvement to composite score
 
-## Step 10: Optional preview
+## Step 10: Next steps
 
-If structured data was found or generated, offer to call `aeko_preview_optimized_page` to visualize the structured data as a rich result card.
+This skill is standalone — it does not fetch AEKO items or write to a store.
+
+After the audit, point the user at:
+- `/aeko-action-center <domain-id>` — if the URL belongs to an AEKO-connected domain and they want to queue fixes as actionable items
+- `/aeko-brand-kit <domain-id>` — if missing brand context showed up in the audit (no Organization schema, no persona tone, etc.)
+- `/competitive-research <competitor-or-url>` — if the audit surfaced a competitor worth benchmarking against
