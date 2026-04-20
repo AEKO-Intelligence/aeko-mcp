@@ -10,7 +10,7 @@ description: >
   produce local markdown (+ JSON-LD if required) and mark complete.
   Enforces responsive HTML contract and stale-brand-kit warning.
 argument-hint: "<item-id>"
-allowed-tools: aeko_get_action_plan, aeko_get_brand_kit, aeko_get_product_description, aeko_inspect_product_page, aeko_read_product_page_image, aeko_check_ocr_cache, aeko_store_ocr_result, aeko_search_research_prompts, aeko_create_shadow_product, aeko_update_product_description, aeko_complete_item, Read, Write, WebSearch, WebFetch, Bash(open *), Bash(xdg-open *)
+allowed-tools: aeko_get_action_plan, aeko_get_brand_kit, aeko_get_product_description, aeko_inspect_product_page, aeko_read_product_page_image, aeko_check_ocr_cache, aeko_store_ocr_result, aeko_search_research_prompts, aeko_get_tracked_prompts, aeko_fetch_source_content, aeko_create_shadow_product, aeko_update_product_description, aeko_complete_action_item, Read, Write, WebSearch, WebFetch, Bash(open *), Bash(xdg-open *)
 ---
 
 # AEKO Run Action
@@ -40,7 +40,7 @@ Validate frontmatter:
 - This skill is pinned to contract minor `v1.1`. If the incoming plan's minor is strictly greater (e.g. `v1.3`), print a one-line advisory above the header: "This plan uses contract v<plan_minor>; this skill is on v1.1 — `/plugin update aeko` for the latest guidance." Then proceed (forward-compat per §11.1).
 - `tab == "action"` — else stop with mismatch.
 - `execution_class` ∈ {`store_write_artifact`, `local_content_artifact`} — else stop. If it's `technical_artifact`, tell the user to run `/aeko-fix-technical <item_id>`.
-- `status ∈ {pending, ready}` — executable states per contract §1. If `status == "generating_prose"` (backend still producing the prose body), stop and render the backend's 409 body verbatim (e.g. "Plan is still being generated — retry in a moment"). If `status ∈ {completed, failed, dismissed}`, stop with the appropriate message ("already completed" / "previous run failed — use `/aeko-action-center` to regenerate" / "dismissed — pick another").
+- `status ∈ {pending, ready}` — executable states per contract §1. Prose is now templated server-side at create time, so new rows land in `ready` directly; `pending` remains valid for legacy rows. The old `generating_prose` waiting state is retired — the backend does not emit it on new inserts. If an older row is encountered with `status == "generating_prose"`, render the backend's 409 body verbatim ("Plan is still being generated — retry in a moment") and stop. If `status ∈ {completed, failed, dismissed}`, stop with the appropriate message ("already completed" / "previous run failed — use `/aeko-action-center` to regenerate" / "dismissed — pick another").
 - `tier_required` gate: if present AND caller tier is known AND caller tier is below `tier_required` → stop with a bilingual message (see §Copy). Caller tier is resolved from `aeko_get_brand_kit(...).metadata.account_tier`; if unresolved, proceed and rely on the backend as authoritative gate (log the fallthrough in the completion summary).
 - `write_target` consistency check (if present):
   - If `execution_class == "local_content_artifact"`, `write_target` MUST equal `local` — else stop with exact mismatch.
@@ -83,6 +83,7 @@ All user-facing strings below are rendered in `target_language` if it's one of t
 If `frontmatter.requires_brand_kit == true`:
 - Call `aeko_get_brand_kit(frontmatter.domain_id)` for the live snapshot.
 - If the live Brand Kit is missing or empty (first-time user with no kit), stop with the Brand-Kit-missing message from §Copy (rendered in `target_language`). Do NOT phrase this as a contract breach.
+- Verify minimum voice signal: `tone_of_voice` present AND at least one of `{brand_voice_summary, target_audience}` populated. If both voice fields are empty, warn the user in `target_language` that artifact quality will track the thin kit and offer to abort so they can edit the kit first (`/aeko-brand-kit <domain_id> edit`). Default to asking.
 - Otherwise, if `frontmatter.brand_kit_snapshot_version` is missing, log it to the completion payload's `artifact_summary` (engineer-readable) and proceed using the live kit. Do not surface as a user-facing warning — backend bug, not a user problem.
 - If `frontmatter.brand_kit_snapshot_version` is present and the live `snapshot_version` is newer → warn user plainly in `target_language`: "Plan was generated against kit <v>. Live kit is <v+>. Regenerate plan? (abort / proceed with snapshot)" Default to asking. Do NOT silently proceed with a stale snapshot.
 
@@ -91,13 +92,13 @@ If `frontmatter.requires_brand_kit == true`:
 ### 3A. `local_content_artifact` (own-site markdown / external-media markdown)
 
 1. Read `prose` for narrative guidance; read `frontmatter` for all machine values.
-2. If `frontmatter.requires_brand_kit == true`, enforce brand-kit fields are present in the live snapshot from Step 2 (tone, persona, writing_guidelines at minimum). Stop if missing.
+2. If `frontmatter.requires_brand_kit == true`, enforce brand-kit fields are present in the live snapshot from Step 2 (`tone_of_voice` AND at least one of `{brand_voice_summary, target_audience}` at minimum). Stop if missing.
 3. Research phase (optional, guided by prose):
    - If the prose asks for tracked-prompt grounding → `aeko_search_research_prompts(scope="domain", keyword=<keyword from frontmatter.keywords>, country=frontmatter.target_country, ai_platform=None, query_type=None)`.
    - If the prose asks for external research → `WebSearch` / `WebFetch` as instructed. Do not invent URLs.
 4. Draft the artifact in the format from `frontmatter.output_artifact_format` (typically `markdown`):
    - Honor `frontmatter.must_include` (every string MUST appear in the artifact) and `frontmatter.forbidden` (no string MAY appear).
-   - Acceptance gate for `frontmatter.sections_required`: every entry MUST map to a heading or named section in the artifact (markdown heading text or frontmatter-like label match, case-insensitive, after trimming). If a section is missing, iterate or fail the run — do NOT call `aeko_complete_item`.
+   - Acceptance gate for `frontmatter.sections_required`: every entry MUST map to a heading or named section in the artifact (markdown heading text or frontmatter-like label match, case-insensitive, after trimming). If a section is missing, iterate or fail the run — do NOT call `aeko_complete_action_item`.
    - Write to `./aeko-artifacts/<frontmatter.domain_id>/<frontmatter.item_id>/<slug>.md`.
    - If `frontmatter.artifact_type == "own_store_markdown"` and the prose requests JSON-LD, emit it to a sibling `schema.json`.
 5. No store write. Move to Step 5.
@@ -200,7 +201,7 @@ Otherwise, if `frontmatter.requires_ocr_ingest == true`:
    - **FAQPage JSON-LD is mandatory** when `pdp_responsive_contract.faq_jsonld_required == true` AND `faq` is in `frontmatter.sections_required`. Emit a second `<script type="application/ld+json">` block with `@type: "FAQPage"` and `mainEntity` = an array of ≥3 `Question` objects, each with a non-empty `acceptedAnswer.Answer.text`. Every Q&A pair in the JSON-LD MUST also appear as visible HTML in the FAQ section (same question text, equivalent answer). If the Sonnet prose didn't surface FAQ content, derive 3-5 questions from `frontmatter.prompts_to_rank_on` — these are the exact AI-engine queries we want to rank for, so use them verbatim as the questions and have Claude write the answers.
    - **Review JSON-LD** when `pdp_responsive_contract.review_jsonld_when_available == true` AND `ocr_payload.reviews` is non-empty. Emit a third `<script type="application/ld+json">` block: include an `aggregateRating` object (`@type: "AggregateRating"`, `ratingValue`, `reviewCount`) and a `review` array of up to 5 top `Review` objects (each with `author.name`, `reviewRating.ratingValue`, `reviewBody`, `datePublished` when known). Tie these to the Product via the `Product` block's `aggregateRating` and `review` keys (same schema tree, single JSON-LD if cleaner, or an additional `@graph` block). If review data is absent or clearly synthetic (identical text, obvious bot patterns), skip silently — never fabricate.
    - All JSON-LD: valid JSON (no trailing commas, no comments). Script `type` attribute MUST be exactly `application/ld+json` — the only `type` value permitted on any `<script>` tag in the output.
-4. Honor `frontmatter.must_include` (every string MUST appear in the rendered HTML) and `frontmatter.forbidden` (no string MAY appear). Acceptance gate for `frontmatter.sections_required`: every entry MUST map to a `<section>` or heading with matching text/aria-label (case-insensitive, trimmed). Missing sections → iterate or fail the run; do NOT call `aeko_complete_item`.
+4. Honor `frontmatter.must_include` (every string MUST appear in the rendered HTML) and `frontmatter.forbidden` (no string MAY appear). Acceptance gate for `frontmatter.sections_required`: every entry MUST map to a `<section>` or heading with matching text/aria-label (case-insensitive, trimmed). Missing sections → iterate or fail the run; do NOT call `aeko_complete_action_item`.
 5. Write HTML to `./aeko-artifacts/<frontmatter.domain_id>/<frontmatter.item_id>/pdp.html`.
 6. **Local preview** — open the file directly in the default browser:
    - macOS: `Bash(open ./aeko-artifacts/<frontmatter.domain_id>/<frontmatter.item_id>/pdp.html)`
@@ -241,7 +242,7 @@ Collect all absolute paths written to disk for the completion payload:
 Build payload:
 
 ```python
-aeko_complete_item(
+aeko_complete_action_item(
     item_id=frontmatter.item_id,
     artifact_summary="<one-line: what was produced + where it went>",
     artifact_paths=[<absolute paths>],

@@ -93,5 +93,5 @@ Refuse: tell the user to run each executor one item at a time so they can review
 ## What this skill never does
 
 - Never calls `aeko_get_action_plan` / `aeko_get_technical_guide` — those belong to the executor skills.
-- Never calls `aeko_complete_item`, `aeko_create_shadow_product`, or any write-back tool.
+- Never calls `aeko_complete_action_item`, `aeko_create_shadow_product`, or any write-back tool.
 - Never executes the item. Always stops at routing.

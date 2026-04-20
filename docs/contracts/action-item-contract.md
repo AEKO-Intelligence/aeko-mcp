@@ -11,6 +11,13 @@ Version format: `<YYYY-MM-DD>.<tab>.v<major>.<minor>`. Additive changes (new opt
 
 ### Changelog
 
+**v1.2 (2026-04-20, late)** — prose-templating pivot:
+- Backend retires Sonnet prose generation. `api/services/plan_md.py::render_plan_prose` emits a deterministic templated body at item-create time; no Service Bus round-trip, no async wait. Local Claude (in the aeko-run-action skill) fetches real context via MCP tools at execution time.
+- `ItemStatus`: `generating_prose` is no longer emitted by the backend on new inserts; new rows land directly in `ready`. Skills still recognise `generating_prose` for legacy rows but the retry branch is expected-dead code.
+- §3.1 Authoring split: rewritten — backend stamps frontmatter AND a thin templated prose body. Sonnet no longer authors prose. The executor skill calls `aeko_get_brand_kit`, `aeko_get_tracked_prompts` / `aeko_search_research_prompts`, `aeko_inspect_product_page`, `aeko_fetch_source_content` at run time and synthesizes the artifact locally.
+- §5 `AekoBrandKit`: aligned with live backend schema. Fields dropped that never shipped (`brand_description`, `persona`, `competitors`, `viewpoint`, `writing_style`, `tone`, `writing_guidelines`, `cta_text`, `cta_link`, `sample_headlines`, `sample_bodies`). Fields kept/added that match `api/schemas/brand_kits.py`: `brand_name`, `tagline`, `tone_of_voice`, `brand_voice_summary`, `target_audience`, `primary_color`, `logo_url`, `sample_urls`, `must_include`, `forbidden`, `status`, `metadata.account_tier`, `metadata.billing_url`.
+- §8 tool signatures: completion tool is canonically `aeko_complete_action_item` (matches backend prose). `aeko_update_brand_kit` takes `(kit_id, <fields>)` and PATCHes `/api/brand-kits/{kit_id}` — there is no PATCH-by-domain route on the backend.
+
 **v1.1 (2026-04-20)** — additive alignment with the Phase 3 backend plan:
 - `ItemStatus`: added `generating_prose`, `ready`; retired `in_progress` (no prior consumer). Async prose generation → the executable states are now `pending` (legacy / prose pre-generated at create) and `ready` (Phase 3 / prose generated asynchronously by Sonnet).
 - `SubscriptionTier`: added `growth` between `starter` and `pro`.
@@ -52,9 +59,9 @@ type ArtifactType =
   | "technical_bundle";
 
 type ItemStatus =
-  | "pending"             // legacy / prose pre-generated at create time; executable
-  | "generating_prose"    // Phase 3: Sonnet is generating the prose body
-  | "ready"               // Phase 3: prose generated, plan is executable
+  | "pending"             // legacy rows only; executable
+  | "generating_prose"    // retired 2026-04-20 (v1.2 pivot) — no longer emitted on new inserts. Recognised for forward-compat on old rows.
+  | "ready"               // canonical on-create state — prose is templated inline at item creation
   | "completed"
   | "failed"
   | "dismissed";
@@ -101,16 +108,16 @@ interface AekoItemSummary {
 
 `aeko_get_action_plan(item_id)` returns a single markdown string — the Plan.md for the item. The payload is **dual-format**: YAML frontmatter (dispatch surface) plus a Sonnet-authored prose body (narrative guidance).
 
-### 3.1 Authoring split
+### 3.1 Authoring split (revised under v1.2 prose-templating pivot)
 
-- **Backend app layer** stamps the YAML frontmatter at response-assembly time from deterministic DB columns. Sonnet MUST NOT author any frontmatter key.
-- **Sonnet** authors ONLY the prose body, which is stored in the `plan_prose` column. The prose MUST NOT re-declare frontmatter values. Field-name references (e.g. `` `forbidden` ``) are required in the **Acceptance criteria** section (the machine-oriented self-check) and optional elsewhere — narrative sections MAY paraphrase in the reader's language ("피해야 할 표현 목록" / "the list of words to avoid") to keep prose readable.
+- **Backend app layer** stamps the YAML frontmatter AND a thin templated prose body at item-create time. Both are deterministic functions of the `ActionItems` row; no AI model is invoked during plan generation. Source: `api/services/plan_md.py::build_plan_md` + `render_plan_prose`.
+- **Local Claude in the executor skill** (`aeko-run-action`) does the creative synthesis at run time: calls `aeko_get_brand_kit`, `aeko_get_tracked_prompts` / `aeko_search_research_prompts`, `aeko_inspect_product_page`, `aeko_fetch_source_content` to pull live context, then composes the actual artifact against the frontmatter's machine contract. The templated prose points Claude at exactly these tools — it is execution scaffolding, not narrative guidance.
 
-The skill (`aeko-run-action`) parses frontmatter for dispatch and reads prose for how to write the artifact. The two surfaces must not drift.
+The skill parses frontmatter for dispatch (all machine values) and reads the templated prose for execution steps (tool list, citability rules, JSON-LD rules, ad-law guardrails, acceptance-criteria echo). Frontmatter remains the sole source of machine truth; prose never re-declares a frontmatter value.
 
 **Frontmatter is machine-only.** Executor skills MUST NOT echo the raw frontmatter block to the user in chat. Render a short, human-friendly header (domain, artifact type, write mode, persona) and show only the prose body to the user. The full Plan.md is available if the user asks for it explicitly.
 
-**Prose language contract.** The prose body MUST be written in the language indicated by `target_language` (ISO-639-1). If `target_language` is absent, fall back to the primary language of `target_country`. If both are absent, default to English. Machine keys stay in English inside prose (e.g. `` `forbidden` ``) regardless of prose language.
+**Prose language contract.** The templated prose body is rendered in the language indicated by `target_language` (ISO-639-1). Korean and English are currently supported; other values fall back to English. Machine keys stay in English inside prose (e.g. `` `forbidden` ``) regardless of prose language.
 
 ### 3.2 Frontmatter keys (required unless marked optional)
 
@@ -178,25 +185,23 @@ pdp_responsive_contract:
 
 YAML serialization rules: stable key order (above), empty arrays serialized as `[]` not omitted, booleans canonical (`true`/`false`), timestamps ISO-8601 with `Z` suffix.
 
-### 3.3 Prose body structure (Sonnet output)
+### 3.3 Prose body structure (backend-templated)
 
-The prose body is concatenated after the closing `---` of the frontmatter with a single blank line. Recommended sections (Sonnet generates these; heading text is illustrative):
+The prose body is concatenated after the closing `---` of the frontmatter with a single blank line. Source: `api/services/plan_md.py::render_plan_prose`. Sections are deterministic given the row; two calls on an unchanged row produce byte-identical prose.
 
-1. `# Plan: <short artifact headline>`
-2. `## Why this plan exists` — 1–2 paragraphs on the visibility gap and the strategy.
-3. `## Target outcome` — 3–5 bullets of plain-language success criteria.
-4. `## Content guidance` — narrative how-to (voice, structure, AEO framing).
-5. `## Brand voice summary` — who the reader is, what sounds on/off brand.
-6. `## Reference examples` — references Brand Kit sample URLs by name.
-7. `## Research prompts to cover` — what each prompt in `prompts_to_rank_on` is actually asking.
-8. `## What to avoid` — qualitative traps (ad-law, platform quirks). Hard forbidden strings live in `forbidden`; this is the *why*.
-9. `## Acceptance criteria` — self-check bullets for the executor before completing.
+1. `# Plan: <item.title>`
+2. `## Why this plan matters` — 1-2 sentence stub keyed on `artifact_type`. No invented competitive context or fake prompt IDs.
+3. `## Execution` — an explicit `- aeko_get_brand_kit(...)` / `- aeko_search_research_prompts(...)` / `- aeko_inspect_product_page(...)` tool list for the executor to run. Honors curated inputs: if `prompts_to_rank_on` is populated, that is the ground-truth set and discovery is skipped. When `prompts_to_rank_on`, `keywords`, and brand-kit are all empty, a visible thin-input advisory is emitted. Closes with a reminder to call `aeko_complete_action_item(item_id=..., artifact_summary=..., artifact_paths=[...])` on success.
+4. `## Content citability rules` — static passage-structure rules (80-167 words, name the subject explicitly, definition patterns, no fabricated facts — emit `[VERIFY: <field>]`).
+5. `## JSON-LD rules` — emitted only when `artifact_type == pdp_html` AND `pdp_responsive_contract.json_ld_required`. Covers Product schema required vs conditional fields, `[VERIFY]` never inside JSON-LD, `type="application/ld+json"` exactness. FAQPage sub-section emitted only when `faq_jsonld_required`.
+6. `## Ad-law guardrails` — country-specific (KR populated today). Always emits a visible section; markets without curated rules get an explicit "no guardrails curated yet — apply good-faith judgment" stub so the executor knows compliance was considered.
+7. `## Acceptance criteria` — literal echo of the machine contract: `sections_required`, `must_include`, `forbidden`, and (for `pdp_html`) `pdp_responsive_contract`.
 
-Prose body rules:
-- No YAML, no `---` fences, no bulleted re-declarations of frontmatter values.
-- Narrative sections (Why / Target outcome / Content guidance / Brand voice / References / Research prompts / What to avoid) MAY paraphrase field references in the prose language for readability.
-- Acceptance criteria section MUST reference fields by their backtick-quoted English name (e.g. "cover every section listed in `sections_required`") so the executor can pattern-match the check.
-- Never inline Brand Kit bodies; reference them by their contract field name (e.g. `sample_urls[0]`) or by URL.
+Prose body invariants:
+- Byte-stable and pure on the row. Anything per-item dynamic arrives via the frontmatter, not the prose.
+- No YAML, no `---` fences, no re-declarations of frontmatter values.
+- References fields by their backtick-quoted English name (e.g. "every listed string in `must_include`") so the executor can pattern-match.
+- Never inlines Brand Kit or product-data values — those are fetched at execution time via the tools listed in §3 `## Execution`.
 
 ### 3.4 Citability + [VERIFY] baseline (executor-enforced)
 
@@ -295,54 +300,65 @@ Prose body rules identical to §3.3: narrative sections may paraphrase; a termin
 
 ## 5. Brand Kit
 
+Aligned with live backend: `api/schemas/brand_kits.py::BrandKitResponse` / `BrandKitUpdate`.
+
 ```ts
 interface AekoBrandKit {
-  domain_id: string;
-  snapshot_version: string;
+  id: string;                             // kit UUID — required for PATCH
+  user_id: string;
+  domain_id?: string;
+  name: string;
+  status: "active" | "draft" | "generating" | "failed";
+  brand_name: string;
+
+  tagline?: string;
+  tone_of_voice?: string;                 // voice descriptor, max 500 chars
+  brand_voice_summary?: string;           // how the brand talks, max 4000 chars
+  target_audience?: string;               // who the brand talks to, max 4000 chars
+  primary_color?: string;                 // hex, #rgb or #rrggbb
+  logo_url?: string;                      // absolute URL
+
+  sample_urls: string[];                  // reference pages for voice grounding
+  must_include: string[];                 // hard-include phrases (≤30 items, ≤200 chars each)
+  forbidden: string[];                    // hard-exclude phrases (≤30 items, ≤200 chars each)
+
+  source_signals?: Record<string, unknown>;
+  generator_version?: string;
+  generated_at?: string;
+  snapshot_version: string;               // bumps only on SEMANTIC field change (see below)
+  last_error?: string;
+  created_at: string;
   updated_at: string;
 
-  brand_description?: string;
-  persona?: string;
-  competitors: string[];
-  viewpoint?: string;
-  writing_style?: string;
-  tone?: string;
-  writing_guidelines: string[];
-  cta_text?: string;
-  cta_link?: string;
-
-  sample_urls: string[];
-  sample_headlines: string[];
-  sample_bodies: string[];
-
   metadata?: {
-    locale?: string;
-    target_countries?: string[];
-    target_languages?: string[];
-    account_tier?: SubscriptionTier;                    // Used by executor skills for tier_required gating. See §1.
-    billing_url?: string;                                // Locale-aware billing URL; consumed by tier-gate copy.
+    account_tier: SubscriptionTier;       // Read from the authenticated user row at serialize time. Used by executor skills for tier_required gating. See §1.
+    billing_url?: string;                 // Env-configured (AEKO_BILLING_URL); consumed by tier-gate upgrade copy.
   };
 }
 
 interface AekoBrandKitUpdate {
-  brand_description?: string;
-  persona?: string;
-  competitors?: string[];
-  viewpoint?: string;
-  writing_style?: string;
-  tone?: string;
-  writing_guidelines?: string[];
-  cta_text?: string;
-  cta_link?: string;
+  name?: string;
+  status?: "active" | "draft";            // client may only set these two; "generating" / "failed" are system-controlled
+  brand_name?: string;
+  tagline?: string;
+  tone_of_voice?: string;
+  brand_voice_summary?: string;
+  target_audience?: string;
+  primary_color?: string;
+  logo_url?: string;
   sample_urls?: string[];
-  sample_headlines?: string[];
-  sample_bodies?: string[];
+  must_include?: string[];
+  forbidden?: string[];
 }
 ```
 
-Patch semantics: omitted fields remain unchanged. Every update bumps `snapshot_version`.
+Patch semantics: omitted fields remain unchanged. `snapshot_version` bumps ONLY when one of the SEMANTIC fields changes — `brand_voice_summary`, `tone_of_voice`, `target_audience`, `must_include`, `forbidden`. Cosmetic edits (`name`, `brand_name`, `tagline`, `logo_url`, `primary_color`, `sample_urls`, `status`) preserve the snapshot so downstream action_items that reference the old snapshot are not falsely invalidated.
+
+> Not shipped: `persona`, `competitors`, `viewpoint`, `writing_style`, `tone` (bare), `writing_guidelines`, `cta_text`, `cta_link`, `sample_headlines`, `sample_bodies`. These were in the v1.1 contract draft but never landed in the backend schema. Do not reference them from skills.
 
 ## 6. Item Completion
+
+Canonical tool: `aeko_complete_action_item`. The backend's templated prose (see §3.3 `## Execution`) names this exact tool; skills MUST use the same name. The tool hits `POST /api/items/{item_id}/complete`, which is a shared endpoint used by both Action and Technical items.
 
 ```ts
 interface AekoCompleteItemRequest {
@@ -361,7 +377,7 @@ interface AekoCompleteItemRequest {
 
 ## 7a. Store Write Response (shared by direct-write tools)
 
-In Stage 1, the existing direct-write tools (`aeko_update_product_description`, `aeko_update_product_jsonld`, `aeko_update_product_tags`, `aeko_update_product_meta`) MUST return this structured response so the skill can build consistent `write_result` payloads for `aeko_complete_item`:
+In Stage 1, the existing direct-write tools (`aeko_update_product_description`, `aeko_update_product_jsonld`, `aeko_update_product_tags`, `aeko_update_product_meta`) MUST return this structured response so the skill can build consistent `write_result` payloads for `aeko_complete_action_item`:
 
 ```ts
 interface AekoStoreWriteResponse {
@@ -447,14 +463,27 @@ def aeko_get_brand_kit(domain_id: str) -> str:
 
 @mcp.tool()
 def aeko_update_brand_kit(
-    domain_id: str,
-    fields: dict,
+    kit_id: str,
+    name: str | None = None,
+    status: str | None = None,          # "active" | "draft" only
+    brand_name: str | None = None,
+    tagline: str | None = None,
+    tone_of_voice: str | None = None,
+    brand_voice_summary: str | None = None,
+    target_audience: str | None = None,
+    primary_color: str | None = None,
+    logo_url: str | None = None,
+    sample_urls: list[str] | None = None,
+    must_include: list[str] | None = None,
+    forbidden: list[str] | None = None,
 ) -> str:
-    """Patch Brand Kit fields for a domain."""
-    # Backend: PUT /api/brand-kit/{domain_id} body: AekoBrandKitUpdate -> AekoBrandKit
+    """Patch Brand Kit fields by kit id."""
+    # Backend: PATCH /api/brand-kits/{kit_id} body: BrandKitUpdate -> BrandKitResponse
+    # Note: no PATCH-by-domain alias exists — skills must capture the kit's `id`
+    # from the aeko_get_brand_kit response and pass it here.
 
 @mcp.tool()
-def aeko_complete_item(
+def aeko_complete_action_item(
     item_id: str,
     artifact_summary: str = "",
     artifact_paths: list[str] | None = None,
@@ -462,6 +491,7 @@ def aeko_complete_item(
 ) -> str:
     """Mark an Action or Technical item complete."""
     # Backend: POST /api/items/{item_id}/complete body: AekoCompleteItemRequest
+    # Name chosen to match the backend's templated prose (api/services/plan_md.py).
 
 @mcp.tool()
 def aeko_create_shadow_product(
@@ -511,9 +541,9 @@ All MCP tools return markdown strings for human-facing output.
 ## 9. Defaults and Invariants
 
 - `aeko_get_action_plan` and `aeko_get_technical_guide` each return ONE Plan.md / guide.md string assembled from one DB row. MCP never reconstructs plan state from multiple endpoints.
-- Plan.md / guide.md are dual-format: YAML frontmatter (app-layer stamped) + prose body (Sonnet-authored). Sonnet MUST NOT author frontmatter; prose MUST reference fields by name, never by value.
-- `aeko_update_brand_kit` is patch semantics. Omitted fields unchanged. Every update bumps `snapshot_version`.
-- `aeko_complete_item` always posts `completed_via="mcp"`, `status="completed"`.
+- Plan.md / guide.md are dual-format: YAML frontmatter + prose body. Both are deterministic backend outputs of the row (v1.2 pivot — prose is templated, no AI author). Prose MUST reference fields by name, never by value.
+- `aeko_update_brand_kit` is patch semantics keyed on `kit_id`. Omitted fields unchanged. `snapshot_version` bumps only on SEMANTIC field changes (`brand_voice_summary`, `tone_of_voice`, `target_audience`, `must_include`, `forbidden`). See §5.
+- `aeko_complete_action_item` always posts `completed_via="mcp"`, `status="completed"`.
 - `write_mode` lives on the item contract (frontmatter), not as a runtime flag to the skill.
 - `execution_class` is the only dispatch key the executor relies on.
 - `brand_kit_snapshot_version` is mandatory in frontmatter whenever `requires_brand_kit: true`, so plans can prove freshness.
@@ -527,7 +557,7 @@ All MCP tools return markdown strings for human-facing output.
 - `aeko_get_technical_guide` → frontmatter has `execution_class: technical_artifact`; `validation_hints` present when applicable; every required §4.2 key present.
 - Frontmatter / prose drift test: for any Plan.md, no line in the prose body equals `---` (no stray closing fence); no bullet *line* in the prose body equals, verbatim (after stripping leading bullet markers and whitespace), any string listed in `must_include` or `forbidden`. Whole-line equality only — legitimate narrative references to those values within a sentence are permitted.
 - `aeko_get_brand_kit` → `aeko_update_brand_kit` round-trip does not drop unspecified fields.
-- `aeko_complete_item` accepts both store-write and non-store-write completions.
+- `aeko_complete_action_item` accepts both store-write and non-store-write completions.
 - `aeko_create_shadow_product` response has `created_product_id`, `admin_url`, `selling=false`, `audit_id`; missing any → contract breach.
 
 ## 11. Assumptions
@@ -552,7 +582,7 @@ Skills reference these tools; Stage-1 backend work must land them (or skills mus
 - `aeko_get_action_plan` / `aeko_get_technical_guide` — MUST assemble frontmatter from DB columns + prose body and return a single markdown string.
 - `aeko_list_action_items` / `aeko_list_technical_items` — MUST return tab-scoped summaries.
 - `aeko_get_brand_kit` / `aeko_update_brand_kit` — MUST exist for Brand Kit checks to work. `metadata.account_tier` and `metadata.billing_url` MUST be populated for the `tier_required` gate + upgrade copy to resolve correctly; if absent, skills fall through to the backend as the authoritative gate (see §3.2).
-- `aeko_complete_item` — MUST accept both store-write and non-store-write completions.
+- `aeko_complete_action_item` — MUST accept both store-write and non-store-write completions.
 - `aeko_create_shadow_product` — MUST return `AekoShadowProductResponse` with all six provenance fields.
 - `aeko_get_product_description` — required for `append_below_existing` write mode; until wired, `aeko-run-action` aborts that mode with a clear user message (per skill Step 3B.3).
 - `aeko_update_product_description` — MUST return `AekoStoreWriteResponse` (§7a); until upgraded, skill flags `audit_id: null` and warns revert is unavailable.
@@ -568,5 +598,5 @@ Any skill referencing a Stage-1 tool that is absent at runtime MUST stop with "<
 **Stage-1 write-mode guidance (while `aeko_create_shadow_product` is pending):**
 The canonical PDP default is `write_mode: shadow_product` + `write_target: shadow`, but until the shadow endpoint ships, backend MUST stamp `write_mode: preview_only` + `write_target: local` on `pdp_html` items. The skill handles `preview_only` end-to-end today (generate HTML → open in browser → tell user to copy-paste into Cafe24). Flipping the default to `shadow_product` is a one-line backend change once the endpoint lands; no MCP release needed.
 
-**Async-prose-generation status handling (v1.1):**
-Backend flow for Phase 3 items: insert row with `status: generating_prose` inside the same transaction that enqueues the Sonnet prose job. On Sonnet success → flip to `status: ready`. On failure → `status: failed` + populate `last_error`. The MCP plan endpoint returns `409 Conflict` when `status == generating_prose` with a body like `"status: generating_prose — retry in a moment"`; skills render this verbatim to the user and stop. Legacy flow where prose is pre-generated at create time (no async job) writes `status: pending` directly; skills accept both states.
+**Async-prose-generation status handling (v1.1, retired in v1.2):**
+Originally: insert row with `status: generating_prose` inside the same transaction that enqueued the Sonnet prose job; flip to `ready` on success, `failed` on error. **Retired 2026-04-20** (commit `6b667ad feat(plan_md): template Plan.md prose, retire Sonnet pipeline`). Prose is now rendered inline at create time via `api/services/plan_md.py::render_plan_prose`; new rows land directly in `ready`. The 409 retry branch in skills is forward-compat-only code for legacy rows; no new inserts exercise it. A `last_error` column is still populated on create-time failures.

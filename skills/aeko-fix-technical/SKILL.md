@@ -6,12 +6,12 @@ description: >
   generates the artifact locally, optionally deploys when the guide says
   so, and marks the item complete. Enforces execution_class=technical_artifact.
 argument-hint: "<item-id>"
-allowed-tools: aeko_get_technical_guide, aeko_prepare_llms_txt, aeko_validate_llms_txt, aeko_prepare_robots_txt_fix, aeko_prepare_json_ld, aeko_check_brand_entity, aeko_complete_item, aeko_get_brand_kit, Read, Write, WebFetch
+allowed-tools: aeko_get_technical_guide, aeko_prepare_llms_txt, aeko_validate_llms_txt, aeko_prepare_robots_txt_fix, aeko_prepare_json_ld, aeko_check_brand_entity, aeko_complete_action_item, aeko_get_brand_kit, Read, Write, WebFetch
 ---
 
 # AEKO Fix Technical
 
-> ⚠️ **Stage-1 preview.** Requires `aeko_get_technical_guide` + `aeko_complete_item` (new) plus the existing prepare-tools. Not runnable end-to-end until Stage 1 tool stubs land.
+> ⚠️ **Stage-1 preview.** Requires `aeko_get_technical_guide` + `aeko_complete_action_item` (new) plus the existing prepare-tools. Not runnable end-to-end until Stage 1 tool stubs land.
 
 
 Executes one Technical-tab item end-to-end: fetch guide.md → parse frontmatter + prose → validate contract → produce artifact → optional deploy → mark complete.
@@ -37,7 +37,7 @@ Validate frontmatter before proceeding:
 - `tab == "technical"` — else stop with mismatch.
 - `execution_class == "technical_artifact"` — else stop, tell user this item belongs in `aeko-run-action`.
 - `artifact_type` ∈ {`llms_txt`, `robots_txt_patch`, `json_ld`, `technical_bundle`} — else stop.
-- `status ∈ {pending, ready}` — executable states per contract §1. If `status == "generating_prose"`, stop and render the backend's 409 body verbatim. If `completed` / `failed` / `dismissed`, stop with the appropriate message.
+- `status ∈ {pending, ready}` — executable states per contract §1. Prose is now templated server-side at create time, so new rows land in `ready` directly; `pending` remains valid for legacy rows. If an older row is encountered with `status == "generating_prose"`, render the backend's 409 body verbatim and stop. If `completed` / `failed` / `dismissed`, stop with the appropriate message.
 - `tier_required` gate: if present AND caller tier is known AND caller tier is below `tier_required` → stop with the bilingual tier-gate message (see §Copy). Caller tier is resolved from `aeko_get_brand_kit(...).metadata.account_tier`; unresolved → proceed with backend as authoritative gate.
 
 Print a plain-language header in `target_language` (fall back per §3.1 of the contract), then the prose body verbatim. Header format (3 lines):
@@ -106,7 +106,7 @@ If `frontmatter.deploy_mode == "artifact_only"`: just leave the artifact on disk
 Build the completion payload:
 
 ```python
-aeko_complete_item(
+aeko_complete_action_item(
     item_id=frontmatter.item_id,
     artifact_summary="<one-line summary of what was produced + whether deployed>",
     artifact_paths=[<absolute path(s) to artifact file(s)>],

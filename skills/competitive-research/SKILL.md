@@ -35,7 +35,7 @@ If the user provided their own domain-id, gather internal context:
 3. Call `aeko_get_visibility_summary` — detailed mentions, citations, sentiment
 4. Call `aeko_list_action_items(domain_id, status="pending")` — surface any pending Action-tab items that already reference this competitor or similar market gaps
 5. Call `aeko_search_research_prompts` with the competitor name — find prompts where the competitor appears
-6. Call `aeko_get_brand_kit(domain_id)` — check whether this competitor is already listed in the user's Brand Kit competitors field
+6. Call `aeko_get_brand_kit(domain_id)` — check whether this competitor already appears in the Brand Kit's `forbidden` list (don't-mention competitor), `must_include` phrases, or `sample_urls` (reference voice source). The Brand Kit has no dedicated `competitors` field; positioning against a competitor lives in `brand_voice_summary` / `target_audience` prose.
 
 This gives you the user's current position, trajectory, existing work in flight, and whether the competitor is already tracked.
 
@@ -126,7 +126,7 @@ Identify 3-5 content pieces the user should create based on:
 
 Based on findings, recommend the new AEKO surface:
 
-- `/aeko-brand-kit <domain-id> edit` — add or refine this competitor (and any newly surfaced ones) in the Brand Kit competitors list, so future Plan.md generations reference accurate competitive context
+- `/aeko-brand-kit <domain-id> edit` — encode competitive positioning in the Brand Kit (voice/target_audience prose, `forbidden` phrases to avoid imitating, `must_include` claims that differentiate). There is no dedicated competitors field; positioning lives in voice + guardrails.
 - `/aeko-action-center <domain-id>` — check whether backend has already queued Action items that address any gaps found here; if yes, route the user to `/aeko-run-action <item-id>`
 - `/aeo-audit <user-url>` — self-audit a key page for comparison against the competitor's structured-data profile
 
