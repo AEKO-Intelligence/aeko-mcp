@@ -125,11 +125,14 @@ For PDP items (`execution_class == "store_write_artifact"` AND `artifact_type ==
 | Path | Type | Notes |
 |---|---|---|
 | `pdp_responsive_contract.mobile_first` | `true` | |
-| `pdp_responsive_contract.no_javascript` | `true` | |
+| `pdp_responsive_contract.no_javascript` | `true` | "No executable JavaScript." `<script type="application/ld+json">` blocks are explicitly permitted (they carry inert structured data, not code) and are the primary AEO signal. `<script>` tags with any other `type` attribute (or no `type`) are forbidden. `onclick`/`on*` attributes are forbidden. |
 | `pdp_responsive_contract.alt_text_required` | `true` | |
 | `pdp_responsive_contract.no_fixed_width_containers` | `true` | |
 | `pdp_responsive_contract.semantic_sections_required` | `true` | |
 | `pdp_responsive_contract.css_mode` | `"inline_or_scoped_style_block_only"` | |
+| `pdp_responsive_contract.json_ld_required` | `true` | A `<script type="application/ld+json">` block with a valid schema.org `Product` object MUST be embedded in the rendered HTML. Required: `@context`, `@type: Product`, `name`, `description`, `image`, `brand.name`. SHOULD-populate-when-available: `offers` (`price`, `priceCurrency`, `availability`, `url`), `sku`, `gtin13`, `mpn`, `aggregateRating`, `review`, `shippingDetails`, `hasMerchantReturnPolicy`, `speakable` (with CSS selectors for key content), `sameAs` (prefer Wikipedia > Wikidata > LinkedIn > YouTube). When a SHOULD field's data is missing, omit the key entirely — never emit empty strings, `null`, or fabricated values. For human-visible text (description, offers.price when partially known), use the `[VERIFY: <field>]` marker convention (see §3.4). |
+| `pdp_responsive_contract.faq_jsonld_required` | `true` | When `faq` appears in `sections_required`, a second `<script type="application/ld+json">` block with a valid `FAQPage` schema object MUST be embedded. Each `mainEntity` entry is a `Question` with a non-empty `acceptedAnswer.Answer.text`. Minimum 3 Q&A pairs; pairs MUST match the visible FAQ HTML in the same document (no JSON-LD Q&As without a visible counterpart). |
+| `pdp_responsive_contract.review_jsonld_when_available` | `true` | If crawled/OCR data surfaces real customer reviews (text + rating + author, even partial), emit a third `<script type="application/ld+json">` block: `AggregateRating` on the Product object plus up to 5 top `Review` objects. If no review data is available, skip silently — do NOT fabricate reviews. |
 
 YAML rendering:
 
@@ -141,6 +144,9 @@ pdp_responsive_contract:
   no_fixed_width_containers: true
   semantic_sections_required: true
   css_mode: inline_or_scoped_style_block_only
+  json_ld_required: true
+  faq_jsonld_required: true
+  review_jsonld_when_available: true
 ```
 
 YAML serialization rules: stable key order (above), empty arrays serialized as `[]` not omitted, booleans canonical (`true`/`false`), timestamps ISO-8601 with `Z` suffix.
@@ -164,6 +170,36 @@ Prose body rules:
 - Narrative sections (Why / Target outcome / Content guidance / Brand voice / References / Research prompts / What to avoid) MAY paraphrase field references in the prose language for readability.
 - Acceptance criteria section MUST reference fields by their backtick-quoted English name (e.g. "cover every section listed in `sections_required`") so the executor can pattern-match the check.
 - Never inline Brand Kit bodies; reference them by their contract field name (e.g. `sample_urls[0]`) or by URL.
+
+### 3.4 Citability + [VERIFY] baseline (executor-enforced)
+
+Every `pdp_html` and `own_store_markdown` artifact MUST apply these citability patterns regardless of what the prose says. The prose `## Content guidance` section SHOULD teach these patterns explicitly; if it doesn't, the executor applies them as a baseline so output quality doesn't regress to vague marketing copy.
+
+**Passage structure:**
+- Product copy passages: 80-167 words per passage.
+- Blog / article sections: 134-167 words per section.
+- Every paragraph is self-contained and extractable without surrounding context.
+
+**Self-containment:**
+- Name the subject explicitly in every paragraph. Never open with "it", "this", "these", "그", "이것", "저".
+- Use the product or brand name naturally 2-3 times per section (not stuffed).
+- Avoid "as mentioned above", "see below", "see previous section".
+
+**Definition patterns (trigger AI citation):**
+- Open each section with a direct 1-2 sentence answer before supporting detail.
+- Use "X is a Y that Z" structures for core claims.
+- Place the most important information in the first 40-60 words of each section.
+
+**Statistical density:**
+- Include specific numbers, dimensions, percentages, material names, year references.
+- Comparative claims MUST carry a number ("30% lighter than X") or be dropped.
+
+**`[VERIFY: <field>]` marker convention:**
+When the executor needs a factual value (price, SKU, dimension, review count, etc.) and it's absent from the OCR payload, StoreProducts row, Brand Kit, and prose, the executor MUST NOT fabricate. Instead, emit `[VERIFY: <field>]` inline. Examples:
+- Visible HTML: `무게는 [VERIFY: weight_grams]g입니다.`
+- JSON-LD: omit the missing key entirely (do not emit `"sku": "[VERIFY: sku]"` — schema validators reject non-scalar strings for known property types).
+
+The user summary in the executor skill's Step 6 lists every `[VERIFY: ...]` marker so the user knows exactly what to fill in before going live.
 
 ### 3a. OCR cache payload (optional, used when the frontmatter `pdp_ocr_cache_key` is set)
 

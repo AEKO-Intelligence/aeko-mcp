@@ -1,5 +1,5 @@
 <!--
-  AEKO PDP Responsive Scaffold v1
+  AEKO PDP Responsive Scaffold v2
   Mandatory shell for any PDP HTML produced by aeko-run-action.
 
   Rules (all enforced by the skill):
@@ -7,13 +7,112 @@
     - <img> uses max-width:100%; height:auto; display:block; margin:0 auto
     - Every <img> has a non-empty alt attribute (AEO-critical)
     - Semantic tags only (section, h2, h3, p, ul, ol, li)
-    - No <script>, no external CSS, no <link> to stylesheets
-    - Inline styles OR one scoped <style> block only
+    - No executable JavaScript (no <script> without type, no onclick,
+      no javascript: URLs). No external CSS, no <link> to stylesheets.
+    - Inline styles OR one scoped <style> block only.
+    - One or more <script type="application/ld+json"> blocks, as
+      dictated by pdp_responsive_contract:
+        * Product (always, when json_ld_required = true)
+        * FAQPage (when faq_jsonld_required = true AND 'faq' is in
+          sections_required; Q&A count matches visible FAQ section)
+        * Review / AggregateRating (only when ocr_payload.reviews is
+          non-empty AND review_jsonld_when_available = true; never
+          fabricate)
+      These are the primary AEO signals for Korean PDPs whose visible
+      copy is image-only.
 
   Replace all {{placeholders}} with real content. Add / remove <section>s
   as the plan's sections_required dictates. Keep the outer <article> wrapper.
 -->
 <article style="max-width:100%; margin:0 auto; font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif; line-height:1.6; color:#222;">
+
+  <!-- Product JSON-LD (mandatory when pdp_responsive_contract.json_ld_required = true) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "{{product_name}}",
+    "description": "{{product_description_for_jsonld}}",
+    "image": [
+      "{{product_image_url_1}}"
+    ],
+    "brand": {
+      "@type": "Brand",
+      "name": "{{brand_name}}"
+    },
+    "sku": "{{product_sku_or_omit}}",
+    "offers": {
+      "@type": "Offer",
+      "url": "{{product_page_url}}",
+      "priceCurrency": "{{iso_currency_or_omit}}",
+      "price": "{{price_or_omit}}",
+      "availability": "https://schema.org/InStock"
+    }
+  }
+  </script>
+
+  <!-- FAQPage JSON-LD (mandatory when pdp_responsive_contract.faq_jsonld_required = true AND 'faq' ∈ sections_required) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "{{faq_q_1}}",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "{{faq_a_1}}"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "{{faq_q_2}}",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "{{faq_a_2}}"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "{{faq_q_3}}",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "{{faq_a_3}}"
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!--
+    Review JSON-LD (optional: emit ONLY when ocr_payload.reviews is non-empty
+    AND pdp_responsive_contract.review_jsonld_when_available = true).
+    Delete this entire block if no real review data was extracted from the
+    live PDP. DO NOT fabricate review content.
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "{{product_name}}",
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "{{avg_rating}}",
+        "reviewCount": "{{review_count}}"
+      },
+      "review": [
+        {
+          "@type": "Review",
+          "author": { "@type": "Person", "name": "{{review_1_author}}" },
+          "reviewRating": { "@type": "Rating", "ratingValue": "{{review_1_rating}}" },
+          "reviewBody": "{{review_1_text}}",
+          "datePublished": "{{review_1_date_or_omit}}"
+        }
+      ]
+    }
+    </script>
+  -->
 
   <section>
     <h2 style="font-size:1.4em; margin:1em 0 0.5em;">{{primary_headline}}</h2>
@@ -48,7 +147,22 @@
     <p>{{faq_a_1}}</p>
     <p><strong>{{faq_q_2}}</strong></p>
     <p>{{faq_a_2}}</p>
+    <p><strong>{{faq_q_3}}</strong></p>
+    <p>{{faq_a_3}}</p>
   </section>
+
+  <!--
+    Visible reviews section — include ONLY when ocr_payload.reviews is non-empty.
+    The visible HTML must be in sync with the Review JSON-LD block above: same
+    author names, same review text (trimmed to a reasonable length), same ratings.
+    Delete this entire <section> if no review data exists.
+
+    <section>
+      <h3 style="font-size:1.15em; margin:1.2em 0 0.4em;">{{reviews_title}}</h3>
+      <p><strong>{{review_1_author}}</strong> · {{review_1_rating}}/5</p>
+      <p>{{review_1_text}}</p>
+    </section>
+  -->
 
   <section>
     <p style="margin-top:1.5em;">

@@ -100,9 +100,61 @@ If `frontmatter.requires_brand_kit == true`:
 
 ### 3B. `store_write_artifact` (PDP HTML)
 
+#### 3B.0 — Image & structure strategy (ask the user)
+
+Before OCR or generation, ask the user which strategy to use. Render the question in `target_language`.
+
+**KO template:**
+```
+이 PDP를 어떻게 구성할까요?
+
+1. 현재 이미지 유지 + 아래 구조화된 HTML 추가
+   (가장 안전 · 기존 디자인 그대로, AEO 최적화 콘텐츠를 하단에 추가)
+2. 기존 이미지를 재사용해 처음부터 재구성
+   (현재 PDP의 이미지 URL을 그대로 써서 구조화된 레이아웃으로 재조립)
+3. 로컬 컴퓨터의 새 이미지 파일로 처음부터 재구성
+   (새 이미지 경로를 알려주시면 구조화된 HTML을 새로 만듭니다)
+
+번호를 입력하거나 원하는 접근을 자유롭게 설명해 주세요.
+```
+
+**EN template:**
+```
+How should we structure this PDP?
+
+1. Keep current images + add AEO-optimized HTML below
+   (safest · preserves your existing design; new structured content goes underneath)
+2. Rebuild from scratch using current PDP images
+   (re-uses the existing image URLs in a new structured layout)
+3. Rebuild from scratch using local image files
+   (you provide file paths; we build fresh HTML with those images)
+
+Reply with a number or describe the approach you want.
+```
+
+Store the choice as `image_strategy ∈ {preserve_existing, rebuild_from_existing, rebuild_with_local}`.
+
+**Strategy ↔ write_mode consistency** (enforce before proceeding):
+
+| `image_strategy` | Allowed `write_mode` values |
+|---|---|
+| `preserve_existing` | `shadow_product`, `append_below_existing`, `preview_only` |
+| `rebuild_from_existing` | `shadow_product`, `preview_only` |
+| `rebuild_with_local` | `shadow_product`, `preview_only` |
+
+If the user picks a rebuild strategy on an item whose plan has `write_mode: append_below_existing`, stop with: "Rebuilding replaces the HTML, so appending to the live description doesn't make sense. Either pick strategy 1 (keep current images) or ask me to switch to shadow write." Do NOT silently reassign the write_mode.
+
+For `rebuild_with_local`, after strategy selection prompt the user for image paths:
+```
+로컬 이미지 파일 경로를 알려주세요 (한 줄에 하나씩, 최대 10장):
+```
+Read each path with `Read` (absolute paths). If a path doesn't exist, ask again. Inline each image as a data URI when writing `pdp.html` for local preview; in the final artifact for store write-back, emit placeholder URLs and surface a warning: "Upload these N images to Cafe24 CDN and swap `{{LOCAL_IMAGE_N}}` placeholders with the resulting URLs before making the shadow live."
+
 #### 3B.1 — OCR ingest (existing PDP images)
 
-If `frontmatter.requires_ocr_ingest == true`:
+Skip this entire subsection when `image_strategy == "rebuild_with_local"` (we're not using the live PDP's images).
+
+Otherwise, if `frontmatter.requires_ocr_ingest == true`:
 
 1. If `frontmatter.pdp_ocr_cache_key` is set AND the tool `aeko_check_ocr_cache` is available, call `aeko_check_ocr_cache(frontmatter.pdp_ocr_cache_key)`. If it returns a valid `AekoOcrCacheEntry`, use its `images[].text` and skip to 3B.2. If the tool is not available (Stage 1 did not wire the OCR cache endpoint), skip silently to step 2 — the cache is explicitly optional per the contract.
 2. Else, call `aeko_inspect_product_page(product_id=frontmatter.source_product_id)`. The current tool returns per-image `src`, `alt`, `width`, `height` only — NOT filesize. Guardrails below use the fields that actually exist.
@@ -111,20 +163,39 @@ If `frontmatter.requires_ocr_ingest == true`:
    - Skip any image whose `src` matches common thumbnail patterns (`/thumb/`, `_50x50`, `_100x100`, `-small`, `-thumb`). Log `skipped_thumbnail: N`.
    - Cap OCR loop at 12 images per run; images are processed in document order. Log `skipped_overflow: M` for any beyond the cap.
    - (Future) When `aeko_inspect_product_page` exposes `filesize` and `content_type`, tighten by skipping `filesize < 30_000` — do not assume filesize is available today.
-4. For each remaining image index, call `aeko_read_product_page_image(frontmatter.source_product_id, image_index)` — returned as MCP Image. Use Claude vision to extract Korean + English text verbatim. Preserve paragraph order.
-5. Assemble `ocr_payload = {images: [{index, width, height, text, extracted_at}], product_id}`. If `aeko_store_ocr_result` is available and `frontmatter.pdp_ocr_cache_key` is set, persist it.
-6. If every image failed OCR → stop the run; do NOT hallucinate copy. Tell the user which image indices failed and why.
+4. For each remaining image index, call `aeko_read_product_page_image(frontmatter.source_product_id, image_index)` — returned as MCP Image. Use Claude vision to extract Korean + English text verbatim. Preserve paragraph order. Also capture the image `src` URL for each successfully read image — these are the URLs `rebuild_from_existing` will reuse and that JSON-LD `image` array will reference.
+5. **Review detection pass:** scan the concatenated OCR text + the raw page structure from `aeko_inspect_product_page` for review-shaped blocks. Signals: quoted customer text + author initials/names + star ratings ("⭐", "★", "5/5", "평점"), review count patterns ("리뷰 128개", "128 reviews"), structured review widgets in the DOM. When found, build `reviews_payload = [{author, rating, text, date_if_present}]` — at most 10 entries, prefer the highest-rated recent ones. If nothing review-shaped surfaces, set `reviews_payload = null` and proceed silently.
+6. Assemble `ocr_payload = {images: [{index, src, width, height, text, extracted_at}], product_id, reviews: reviews_payload}`. If `aeko_store_ocr_result` is available and `frontmatter.pdp_ocr_cache_key` is set, persist it.
+7. If every image failed OCR → stop the run; do NOT hallucinate copy. Tell the user which image indices failed and why.
 
 #### 3B.2 — Generate responsive HTML
 
-1. Read `prose` for voice/structure guidance, `frontmatter.pdp_responsive_contract.*` for hard rules, the live brand kit from Step 2, and the OCR payload from 3B.1.
+1. Read `prose` for voice/structure guidance, `frontmatter.pdp_responsive_contract.*` for hard rules, the live brand kit from Step 2, and the OCR payload from 3B.1 (including `reviews` if present).
+
+**Citability baseline (apply even if prose is silent on these):** 80-167 word passages, name the subject explicitly in every paragraph (no pronoun opens), open each section with a 1-2 sentence direct answer, use "X is a Y that Z" structures for core claims, include specific numbers / dimensions / years where possible. See contract §3.4.
+
+**`[VERIFY: <field>]` marker:** when a factual value is needed and absent from OCR / StoreProducts / Brand Kit / prose, emit `[VERIFY: <field>]` inline in the visible HTML (e.g. `무게는 [VERIFY: weight_grams]g입니다.`). Do NOT fabricate. For JSON-LD, omit the missing key entirely rather than inserting a `[VERIFY]` string (schema validators reject it). Collect every marker emitted in a list for Step 6's user summary.
+
 2. Use the reference scaffold at `aeko_mcp/templates/pdp_responsive_scaffold.html` as the base structure.
+
+**Strategy branch:**
+
+- **`preserve_existing`:** fetch the current editable description via `aeko_get_product_description(frontmatter.integration_id, frontmatter.product_id)`. The rendered artifact is: `<existing_description_html>` + `\n<!-- AEKO structured content -->\n` + `<new_structured_section_built_from_scaffold>`. The scaffold's JSON-LD blocks still appear (at the top of the new structured section). Do NOT inline existing images again — they're in the preserved block. The JSON-LD `image` array references the preserved image URLs for AI crawler coverage.
+
+- **`rebuild_from_existing`:** use the scaffold from scratch. `<img src>` values use the URLs captured from the OCR pass (3B.1 step 4). Inline the OCR-extracted text as the copy source for each section, voiced through the Sonnet prose and brand kit.
+
+- **`rebuild_with_local`:** use the scaffold from scratch. For the local preview (`./aeko-artifacts/.../pdp.html`), inline each local image as a base64 data URI so the browser preview renders immediately. For any artifact destined for write-back (shadow or preview_only copy-paste), replace data URIs with `{{LOCAL_IMAGE_N}}` placeholder tokens and include an upload checklist in the user summary (Step 6).
+
 3. **Responsive HTML contract (mandatory — fail the run if violated):**
    - Mobile-first; no fixed-pixel widths on containers.
    - `<img>` tags use `style="max-width:100%; height:auto; display:block; margin:0 auto;"`.
    - Every `<img>` has a non-empty `alt` attribute (AEO-critical).
    - Semantic tags only: `<section>`, `<h2>`, `<h3>`, `<p>`, `<ul>`, `<ol>`, `<li>`. No `<div>` soup, no tables for layout.
-   - No `<script>`, no external CSS, no `<link>` to stylesheets. Inline styles or a single scoped `<style>` block only.
+   - No executable JavaScript: no `<script>` WITHOUT a `type` attribute, no `<script type="text/javascript">`, no `on*` event attributes, no `javascript:` URLs, no external CSS, no `<link>` to stylesheets. Inline styles or a single scoped `<style>` block only.
+   - **Product JSON-LD is mandatory** when `pdp_responsive_contract.json_ld_required == true`. Exactly one `<script type="application/ld+json">` block with a valid schema.org `Product` object. Minimum: `@context: "https://schema.org"`, `@type: "Product"`, `name`, `description`, `image` (array of image URLs — from OCR payload `images[].src` for preserve/rebuild_from_existing, from the supplied local paths or uploaded CDN URLs for rebuild_with_local), `brand.name`. Populate `offers.price`, `offers.priceCurrency`, `sku`, `mpn` when data is in the StoreProducts row — omit the keys entirely when data is missing (never emit empty strings or `null` inside JSON-LD).
+   - **FAQPage JSON-LD is mandatory** when `pdp_responsive_contract.faq_jsonld_required == true` AND `faq` is in `frontmatter.sections_required`. Emit a second `<script type="application/ld+json">` block with `@type: "FAQPage"` and `mainEntity` = an array of ≥3 `Question` objects, each with a non-empty `acceptedAnswer.Answer.text`. Every Q&A pair in the JSON-LD MUST also appear as visible HTML in the FAQ section (same question text, equivalent answer). If the Sonnet prose didn't surface FAQ content, derive 3-5 questions from `frontmatter.prompts_to_rank_on` — these are the exact AI-engine queries we want to rank for, so use them verbatim as the questions and have Claude write the answers.
+   - **Review JSON-LD** when `pdp_responsive_contract.review_jsonld_when_available == true` AND `ocr_payload.reviews` is non-empty. Emit a third `<script type="application/ld+json">` block: include an `aggregateRating` object (`@type: "AggregateRating"`, `ratingValue`, `reviewCount`) and a `review` array of up to 5 top `Review` objects (each with `author.name`, `reviewRating.ratingValue`, `reviewBody`, `datePublished` when known). Tie these to the Product via the `Product` block's `aggregateRating` and `review` keys (same schema tree, single JSON-LD if cleaner, or an additional `@graph` block). If review data is absent or clearly synthetic (identical text, obvious bot patterns), skip silently — never fabricate.
+   - All JSON-LD: valid JSON (no trailing commas, no comments). Script `type` attribute MUST be exactly `application/ld+json` — the only `type` value permitted on any `<script>` tag in the output.
 4. Honor `frontmatter.must_include` (every string MUST appear in the rendered HTML) and `frontmatter.forbidden` (no string MAY appear). Acceptance gate for `frontmatter.sections_required`: every entry MUST map to a `<section>` or heading with matching text/aria-label (case-insensitive, trimmed). Missing sections → iterate or fail the run; do NOT call `aeko_complete_item`.
 5. Write HTML to `./aeko-artifacts/<frontmatter.domain_id>/<frontmatter.item_id>/pdp.html`.
 6. **Local preview** — open the file directly in the default browser:
@@ -199,6 +270,12 @@ If complete() errors, leave item `pending`, surface the error.
 
 Artifact saved: <pdp.html path>
 OCR: ingested N images, skipped M (decorative/oversize)
+
+[VERIFY] markers to resolve before going live (N):
+  - [VERIFY: weight_grams]   — 무게 / weight in grams
+  - [VERIFY: price]          — 판매가 / price
+  - ...                      (render in target_language)
+(Omit the entire block when no [VERIFY] markers were emitted.)
 
 Next: /aeko-action-center <domain_id> action
 ```
