@@ -117,7 +117,12 @@ maintain an always-drifting table here, see the source directory:
 Current groups include: `visibility`, `content`, `product`, `suggestions`
 (+ `suggestions_v2` for the categorized brief format), `research`, `generate`,
 `report`, `citability`, `aeko_score`, `campaigns`, `content_recommendations`,
-`store_write`, and `pdp`.
+`store_write`, `pdp`, `action_plan`, and `brand_kit`.
+
+The `action_plan` and `brand_kit` groups (v0.3.0+) power the Plan.md /
+action-item execution loop — `aeko_get_action_plan`, `aeko_complete_action_item`,
+`aeko_get_brand_kit`, `aeko_update_brand_kit`. Consumed by the
+`aeko-run-action` and `aeko-brand-kit` skills.
 
 Inside Claude Code or Codex, run the `list tools` equivalent to see the
 live set with descriptions.

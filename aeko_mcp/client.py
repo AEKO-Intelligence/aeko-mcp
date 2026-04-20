@@ -94,6 +94,33 @@ class AekoClient:
         except httpx.ConnectError:
             raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
 
+    def get_text(
+        self,
+        path: str,
+        params: dict | None = None,
+        accept: str = "text/markdown",
+    ) -> str:
+        """GET an endpoint that returns non-JSON text (e.g. Plan.md)."""
+        headers = {**self._headers(), "Accept": accept}
+        try:
+            resp = self._client.get(path, params=params, headers=headers)
+            resp.raise_for_status()
+            return resp.text
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(_format_http_error(e)) from None
+        except httpx.ConnectError:
+            raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
+
+    def patch(self, path: str, json: dict | None = None) -> dict:
+        try:
+            resp = self._client.patch(path, json=json, headers=self._headers())
+            resp.raise_for_status()
+            return resp.json() if resp.content else {}
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(_format_http_error(e)) from None
+        except httpx.ConnectError:
+            raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
+
     def post(self, path: str, json: dict | None = None) -> dict:
         try:
             resp = self._client.post(path, json=json, headers=self._headers())
