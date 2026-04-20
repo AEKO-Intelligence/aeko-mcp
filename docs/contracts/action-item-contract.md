@@ -4,10 +4,23 @@ Source of truth for the post-consolidation AEKO MCP surface (Action, Technical, 
 All new skills and MCP tools MUST reference this document.
 
 Contract version pinning (semver inside date):
-- Action plan: `2026-04-17.action.v1.0`
-- Technical guide: `2026-04-17.technical.v1.0`
+- Action plan: `2026-04-17.action.v1.1`
+- Technical guide: `2026-04-17.technical.v1.1`
 
-Version format: `<YYYY-MM-DD>.<tab>.v<major>.<minor>`. Additive changes (new optional keys, new optional frontmatter fields) bump `minor` and do not break skills pinned on `major`. Breaking changes (renamed / removed / type-changed keys) bump `major` and require matching skill updates. Skills MUST gate only on `<YYYY-MM-DD>.<tab>.v<major>.` (trailing dot) — never on the full minor string.
+Version format: `<YYYY-MM-DD>.<tab>.v<major>.<minor>`. Additive changes (new optional keys, new optional frontmatter fields, new enum values added to existing optional fields) bump `minor` and do not break skills pinned on `major`. Breaking changes (renamed / removed / type-changed keys) bump `major` and require matching skill updates. Skills MUST gate only on `<YYYY-MM-DD>.<tab>.v<major>.` (trailing dot) — never on the full minor string.
+
+### Changelog
+
+**v1.1 (2026-04-20)** — additive alignment with the Phase 3 backend plan:
+- `ItemStatus`: added `generating_prose`, `ready`; retired `in_progress` (no prior consumer). Async prose generation → the executable states are now `pending` (legacy / prose pre-generated at create) and `ready` (Phase 3 / prose generated asynchronously by Sonnet).
+- `SubscriptionTier`: added `growth` between `starter` and `pro`.
+- `WriteTarget` documented explicitly as `live | shadow | local` (previously implicit in §3.2). This is the canonical set; backend stamping MUST use these values, not `shadow | production | none`.
+- §11.2 Stage-1 guidance: while `aeko_create_shadow_product` is pending, backend MUST stamp `write_mode: preview_only` + `write_target: local` on `pdp_html` items. Flip to `shadow_product` + `shadow` once the shadow endpoint is live.
+- `pdp_responsive_contract`: added `faq_jsonld_required`, `review_jsonld_when_available`.
+- §3.4 Citability + `[VERIFY]` baseline (executor-enforced).
+- Product JSON-LD expanded to list `shippingDetails`, `hasMerchantReturnPolicy`, `speakable`, `sameAs` as SHOULD-populate.
+
+**v1.0 (2026-04-17)** — initial consolidation contract.
 
 ## 1. Canonical Execution Model
 
@@ -24,6 +37,11 @@ type WriteMode =
   | "append_below_existing"
   | "preview_only";
 
+type WriteTarget =
+  | "live"        // touches the live store (append_below_existing)
+  | "shadow"      // non-selling draft product (shadow_product)
+  | "local";      // disk only, no API call (preview_only, local_content_artifact)
+
 type ArtifactType =
   | "pdp_html"
   | "own_store_markdown"
@@ -34,14 +52,23 @@ type ArtifactType =
   | "technical_bundle";
 
 type ItemStatus =
-  | "pending"
-  | "in_progress"
+  | "pending"             // legacy / prose pre-generated at create time; executable
+  | "generating_prose"    // Phase 3: Sonnet is generating the prose body
+  | "ready"               // Phase 3: prose generated, plan is executable
   | "completed"
   | "failed"
   | "dismissed";
+
+type SubscriptionTier =
+  | "starter"
+  | "growth"
+  | "pro"
+  | "enterprise";
 ```
 
 Dispatch rule: MCP branches on `execution_class`, NOT on UI action type.
+
+Executable statuses: the skill runs when `status ∈ {pending, ready}`. `generating_prose` → the skill halts with a "plan is still being generated, retry in a moment" message (409 from the backend).
 
 ## 2. Shared Item Summary
 
@@ -90,9 +117,9 @@ The skill (`aeko-run-action`) parses frontmatter for dispatch and reads prose fo
 | Key | Type | Notes |
 |---|---|---|
 | `item_id` | string | canonical identifier |
-| `contract_version` | string | `"2026-04-17.action.v<major>.<minor>"`, e.g. `"2026-04-17.action.v1.0"` |
+| `contract_version` | string | `"2026-04-17.action.v<major>.<minor>"`, e.g. `"2026-04-17.action.v1.1"` |
 | `tab` | `"action"` | literal |
-| `status` | `ItemStatus` | skill refuses to run unless `pending` |
+| `status` | `ItemStatus` | skill refuses to run unless `status ∈ {pending, ready}` (see §1) |
 | `execution_class` | `ExecutionClass` | ONLY dispatch key the executor relies on |
 | `artifact_type` | `ArtifactType` | narrows within a class |
 | `write_mode` | `WriteMode` (optional) | required when `execution_class == "store_write_artifact"` |
@@ -116,8 +143,8 @@ The skill (`aeko-run-action`) parses frontmatter for dispatch and reads prose fo
 | `sections_required` | string[] | empty array allowed, never omitted |
 | `must_include` | string[] | empty array allowed, never omitted |
 | `forbidden` | string[] | empty array allowed, never omitted |
-| `tier_required` | `"starter"` \| `"pro"` \| `"enterprise"` (optional) | Minimum subscription tier for this item to execute. Absent → Starter (all users). Skill refuses to execute and suggests an upgrade path when the caller's tier is below this. |
-| `write_target` | `"live"` \| `"shadow"` \| `"local"` (optional) | Redundant safety signal for write scope. `live` = touches the live store; `shadow` = non-selling draft; `local` = disk only. Skill double-checks this against `write_mode` — if they disagree, stop and surface the mismatch. |
+| `tier_required` | `SubscriptionTier` (optional) | Minimum subscription tier for this item to execute. Absent → Starter (all users). Skill refuses to execute and suggests an upgrade path when the caller's tier is below this. See §1 for enum values. |
+| `write_target` | `WriteTarget` (optional) | Redundant safety signal for write scope. `live` = touches the live store; `shadow` = non-selling draft; `local` = disk only. Skill double-checks this against `write_mode` — if they disagree, stop and surface the mismatch. Backend MUST use these exact values (not `production`, not `none`). |
 | `generated_at` | string | ISO-8601, timestamp of frontmatter assembly |
 
 For PDP items (`execution_class == "store_write_artifact"` AND `artifact_type == "pdp_html"`), the frontmatter additionally includes a nested `pdp_responsive_contract` mapping (the dotted paths below are **documentation notation**, NOT literal YAML keys — render as a nested mapping):
@@ -232,9 +259,9 @@ Identical rule to §3.1: backend app layer stamps frontmatter from DB columns; S
 | Key | Type | Notes |
 |---|---|---|
 | `item_id` | string | |
-| `contract_version` | string | `"2026-04-17.technical.v<major>.<minor>"`, e.g. `"2026-04-17.technical.v1.0"` |
+| `contract_version` | string | `"2026-04-17.technical.v<major>.<minor>"`, e.g. `"2026-04-17.technical.v1.1"` |
 | `tab` | `"technical"` | literal |
-| `status` | `ItemStatus` | |
+| `status` | `ItemStatus` | skill refuses to run unless `status ∈ {pending, ready}` |
 | `execution_class` | `"technical_artifact"` | literal for this document |
 | `artifact_type` | `"llms_txt"` \| `"robots_txt_patch"` \| `"json_ld"` \| `"technical_bundle"` | |
 | `deploy_mode` | `"artifact_only"` \| `"deploy_if_supported"` | |
@@ -248,7 +275,7 @@ Identical rule to §3.1: backend app layer stamps frontmatter from DB columns; S
 | `must_include` | string[] | empty array allowed, never omitted |
 | `forbidden` | string[] | empty array allowed, never omitted |
 | `validation_hints` | string[] (optional) | e.g. schema.org type name, rel values, etc. |
-| `tier_required` | `"starter"` \| `"pro"` \| `"enterprise"` (optional) | Minimum subscription tier. Same semantics as §3.2. |
+| `tier_required` | `SubscriptionTier` (optional) | Minimum subscription tier. Same semantics as §3.2. See §1 for enum values. |
 | `generated_at` | string | ISO-8601 |
 
 Serialization rules identical to §3.2.
@@ -292,7 +319,7 @@ interface AekoBrandKit {
     locale?: string;
     target_countries?: string[];
     target_languages?: string[];
-    account_tier?: "starter" | "pro" | "enterprise";   // Used by executor skills for tier_required gating.
+    account_tier?: SubscriptionTier;                    // Used by executor skills for tier_required gating. See §1.
     billing_url?: string;                                // Locale-aware billing URL; consumed by tier-gate copy.
   };
 }
@@ -533,6 +560,13 @@ Skills reference these tools; Stage-1 backend work must land them (or skills mus
 
 Any skill referencing a Stage-1 tool that is absent at runtime MUST stop with "<tool> is not yet available — required for this item's write_mode/artifact_type" rather than producing partial output.
 
-**New optional frontmatter keys added this revision** — backend stamping responsibility:
-- `tier_required` — set from the item's source policy (e.g. `append_below_existing` items MUST stamp `tier_required: "pro"`). Optional; absent = Starter-accessible.
-- `write_target` — second safety signal, MUST agree with `write_mode` per the pairing rule in §3.2. Optional but strongly recommended so the skill can refuse cleanly on misconfigured items.
+**Frontmatter keys added across v1.x** — backend stamping responsibility:
+- `tier_required` — set from the item's source policy. `append_below_existing` items SHOULD stamp `tier_required: "growth"` (live-store writes are Growth+); `shadow_product` items SHOULD stamp `tier_required: "starter"`. Optional; absent = Starter-accessible.
+- `write_target` — second safety signal, MUST agree with `write_mode` per the pairing rule in §3.2, and MUST use the canonical values `live | shadow | local` (not `production` / `none`). Optional but strongly recommended so the skill can refuse cleanly on misconfigured items.
+- `faq_jsonld_required` / `review_jsonld_when_available` — see §3.2 for semantics.
+
+**Stage-1 write-mode guidance (while `aeko_create_shadow_product` is pending):**
+The canonical PDP default is `write_mode: shadow_product` + `write_target: shadow`, but until the shadow endpoint ships, backend MUST stamp `write_mode: preview_only` + `write_target: local` on `pdp_html` items. The skill handles `preview_only` end-to-end today (generate HTML → open in browser → tell user to copy-paste into Cafe24). Flipping the default to `shadow_product` is a one-line backend change once the endpoint lands; no MCP release needed.
+
+**Async-prose-generation status handling (v1.1):**
+Backend flow for Phase 3 items: insert row with `status: generating_prose` inside the same transaction that enqueues the Sonnet prose job. On Sonnet success → flip to `status: ready`. On failure → `status: failed` + populate `last_error`. The MCP plan endpoint returns `409 Conflict` when `status == generating_prose` with a body like `"status: generating_prose — retry in a moment"`; skills render this verbatim to the user and stop. Legacy flow where prose is pre-generated at create time (no async job) writes `status: pending` directly; skills accept both states.

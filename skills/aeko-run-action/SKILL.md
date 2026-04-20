@@ -37,10 +37,10 @@ Dispatch is driven entirely by `frontmatter`. Prose is narrative guidance for ho
 
 Validate frontmatter:
 - `contract_version` starts with `2026-04-17.action.v1.` — else stop with explicit mismatch. (Gate on major only; minor bumps are additive and must not break the skill.)
-- This skill is pinned to contract minor `v1.0`. If the incoming plan's minor is strictly greater (e.g. `v1.2`), print a one-line advisory above the header: "This plan uses contract v<plan_minor>; this skill is on v1.0 — `/plugin update aeko` for the latest guidance." Then proceed (forward-compat per §11.1).
+- This skill is pinned to contract minor `v1.1`. If the incoming plan's minor is strictly greater (e.g. `v1.3`), print a one-line advisory above the header: "This plan uses contract v<plan_minor>; this skill is on v1.1 — `/plugin update aeko` for the latest guidance." Then proceed (forward-compat per §11.1).
 - `tab == "action"` — else stop with mismatch.
 - `execution_class` ∈ {`store_write_artifact`, `local_content_artifact`} — else stop. If it's `technical_artifact`, tell the user to run `/aeko-fix-technical <item_id>`.
-- `status == "pending"` — if not, stop.
+- `status ∈ {pending, ready}` — executable states per contract §1. If `status == "generating_prose"` (backend still producing the prose body), stop and render the backend's 409 body verbatim (e.g. "Plan is still being generated — retry in a moment"). If `status ∈ {completed, failed, dismissed}`, stop with the appropriate message ("already completed" / "previous run failed — use `/aeko-action-center` to regenerate" / "dismissed — pick another").
 - `tier_required` gate: if present AND caller tier is known AND caller tier is below `tier_required` → stop with a bilingual message (see §Copy). Caller tier is resolved from `aeko_get_brand_kit(...).metadata.account_tier`; if unresolved, proceed and rely on the backend as authoritative gate (log the fallthrough in the completion summary).
 - `write_target` consistency check (if present):
   - If `execution_class == "local_content_artifact"`, `write_target` MUST equal `local` — else stop with exact mismatch.
@@ -70,9 +70,13 @@ All user-facing strings below are rendered in `target_language` if it's one of t
 - **Tier gate** (Step 1) — `<tier>` and `<current>` are the two tier names; `<billing_url>` resolves from `aeko_get_brand_kit(...).metadata.billing_url` when available, else `https://aeko.ai/billing`:
   - KO: "이 제안은 `<tier>` 플랜부터 실행할 수 있습니다 (현재 플랜: `<current>`). `<tier>` 플랜은 <tier_benefit_ko> 기능까지 열어 줍니다. 업그레이드: <billing_url>. 이 아이템은 건너뛰고 다른 제안을 선택할 수도 있습니다."
   - EN: "This item needs the `<tier>` plan (current: `<current>`). `<tier>` unlocks <tier_benefit_en>. Upgrade at <billing_url>, or skip this item and pick another."
-  - `tier_benefit_ko` / `tier_benefit_en` lookup: `pro → "라이브 스토어 쓰기, 페르소나 추적" / "live-store writes and persona tracking"`; `enterprise → "다중 도메인 및 SSO" / "multi-domain and SSO"`. If tier is unknown to the skill, omit the benefit clause.
+  - `tier_benefit_ko` / `tier_benefit_en` lookup:
+    - `growth` → `"라이브 스토어 쓰기, FAQ/Review 구조화 데이터" / "live-store writes and FAQ/Review structured data"`
+    - `pro` → `"페르소나 추적, 고급 경쟁사 벤치마크, 우선 지원" / "persona tracking, advanced competitor benchmarks, priority support"`
+    - `enterprise` → `"다중 도메인 및 SSO" / "multi-domain and SSO"`
+    - If tier is unknown to the skill, omit the benefit clause.
 
-- **Minor-version advisory** — KO: "이 제안은 계약 v<plan_minor> 기준입니다. 현재 스킬은 v1.0 — 최신 지침을 받으려면 `/plugin update aeko`를 실행해 주세요." / EN: "This plan uses contract v<plan_minor>; this skill is pinned to v1.0 — run `/plugin update aeko` for the latest guidance."
+- **Minor-version advisory** — KO: "이 제안은 계약 v<plan_minor> 기준입니다. 현재 스킬은 v1.1 — 최신 지침을 받으려면 `/plugin update aeko`를 실행해 주세요." / EN: "This plan uses contract v<plan_minor>; this skill is pinned to v1.1 — run `/plugin update aeko` for the latest guidance."
 
 ## Step 2 — Stale brand-kit check
 

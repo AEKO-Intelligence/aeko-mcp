@@ -33,11 +33,11 @@ All dispatch decisions are driven by `frontmatter`. Prose is narrative guidance 
 
 Validate frontmatter before proceeding:
 - `contract_version` starts with `2026-04-17.technical.v1.` — else stop, report mismatch. (Gate on major only; minor bumps are additive and must not break the skill.)
-- This skill is pinned to contract minor `v1.0`. If the incoming guide's minor is strictly greater, print the minor-version advisory (see §Copy) above the header, then proceed (forward-compat per §11.1).
+- This skill is pinned to contract minor `v1.1`. If the incoming guide's minor is strictly greater, print the minor-version advisory (see §Copy) above the header, then proceed (forward-compat per §11.1).
 - `tab == "technical"` — else stop with mismatch.
 - `execution_class == "technical_artifact"` — else stop, tell user this item belongs in `aeko-run-action`.
 - `artifact_type` ∈ {`llms_txt`, `robots_txt_patch`, `json_ld`, `technical_bundle`} — else stop.
-- `status == "pending"` — if already completed, tell the user and stop.
+- `status ∈ {pending, ready}` — executable states per contract §1. If `status == "generating_prose"`, stop and render the backend's 409 body verbatim. If `completed` / `failed` / `dismissed`, stop with the appropriate message.
 - `tier_required` gate: if present AND caller tier is known AND caller tier is below `tier_required` → stop with the bilingual tier-gate message (see §Copy). Caller tier is resolved from `aeko_get_brand_kit(...).metadata.account_tier`; unresolved → proceed with backend as authoritative gate.
 
 Print a plain-language header in `target_language` (fall back per §3.1 of the contract), then the prose body verbatim. Header format (3 lines):
@@ -53,7 +53,7 @@ After the header, print a blank line, then the full `prose` body verbatim. Never
 
 - **Tier gate** — same template and tier-benefit lookup as `aeko-run-action` §Copy (see `skills/aeko-run-action/SKILL.md`).
 
-- **Minor-version advisory** — KO: "이 기술 수정은 계약 v<guide_minor> 기준입니다. 현재 스킬은 v1.0 — `/plugin update aeko`로 업데이트해 주세요." / EN: "This guide uses contract v<guide_minor>; this skill is pinned to v1.0 — run `/plugin update aeko`."
+- **Minor-version advisory** — KO: "이 기술 수정은 계약 v<guide_minor> 기준입니다. 현재 스킬은 v1.1 — `/plugin update aeko`로 업데이트해 주세요." / EN: "This guide uses contract v<guide_minor>; this skill is pinned to v1.1 — run `/plugin update aeko`."
 
 ## Step 2 — Stale brand-kit check (if kit used)
 
