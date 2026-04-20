@@ -11,10 +11,9 @@ allowed-tools: aeko_get_technical_guide, aeko_prepare_llms_txt, aeko_validate_ll
 
 # AEKO Fix Technical
 
-> ⚠️ **Stage-1 preview.** Requires `aeko_get_technical_guide` + `aeko_complete_action_item` (new) plus the existing prepare-tools. Not runnable end-to-end until Stage 1 tool stubs land.
-
-
 Executes one Technical-tab item end-to-end: fetch guide.md → parse frontmatter + prose → validate contract → produce artifact → optional deploy → mark complete.
+
+The required MCP tools are registered on the hosted AEKO MCP server. Do NOT run a separate tool-availability check before starting — just call the tool; if the server returns an error, surface it verbatim. Only the explicit error cases at the end of this skill cause an abort.
 
 Contract reference: `docs/contracts/action-item-contract.md` §4 (guide.md format), §6 (completion).
 

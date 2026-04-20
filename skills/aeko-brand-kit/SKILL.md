@@ -13,9 +13,6 @@ allowed-tools: aeko_get_brand_kit, aeko_update_brand_kit, aeko_get_domain_info
 
 # AEKO Brand Kit
 
-> ⚠️ **Stage-1 preview.** Depends on new tools `aeko_get_brand_kit` / `aeko_update_brand_kit` (see `docs/contracts/action-item-contract.md`). Not runnable until Stage 1 tool stubs land.
-
-
 Manages the live Brand Kit consumed by Plan.md and guide.md generation. The live kit is the source of truth; Plan.md snapshots point back at a `snapshot_version`. Every edit here bumps the version — downstream `aeko-run-action` / `aeko-fix-technical` runs will warn if their plan is older than the live kit.
 
 Contract reference: `docs/contracts/action-item-contract.md` (`AekoBrandKit`, `AekoBrandKitUpdate`).

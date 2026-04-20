@@ -15,10 +15,9 @@ allowed-tools: aeko_get_action_plan, aeko_get_brand_kit, aeko_get_product_descri
 
 # AEKO Run Action
 
-> ⚠️ **Stage-1 preview.** Requires backend endpoints listed in `docs/contracts/action-item-contract.md` and their MCP tool stubs. Not runnable end-to-end until those land. If any required tool is missing, abort with a clear error citing the missing tool.
-
-
 Executes one Action-tab item end-to-end: fetch Plan.md → parse frontmatter + prose → validate contract → dispatch on `execution_class` → produce artifact → (PDP only) write to store → mark complete.
+
+The required MCP tools (`aeko_get_action_plan`, `aeko_complete_action_item`, `aeko_get_brand_kit`, store-write tools) are registered on the hosted AEKO MCP server. Do NOT run a separate tool-availability check before starting — just call the tool; if the server returns an error, surface it verbatim. Only the explicit error cases listed in "Error paths" at the end of this skill cause an abort.
 
 Contract reference: `docs/contracts/action-item-contract.md` §3 (Plan.md format), §3a (OCR cache), §7 (shadow product), §6 (completion).
 
