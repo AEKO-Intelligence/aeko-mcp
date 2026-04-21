@@ -685,11 +685,12 @@ def aeko_get_pdp_optimization_brief(
     strategy: str = "append_below_images",
     research_depth: str = "product_page_web",
 ) -> str:
-    """Build a merchant-facing PDP optimization brief for one synced product.
+    """Internal helper for `/aeko-competitive-pdp-input` and `/aeko-run-action`; not intended for standalone use.
 
-    This is product-first, not suggestion-key-first. It resolves the product,
-    store integration, domain, page analysis, and any matching AEKO
-    `pdp_update` suggestion for the product URL.
+    Builds a merchant-facing PDP optimization brief for one synced product.
+    Product-first (not suggestion-key-first): resolves the product, store
+    integration, domain, page analysis, and any matching AEKO `pdp_update`
+    suggestion for the product URL.
 
     Args:
         product_id: AEKO store-product UUID.

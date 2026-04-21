@@ -446,10 +446,11 @@ def aeko_get_pdp_brief(suggestion_key: str, domain_id: str = "") -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def aeko_get_content_brief(suggestion_key: str) -> str:
-    """Get a content-creation brief for own-content or external-content suggestions.
+    """Internal helper for `/aeko-create-own-content` and `/aeko-create-external-content`; not intended for standalone use.
 
-    Returns the suggestion's brief plus supporting tracked-prompt context so
-    Claude can write an article that matches how real users query AI engines.
+    Returns a content-creation brief for own-content or external-content
+    suggestions — the suggestion's brief plus supporting tracked-prompt context
+    so Claude can write an article that matches how real users query AI engines.
 
     Args:
         suggestion_key: Unique key of an `own_content` or `external_content` suggestion.
@@ -471,11 +472,11 @@ def aeko_get_content_brief(suggestion_key: str) -> str:
 
 @mcp.tool(annotations=READ_ONLY)
 def aeko_get_store_level_brief(suggestion_key: str) -> str:
-    """Get a store-level-fix brief (llms.txt, robots.txt, sitemap, schema infra).
+    """Internal helper for `/aeko-fix-store-level`; not intended for standalone use.
 
-    Returns the suggestion's brief and reminds the caller which existing
-    preparation tools to chain (`aeko_prepare_llms_txt`,
-    `aeko_prepare_robots_txt_fix`, `aeko_prepare_json_ld`).
+    Returns a store-level-fix brief (llms.txt, robots.txt, sitemap, schema infra)
+    and reminds the caller which existing preparation tools to chain
+    (`aeko_prepare_llms_txt`, `aeko_prepare_robots_txt_fix`, `aeko_prepare_json_ld`).
 
     Args:
         suggestion_key: Unique key of a `store_level` suggestion.

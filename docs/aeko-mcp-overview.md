@@ -12,6 +12,16 @@ In practice, it is the bridge between the user's local computer (files, browser 
 
 aeko-mcp is a thin, stateless process. It holds no database. Every call hits the AEKO backend over HTTPS.
 
+### The three-tier surface (as of v0.4.0)
+
+The MCP surface is organized into three tiers. This frames how tools and skills compose for different user moments.
+
+- **Tier 1 — Ingredients (advertised tools).** Composable primitives Claude can freestyle with: `aeko_get_score`, `aeko_get_visibility_summary`, `aeko_search_research_prompts`, `aeko_get_citability`, `aeko_score_text`, `aeko_get_product_analysis`, `aeko_list_domains`, `aeko_get_brand_kit`, `aeko_inspect_product_page`, `aeko_get_tracked_prompts`, `aeko_list_action_items`, `aeko_list_technical_items`, `aeko_scan_content_directory`, `aeko_audit_content_file`, `aeko_list_store_integrations`, etc. Value is in the **data**; Claude assembles the sequence.
+- **Tier 2 — Meal kits (skills / slash commands).** Opinionated workflows with guardrails: `/aeko-action-center`, `/aeko-run-action`, `/aeko-fix-technical`, `/aeko-brand-kit`, `/aeko-create-own-content`, `/aeko-create-external-content`, `/aeko-fix-store-level`, `/aeko-competitive-pdp-input`. Value is in the **sequence**; the skill enforces the contract (JSON-LD, responsive HTML, brand voice, audit trail).
+- **Tier 3 — Plumbing (internal helpers).** Tools wired for skills but not intended for standalone use: `aeko_get_action_plan`, `aeko_get_content_brief`, `aeko_get_store_level_brief`, `aeko_get_pdp_optimization_brief`, `aeko_validate_llms_txt`. Their descriptions open with "Internal helper for `/aeko-<skill>`" so Claude deprioritizes them in standalone reasoning.
+
+The decision test for new additions: **does value come from the data, or from the sequence?** Data → Tier 1 tool. Sequence → Tier 2 skill. If a tool is only useful inside one skill, it belongs in Tier 3.
+
 ---
 
 ## 2. Where it sits in the AEKO stack
@@ -272,33 +282,34 @@ The user never edits suggestion rows in Postgres. They invoke a skill, Claude ca
 
 ## 8. Skills (guided workflows)
 
-Skills are slash commands the user invokes in their MCP host. They encode the opinionated sequence: *gather data → draft → preview → save → complete*. 15 ship today.
+Skills are slash commands the user invokes in their MCP host. They encode the opinionated sequence: *gather data → draft → preview → save → complete*. 12 ship today in v0.4.0 (8 retired in the 2026-04 consolidation — see `CHANGELOG.md`).
 
-### Legacy / general-purpose (10)
+### Retired in 2026-04
+
+`/aeo-optimize`, `/generate-jsonld`, `/generate-faq`, `/create-blog-article`, `/create-social-content`, `/create-marketing-materials`, `/aeko-optimize-pdp`, `/aeko-update-pdp`. Replacements: use `/aeko-action-center` → `/aeko-run-action` for PDP work; JSON-LD and FAQ generation are now inline in the executor skills.
+
+### Utility (3)
 | Skill | Command | What it does |
 |---|---|---|
 | AEO Audit | `/aeo-audit` | 5-category weighted AEO readiness audit for any URL (Schema 25% / Citability 25% / Infrastructure 20% / Content 20% / Platform 10%). |
-| AEO Optimize | `/aeo-optimize` | Full product-page optimization: audit → generate optimized description + JSON-LD + FAQ → open browser preview → export. |
-| Generate JSON-LD | `/generate-jsonld` | Production-ready Product schema with 12-point completeness checklist. |
-| Generate FAQ | `/generate-faq` | AI-query-matched FAQ content with FAQPage JSON-LD, seeded from real tracked prompts. |
-| Create Blog Article | `/create-blog-article` | Blog content optimized for AI visibility. |
-| Create Social Content | `/create-social-content` | Platform-specific social content from AEKO metrics. |
-| Create Marketing Materials | `/create-marketing-materials` | Email / ad copy / landing content. |
 | AEO Audit Local | `/aeo-audit-local` | Batch citability audit of a local directory (HTML, MD, PDF, DOCX). |
 | Create Visibility Report | `/create-visibility-report` | Full AI visibility report with AEKO Score, page-by-page analysis, and ranked actions. |
 | Competitive Research | `/competitive-research` | AI visibility gap analysis against a competitor. |
 
-### v2 — 4-category action model (5, new)
+### v2 — AEKO-grounded executors (8)
 
 One skill per action bucket, plus a router. Each skill expects a v2 `Suggestion` brief and draws on `source_evidence` (scraped winning competitor structures) as the load-bearing instruction to "mirror what already wins AI citations."
 
 | Skill | Command | What it does |
 |---|---|---|
-| **Action Center** | `/aeko-action-center` | Top-level router. Shows the 4 buckets, offers prompt-group scoping, prints ready-to-copy slash-command blocks for the user to run. Falls back to legacy skills when v2 endpoints are unavailable. |
-| **Update PDP** | `/aeko-update-pdp <suggestion-key>` | Own Store · Product Detail Update. Rewrites a PDP with bilingual KO/EN, regenerates JSON-LD, generates FAQ block, opens browser preview. Publishes to Shopify / Cafe24 / Naver Smartstore instructions. |
-| **Create Own Content** | `/aeko-create-own-content <suggestion-key>` | Own Store · Content. Drafts a blog article / FAQ / landing page on the user's own domain matching the brief's structure, persona, and tone. |
-| **Create External Content** | `/aeko-create-external-content <suggestion-key>` | Other Media · Content. Drafts Wikipedia entries, partner media guest posts, Naver 블로그 / Tistory / Brunch drafts, press releases. **Never auto-publishes** — outputs local files only. |
-| **Fix Store-Level** | `/aeko-fix-store-level <suggestion-key>` | Own Store · Store-Level. Generates llms.txt, robots.txt fixes, sitemap.xml, or schema infra. Flags Cafe24 hosting caveats for llms.txt. |
+| **Action Center** | `/aeko-action-center [domain_id]` | Router. Lists pending Action + Technical items for a domain; prints ready-to-copy `/aeko-run-action` or `/aeko-fix-technical` blocks. Never executes items itself. |
+| **Run Action** | `/aeko-run-action <item_id>` | Executor for Action-tab items. Fetches Plan.md → asks image strategy → OCR-ingests PDP images → generates responsive HTML + JSON-LD → writes shadow product (default) → marks complete with audit trail. |
+| **Fix Technical** | `/aeko-fix-technical <item_id>` | Executor for Technical-tab items (llms.txt, robots.txt, site-level JSON-LD). Produces artifacts locally with deployment guidance. |
+| **Brand Kit** | `/aeko-brand-kit <domain_id>` | View or edit a domain's brand kit (voice, tone, must-include, forbidden). Load-bearing input for every content + PDP skill. |
+| **Create Own Content** | `/aeko-create-own-content <suggestion_key>` | Own Store · Content. Drafts a blog article / FAQ / landing page on the user's own domain matching the brief's structure, persona, and tone. |
+| **Create External Content** | `/aeko-create-external-content <suggestion_key>` | Other Media · Content. Drafts Wikipedia entries, partner media guest posts, Naver 블로그 / Tistory / Brunch drafts, press releases. **Never auto-publishes** — outputs local files only. |
+| **Competitive PDP Input** | `/aeko-competitive-pdp-input <product_id>` | Research input for a PDP rewrite — competitor-focused, enriches the brief with `source_evidence` before `/aeko-run-action`. |
+| **Fix Store-Level** | `/aeko-fix-store-level <suggestion_key>` | Own Store · Store-Level. Generates llms.txt, robots.txt fixes, sitemap.xml, or schema infra. Flags Cafe24 hosting caveats for llms.txt. |
 
 ---
 

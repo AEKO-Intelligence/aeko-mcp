@@ -301,8 +301,9 @@ def aeko_prepare_robots_txt_fix(domain_id: str, current_robots_txt: str) -> str:
 
 @mcp.tool(annotations=LOCAL_READ_ONLY)
 def aeko_validate_llms_txt(url: str) -> str:
-    """Validate an existing llms.txt file for format compliance and completeness.
+    """Internal helper for `/aeko-fix-technical` and `/aeko-fix-store-level`; not intended for standalone use.
 
+    Validates an existing llms.txt file for format compliance and completeness.
     Fetches the llms.txt from the given URL (or appends /llms.txt if needed)
     and checks for format compliance per the llmstxt.org specification.
 

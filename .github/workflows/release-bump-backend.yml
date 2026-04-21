@@ -1,0 +1,119 @@
+name: Bump aeko-mcp pin in backend on release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "aeko-mcp tag to pin (e.g. v0.4.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  open-bump-pr:
+    name: Open bump PR against panomix/aeko
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout backend repo
+        uses: actions/checkout@v4
+        with:
+          repository: panomix/aeko
+          token: ${{ secrets.BACKEND_PR_TOKEN }}
+          path: backend
+          fetch-depth: 0
+
+      - name: Update requirements.txt pin
+        id: bump
+        working-directory: backend
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          FILE="requirements.txt"
+          if [ ! -f "$FILE" ]; then
+            echo "::error::requirements.txt not found in backend"
+            exit 1
+          fi
+
+          # Replace the aeko-mcp pin with the new tag. Handles either a
+          # SHA-style pin (@<hex>) or an existing tag pin (@vX.Y.Z).
+          python3 - <<PY
+          import re
+          import sys
+          from pathlib import Path
+
+          path = Path("$FILE")
+          text = path.read_text()
+          pattern = r"aeko-mcp @ git\+https://github\.com/AEKO-Intelligence/aeko-mcp\.git@[^\s]+"
+          replacement = "aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@$TAG"
+          new_text, n = re.subn(pattern, replacement, text)
+          if n == 0:
+              print("::error::No aeko-mcp pin line matched in requirements.txt", file=sys.stderr)
+              sys.exit(1)
+          if new_text == text:
+              print("no-change")
+              sys.exit(0)
+          path.write_text(new_text)
+          print("changed")
+          PY
+
+          if git diff --quiet -- "$FILE"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch release notes
+        if: steps.bump.outputs.changed == 'true'
+        id: notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          {
+            echo "body<<EOF"
+            gh release view "$TAG" --repo "${{ github.repository }}" --json body --jq '.body' \
+              || echo "(release body unavailable — see https://github.com/${{ github.repository }}/releases/tag/$TAG)"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create PR
+        if: steps.bump.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          path: backend
+          token: ${{ secrets.BACKEND_PR_TOKEN }}
+          branch: bot/bump-aeko-mcp-${{ steps.tag.outputs.tag }}
+          delete-branch: true
+          commit-message: |
+            chore(deps): bump aeko-mcp pin to ${{ steps.tag.outputs.tag }}
+          title: "chore(deps): bump aeko-mcp pin to ${{ steps.tag.outputs.tag }}"
+          body: |
+            Automated bump from [aeko-mcp release ${{ steps.tag.outputs.tag }}](https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.tag }}).
+
+            ### Release notes
+
+            ${{ steps.notes.outputs.body }}
+
+            ---
+
+            This PR was opened by the `release-bump-backend` workflow in `AEKO-Intelligence/aeko-mcp`. Review, verify the diff is only the `requirements.txt` pin change, and merge when ready for the next backend deploy.
+          labels: |
+            dependencies
+            aeko-mcp
+
+      - name: Report no-op
+        if: steps.bump.outputs.changed != 'true'
+        run: |
+          echo "::notice::requirements.txt already pins aeko-mcp to ${{ steps.tag.outputs.tag }} — no PR opened."
