@@ -17,6 +17,11 @@ def _env_flag(name: str, default: bool) -> bool:
 
 
 def _build_mcp() -> FastMCP:
+    # ``website_url`` was added to FastMCP.__init__ in a recent mcp release;
+    # pyproject pins ``mcp>=1.11.0,<1.16.0`` because the backend embeds this
+    # package under FastAPI 0.115.x (Starlette <0.42). Older mcp versions in
+    # that range don't accept the kwarg yet — set it via settings after
+    # construction when supported, otherwise skip.
     server = FastMCP(
         "AEKO",
         # Shown in Claude Desktop's connector panel when a user adds AEKO —
@@ -35,7 +40,6 @@ def _build_mcp() -> FastMCP:
             "persona-targeted content from live suggestions, or coordinating "
             "AEO work across PDP, blog, and schema layers."
         ),
-        website_url="https://aeko-intelligence.com",
         stateless_http=_env_flag("AEKO_MCP_STATELESS_HTTP", True),
         json_response=_env_flag("AEKO_MCP_JSON_RESPONSE", True),
     )
