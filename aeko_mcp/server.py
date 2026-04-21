@@ -19,7 +19,23 @@ def _env_flag(name: str, default: bool) -> bool:
 def _build_mcp() -> FastMCP:
     server = FastMCP(
         "AEKO",
-        instructions="AI Engine Optimization for Cross-Border Commerce",
+        # Shown in Claude Desktop's connector panel when a user adds AEKO —
+        # mirror the capability-inventory style Google Calendar uses so users
+        # get a concrete sense of what Claude can do once connected.
+        instructions=(
+            "Connect AEKO to Claude to monitor and improve how AI engines "
+            "recommend your products. Claude can check your brand visibility "
+            "across ChatGPT, Claude, Gemini, and Perplexity, audit your "
+            "domains for AI-readiness (llms.txt, robots.txt, JSON-LD), "
+            "generate AEO-optimized product pages, blog briefs, and schema "
+            "markup, track the prompts your audience uses, and execute the "
+            "action items AEKO surfaces in your dashboard. Useful for "
+            "discovering where your brand appears in AI answers, closing "
+            "citability gaps on product and content pages, drafting "
+            "persona-targeted content from live suggestions, or coordinating "
+            "AEO work across PDP, blog, and schema layers."
+        ),
+        website_url="https://aeko-intelligence.com",
         stateless_http=_env_flag("AEKO_MCP_STATELESS_HTTP", True),
         json_response=_env_flag("AEKO_MCP_JSON_RESPONSE", True),
     )
@@ -34,7 +50,7 @@ client = AekoClient()
 atexit.register(client.close)
 
 # Import tool modules to register all tools with the mcp instance
-from .tools import visibility, content, product, suggestions, suggestions_v2, research, preview, images, generate, report, citability, aeko_score, local_content, campaigns, content_recommendations, store_write, pdp, action_plan, brand_kit  # noqa: E402, F401
+from .tools import visibility, content, product, suggestions, suggestions_v2, research, preview, images, generate, report, citability, aeko_score, local_content, sources, store_write, pdp, action_plan, brand_kit  # noqa: E402, F401
 
 
 @contextlib.asynccontextmanager

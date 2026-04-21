@@ -6,6 +6,7 @@ from urllib.parse import urljoin
 import httpx
 from mcp.server.fastmcp import Image
 from ..server import client, mcp
+from ._annotations import READ_ONLY, WRITE_ONCE
 
 
 VALID_STRATEGIES = {"append_below_images", "rewrite_from_scratch"}
@@ -490,7 +491,7 @@ def _candidate_reason_lines(item: dict) -> list[str]:
     return lines
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_list_pdp_candidates(
     domain_id: str = "",
     store_integration_id: str = "",
@@ -564,7 +565,7 @@ def aeko_list_pdp_candidates(
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_inspect_product_page(product_id: str) -> str:
     """Fetch a synced product page and extract page structure + PDP image URLs.
 
@@ -631,7 +632,7 @@ def aeko_inspect_product_page(product_id: str) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_read_product_page_image(product_id: str, image_index: int = 1) -> Image:
     """Download one image from the live product page and return it as an MCP Image.
 
@@ -678,7 +679,7 @@ def aeko_read_product_page_image(product_id: str, image_index: int = 1) -> Image
     return Image(path=temp_path)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_pdp_optimization_brief(
     product_id: str,
     strategy: str = "append_below_images",
@@ -823,12 +824,12 @@ def aeko_get_pdp_optimization_brief(
         )
     lines.append("4. Generate the final HTML.")
     lines.append("5. Deploy with `aeko_deploy_pdp_html(product_id=..., html=..., deployment_mode='manual_copy' | 'write_api')`.")
-    if suggestion.get("key"):
-        lines.append(f"6. After publishing, mark the linked suggestion complete with `aeko_complete_suggestion('{suggestion['key']}')`.")
+    # Suggestion completion is v1-UUID only today. PDP briefs come from v2,
+    # which has no complete endpoint — users mark done in the dashboard.
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE_ONCE)
 def aeko_deploy_pdp_html(
     product_id: str,
     html: str,

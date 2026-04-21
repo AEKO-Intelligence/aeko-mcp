@@ -3,9 +3,10 @@ import re
 import httpx
 
 from ..server import mcp, client
+from ._annotations import LOCAL_READ_ONLY, READ_ONLY
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_prepare_llms_txt(domain_id: str) -> str:
     """Gather domain data needed to write an llms.txt file.
 
@@ -204,7 +205,7 @@ def _parse_robots_txt(robots_txt: str) -> list[dict]:
     return results
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_prepare_robots_txt_fix(domain_id: str, current_robots_txt: str) -> str:
     """Analyze a robots.txt for AI crawler blocks and suggest fixes.
 
@@ -298,7 +299,7 @@ def aeko_prepare_robots_txt_fix(domain_id: str, current_robots_txt: str) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ONLY)
 def aeko_validate_llms_txt(url: str) -> str:
     """Validate an existing llms.txt file for format compliance and completeness.
 
@@ -455,7 +456,7 @@ def aeko_validate_llms_txt(url: str) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_prepare_json_ld(domain_id: str, schema_type: str, page_url: str = "") -> str:
     """Gather data needed to generate JSON-LD structured data.
 
@@ -596,7 +597,7 @@ def aeko_prepare_json_ld(domain_id: str, schema_type: str, page_url: str = "") -
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ONLY)
 def aeko_check_brand_entity(brand_name: str, brand_name_en: str = "") -> str:
     """Check if a brand has Wikipedia/Wikidata entity recognition.
 

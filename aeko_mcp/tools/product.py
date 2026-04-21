@@ -1,4 +1,5 @@
 from ..server import mcp, client
+from ._annotations import READ_ONLY
 
 
 def _format_analysis(data: dict) -> str:
@@ -97,7 +98,7 @@ def _format_analysis(data: dict) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_product_analysis(analysis_id: str) -> str:
     """Get competitive analysis for a specific product.
 

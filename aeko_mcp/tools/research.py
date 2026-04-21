@@ -1,4 +1,5 @@
 from ..server import mcp, client
+from ._annotations import READ_ONLY
 
 
 PLATFORM_DISPLAY = {
@@ -187,7 +188,7 @@ def _format_tracked_prompts(data: list) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_search_research_prompts(
     scope: str | None = None,
     keyword: str | None = None,
@@ -226,7 +227,7 @@ def aeko_search_research_prompts(
     return _format_prompts(data)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_tracked_prompts() -> str:
     """List all prompts you are actively tracking.
 
@@ -286,7 +287,7 @@ def _format_metrics(data: dict) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_metrics(domain_id: str) -> str:
     """Get 7-day performance metrics with week-over-week trends.
 

@@ -4,6 +4,7 @@ from pathlib import Path
 from mcp.server.fastmcp import Image
 
 from ..server import mcp
+from ._annotations import LOCAL_READ_ONLY, LOCAL_WRITE
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 ALLOWED_SAVE_EXTENSIONS = {".md", ".html", ".json", ".txt"}
@@ -32,7 +33,7 @@ def _get_output_dir() -> Path:
     return p
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ONLY)
 def aeko_list_product_images(directory: str | None = None) -> str:
     """List product images in a local directory.
 
@@ -76,7 +77,7 @@ def aeko_list_product_images(directory: str | None = None) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ONLY)
 def aeko_read_product_image(file_path: str) -> Image:
     """Read a product image from the local filesystem.
 
@@ -107,7 +108,7 @@ def aeko_read_product_image(file_path: str) -> Image:
     return Image(path=str(p))
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_WRITE)
 def aeko_save_content(file_path: str, content: str) -> str:
     """Save generated content to a local file.
 

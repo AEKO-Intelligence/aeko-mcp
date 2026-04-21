@@ -7,8 +7,8 @@ description: >
   snapshot_version + updated_at so users can see freshness. `snapshot_version`
   bumps on semantic changes (voice / target_audience / must_include /
   forbidden) but not on cosmetic edits.
-argument-hint: "<domain-id> [view|edit]"
-allowed-tools: aeko_get_brand_kit, aeko_update_brand_kit, aeko_get_domain_info
+argument-hint: "[domain-id] [view|edit]"
+allowed-tools: aeko_get_brand_kit, aeko_update_brand_kit, aeko_get_domain_info, aeko_list_domains
 ---
 
 # AEKO Brand Kit
@@ -19,14 +19,23 @@ Contract reference: `docs/contracts/action-item-contract.md` (`AekoBrandKit`, `A
 
 ## Inputs
 
-- `domain-id` (required) — UUID.
+- `domain-id` (optional) — UUID. If omitted, Step 1 auto-resolves or prompts.
 - mode (optional, default `view`):
   - `view` — print the full kit with version + updated_at
   - `edit` — interactive edit of one or more fields
 
 ## Step 1 — Resolve the domain
 
-If `$1` missing, ask the user. If provided but not a UUID, call `aeko_get_domain_info` to confirm.
+The user usually does NOT know their domain UUID. Never demand it cold.
+
+1. If `$1` is a valid UUID → use it; skip to Step 2.
+2. If `$1` looks like a domain name (e.g. `aeko.ai`, `slound.co.kr`), call `aeko_list_domains` and pick the row whose `base_url` matches (case-insensitive substring match). If no match, fall through to 3.
+3. If `$1` is missing or unresolvable, call `aeko_list_domains`:
+   - **Zero domains** → tell the user to connect a domain in the AEKO dashboard (`https://aeko-intelligence.com`) and stop.
+   - **Exactly one domain** → auto-select it; echo back `Using <name> (<base_url>)` so the user sees what was picked.
+   - **Multiple domains** → show the rendered list verbatim and ask the user to paste the UUID (or the brand name) back.
+
+Only call `aeko_get_domain_info` when you already have a UUID and want to confirm metadata. Do NOT use it for discovery — it can't list domains.
 
 ## Step 2 — Read the live kit
 

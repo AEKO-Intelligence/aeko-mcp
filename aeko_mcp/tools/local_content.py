@@ -4,6 +4,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from ..server import mcp, client
+from ._annotations import LOCAL_READ_ONLY, READ_ONLY
 
 ALLOWED_EXTENSIONS = {".html", ".htm", ".md", ".txt", ".csv", ".json"}
 OPTIONAL_EXTENSIONS = {".pdf", ".docx"}
@@ -182,7 +183,7 @@ def _file_metadata(path: Path) -> dict:
 # Tools
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ONLY)
 def aeko_scan_content_directory(
     directory: str = "",
     extensions: str = "",
@@ -273,7 +274,7 @@ def aeko_scan_content_directory(
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ONLY)
 def aeko_read_content_file(file_path: str, include_raw_html: bool = False) -> str:
     """Read a local content file and extract its text content.
 
@@ -339,7 +340,7 @@ def aeko_read_content_file(file_path: str, include_raw_html: bool = False) -> st
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_audit_content_file(file_path: str, language: str = "") -> str:
     """Read a local content file and score it for AI citability.
 

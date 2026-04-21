@@ -1,7 +1,8 @@
 from ..server import mcp, client
+from ._annotations import READ_ONLY
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_geo_score(domain_id: str) -> str:
     """Get composite GEO (Generative Engine Optimization) score for a domain. Combines 6 components: AI Mention Frequency (25%), Citation Rate (20%), Content Citability (20%), Technical Infrastructure (15%), Structured Data (10%), Sentiment (10%). Returns overall score, letter grade, and component breakdown.
 

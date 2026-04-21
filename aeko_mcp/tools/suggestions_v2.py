@@ -12,6 +12,7 @@ Claude can gracefully tell the user what's missing.
 """
 
 from ..server import mcp, client
+from ._annotations import READ_ONLY
 
 
 CATEGORY_LABELS = {
@@ -166,7 +167,7 @@ def _render_category(category: str, items: list[dict]) -> list[str]:
     return lines
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_suggestions_v2(
     domain_id: str,
     category: str = "",
@@ -238,7 +239,7 @@ def aeko_get_suggestions_v2(
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_suggestion(suggestion_key: str) -> str:
     """Hydrate a single v2 suggestion with its full brief and source evidence.
 
@@ -264,7 +265,7 @@ def aeko_get_suggestion(suggestion_key: str) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_list_prompt_groups(domain_id: str) -> str:
     """List prompt groups defined for a domain.
 
@@ -321,7 +322,7 @@ def _wrap_brief(suggestion_key: str, extras_renderer) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_pdp_brief(suggestion_key: str, domain_id: str = "") -> str:
     """Get a full product-detail-page rewrite brief for a suggestion.
 
@@ -384,7 +385,7 @@ def aeko_get_pdp_brief(suggestion_key: str, domain_id: str = "") -> str:
     return _wrap_brief(suggestion_key, extras)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_content_brief(suggestion_key: str) -> str:
     """Get a content-creation brief for own-content or external-content suggestions.
 
@@ -409,7 +410,7 @@ def aeko_get_content_brief(suggestion_key: str) -> str:
     return _wrap_brief(suggestion_key, extras)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_store_level_brief(suggestion_key: str) -> str:
     """Get a store-level-fix brief (llms.txt, robots.txt, sitemap, schema infra).
 
@@ -439,7 +440,9 @@ def aeko_get_store_level_brief(suggestion_key: str) -> str:
         else:
             out.append("1. `aeko_prepare_json_ld(domain_id, schema_type)` for schema-infra fixes")
         out.append("")
-        out.append("Finish with `aeko_save_content(...)` then `aeko_complete_suggestion(suggestion_key)`.")
+        # v2 suggestions are read-only server-side; mark completion in the
+        # dashboard UI. aeko_complete_suggestion is v1-UUID only.
+        out.append("Finish with `aeko_save_content(...)` and mark the suggestion done from the AEKO dashboard.")
         return out
 
     return _wrap_brief(suggestion_key, extras)

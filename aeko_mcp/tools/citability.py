@@ -1,7 +1,8 @@
 from ..server import mcp, client
+from ._annotations import READ_ONLY
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_citability(source_id: str) -> str:
     """Get AI citability score for a specific page. Shows how well the page content can be cited by AI engines across 5 dimensions: Answer Block Quality (30%), Self-Containment (25%), Structural Readability (20%), Statistical Density (15%), Uniqueness Signals (10%).
 
@@ -38,7 +39,7 @@ def aeko_get_citability(source_id: str) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_score_text(text: str, language: str = "") -> str:
     """Score arbitrary text for AI citability. Useful for testing content before publishing. Returns scores across 5 dimensions.
 

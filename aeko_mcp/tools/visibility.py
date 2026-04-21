@@ -1,4 +1,5 @@
 from ..server import mcp, client
+from ._annotations import READ_ONLY
 
 
 def _format_diff(value: float | None) -> str:
@@ -108,7 +109,7 @@ def _format_domain(data: dict) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_visibility_summary(domain_id: str) -> str:
     """Get brand visibility metrics across AI engines (ChatGPT, Claude, Gemini, Perplexity).
 
@@ -122,7 +123,7 @@ def aeko_get_visibility_summary(domain_id: str) -> str:
     return _format_visibility(data)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_domain_info(domain_id: str) -> str:
     """Get domain details and AI-readiness infrastructure status.
 
@@ -134,3 +135,50 @@ def aeko_get_domain_info(domain_id: str) -> str:
     """
     data = client.get(f"/api/domains/{domain_id}")
     return _format_domain(data)
+
+
+def _format_domain_list(domains: list[dict]) -> str:
+    """Render the authenticated user's domain list as picker-friendly Markdown.
+
+    Downstream skills grep for the '`<uuid>`' pattern to harvest the id;
+    keep the format stable or update callers.
+    """
+    if not domains:
+        return (
+            "# Your AEKO Domains\n\n"
+            "No domains connected yet. Add one in the AEKO dashboard "
+            "(https://aeko-intelligence.com) before running domain-scoped skills."
+        )
+
+    lines = [f"# Your AEKO Domains ({len(domains)})", ""]
+    for d in domains:
+        name = d.get("name") or d.get("ko_name") or d.get("base_url") or "(unnamed)"
+        base_url = d.get("base_url") or ""
+        domain_id = d.get("id") or ""
+        lines.append(f"- **{name}** — `{domain_id}`")
+        if base_url:
+            lines.append(f"  - URL: {base_url}")
+        scope = d.get("scope")
+        if scope:
+            lines.append(f"  - Scope: {scope}")
+    lines.append("")
+    lines.append(
+        "Pass the UUID (the backtick-quoted value) to any domain-scoped tool "
+        "or skill, e.g. `aeko_get_brand_kit(domain_id=...)`."
+    )
+    return "\n".join(lines)
+
+
+@mcp.tool(annotations=READ_ONLY)
+def aeko_list_domains() -> str:
+    """List every domain the authenticated AEKO user has connected.
+
+    Use this when a skill or tool needs a domain UUID and the user hasn't
+    supplied one. Returns each domain's UUID, human-readable name, base URL,
+    and industry scope so the caller can auto-select (if there's one) or
+    offer a pick-list. No arguments; reads the bearer token from the MCP
+    session to resolve the current user.
+    """
+    data = client.get("/api/domains")
+    # Backend returns a bare list (List[DomainResponse]).
+    return _format_domain_list(data if isinstance(data, list) else [])

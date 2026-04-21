@@ -11,6 +11,7 @@ Backend contract: `api/schemas/brand_kits.py` — `BrandKitResponse` /
 from typing import Any, List, Optional
 
 from ..server import mcp, client
+from ._annotations import READ_ONLY, WRITE
 
 
 def _fmt_list(label: str, values: Optional[List[str]], max_items: int = 10) -> List[str]:
@@ -90,7 +91,7 @@ def _format_brand_kit(kit: dict) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_brand_kit(domain_id: str) -> str:
     """Fetch the active Brand Kit for a domain.
 
@@ -105,7 +106,7 @@ def aeko_get_brand_kit(domain_id: str) -> str:
     return _format_brand_kit(data)
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 def aeko_update_brand_kit(
     kit_id: str,
     name: Optional[str] = None,

@@ -1,7 +1,8 @@
 from ..server import mcp, client
+from ._annotations import READ_ONLY
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_prepare_report(domain_id: str) -> str:
     """Gather all AEKO data needed to generate a visibility report.
 

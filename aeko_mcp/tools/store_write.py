@@ -22,10 +22,11 @@ connected.
 from typing import Any
 
 from ..server import mcp, client
+from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE
 
 
 def _safe(method, *args, **kwargs) -> tuple[dict | None, str | None]:
-    """Same error-wrapping pattern used in tools/campaigns.py."""
+    """Wrap client errors into (None, message) for graceful tool output."""
     try:
         return method(*args, **kwargs), None
     except Exception as e:  # noqa: BLE001
@@ -60,7 +61,7 @@ def _update_product(
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_list_store_integrations() -> str:
     """List every Cafe24 / Shopify store connected to the current user's AEKO account.
 
@@ -118,7 +119,7 @@ def aeko_list_store_integrations() -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 def aeko_update_product_description(
     integration_id: str,
     external_product_id: str,
@@ -144,7 +145,7 @@ def aeko_update_product_description(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 def aeko_update_product_jsonld(
     integration_id: str,
     external_product_id: str,
@@ -170,7 +171,7 @@ def aeko_update_product_jsonld(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 def aeko_update_product_tags(
     integration_id: str,
     external_product_id: str,
@@ -192,7 +193,7 @@ def aeko_update_product_tags(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 def aeko_update_product_meta(
     integration_id: str,
     external_product_id: str,
@@ -223,7 +224,7 @@ def aeko_update_product_meta(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_list_store_writes(limit: int = 20, offset: int = 0) -> str:
     """List recent store writes for the current user, newest first.
 
@@ -262,7 +263,7 @@ def aeko_list_store_writes(limit: int = 20, offset: int = 0) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=DESTRUCTIVE)
 def aeko_revert_store_write(audit_id: str) -> str:
     """Revert a past store write by pushing the 'before' snapshot back.
 

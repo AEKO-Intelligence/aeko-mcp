@@ -1,4 +1,5 @@
 from ..server import mcp, client
+from ._annotations import READ_ONLY, WRITE
 
 
 def _format_suggestions(data: dict) -> str:
@@ -69,7 +70,7 @@ def _format_suggestions(data: dict) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_suggestions(domain_id: str) -> str:
     """Get prioritized optimization suggestions for a domain.
 
@@ -84,18 +85,24 @@ def aeko_get_suggestions(domain_id: str) -> str:
     return _format_suggestions(data)
 
 
-@mcp.tool()
-def aeko_complete_suggestion(suggestion_key: str) -> str:
-    """Mark a suggestion as completed in the AEKO dashboard.
+@mcp.tool(annotations=WRITE)
+def aeko_complete_suggestion(suggestion_id: str) -> str:
+    """Mark a v1 suggestion as completed in the AEKO dashboard.
 
     Call this after you've finished implementing a suggestion (e.g., after
     creating a blog article, generating JSON-LD, or optimizing a page).
 
     Args:
-        suggestion_key: The unique key of the suggestion to mark as complete.
+        suggestion_id: UUID of the v1 suggestion to mark as complete. This is
+            the ``id`` field from ``aeko_get_suggestions`` output, NOT the
+            v2 ``suggestion_key`` from ``aeko_get_suggestions_v2``. The v2
+            API is read-only; v2-flow skills should skip this step.
     """
-    client.post("/api/suggestions/complete", json={
-        "suggestion_key": suggestion_key,
-        "completed_via": "mcp",
-    })
-    return f"Suggestion '{suggestion_key}' marked as completed in AEKO dashboard."
+    # Backend route: POST /api/suggestions/{suggestion_id}/complete
+    # Body is optional (CompleteRequest with completed_via); we always stamp
+    # "mcp" so the dashboard timeline can distinguish MCP-driven completions.
+    client.post(
+        f"/api/suggestions/{suggestion_id}/complete",
+        json={"completed_via": "mcp"},
+    )
+    return f"Suggestion '{suggestion_id}' marked as completed in AEKO dashboard."

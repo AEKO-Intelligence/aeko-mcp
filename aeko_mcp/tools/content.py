@@ -1,4 +1,5 @@
 from ..server import mcp, client
+from ._annotations import READ_ONLY
 
 
 def _format_pages(data: dict) -> str:
@@ -76,7 +77,7 @@ def _format_cited_pages(cited_pages: list) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_page_analysis(domain_id: str) -> str:
     """Get AI-readiness analysis for store pages.
 
@@ -90,7 +91,7 @@ def aeko_get_page_analysis(domain_id: str) -> str:
     return _format_pages(data)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_cited_sources(domain_id: str) -> str:
     """Get pages from your domain that AI engines cite as sources.
 

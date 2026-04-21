@@ -6,6 +6,7 @@ import tempfile
 import time
 
 from ..server import mcp
+from ._annotations import LOCAL_READ_ONLY
 
 
 def _build_html(
@@ -391,7 +392,7 @@ def _open_in_browser(filepath: str) -> None:
         os.startfile(filepath)
 
 
-@mcp.tool()
+@mcp.tool(annotations=LOCAL_READ_ONLY)
 def aeko_preview_optimized_page(
     product_title: str,
     original_description: str,

@@ -23,9 +23,22 @@ After installing or updating the plugin:
 - choose `aeko`
 - authenticate in the browser when prompted
 
-### Claude Desktop
+### Claude Desktop (custom connector — recommended)
 
-Claude Desktop supports the same plugin marketplace as Claude Code, so the install flow below gives you both the AEKO skills and the hosted MCP in one go.
+This path routes OAuth through Anthropic's hosted callback (`https://claude.ai/api/mcp/auth_callback`), which works reliably across Desktop's sandboxed runtime. The plugin install path below (based on Dynamic Client Registration) can fail silently on some Desktop builds because loopback listeners don't always bind in sandbox mode — if you hit a blank "site can't be reached" page during the OAuth redirect, use this path instead.
+
+1. Open Claude Desktop → **Settings → Connectors → Add custom connector**
+2. Server URL: `https://aeko-intelligence.com/mcp`
+3. Expand **Advanced settings**
+   - **Client ID**: `aeko-mcp-v1`
+   - **Client Secret**: leave blank (public client, PKCE only)
+4. Click **Connect** and complete the browser OAuth flow
+
+You only need to paste the client ID once per Desktop install. To pair this with AEKO skills (`/aeko-mcp:aeko-run-action`, etc.), install the plugin via the path below — the plugin's bundled MCP connection will coexist with the custom connector.
+
+### Claude Desktop (plugin)
+
+Claude Desktop supports the same plugin marketplace as Claude Code, so the install flow below gives you both the AEKO skills and the hosted MCP in one go. **Use the custom-connector path above if you hit OAuth issues during install** — the plugin falls back to Dynamic Client Registration, which isn't reliable on every Desktop build.
 
 1. Open Claude Desktop → **Settings → Plugins**
 2. Click **Browse plugins → Add marketplace**
@@ -116,8 +129,8 @@ maintain an always-drifting table here, see the source directory:
 
 Current groups include: `visibility`, `content`, `product`, `suggestions`
 (+ `suggestions_v2` for the categorized brief format), `research`, `generate`,
-`report`, `citability`, `aeko_score`, `campaigns`, `content_recommendations`,
-`store_write`, `pdp`, `action_plan`, and `brand_kit`.
+`report`, `citability`, `aeko_score`, `sources`, `store_write`, `pdp`,
+`action_plan`, and `brand_kit`.
 
 The `action_plan` and `brand_kit` groups (v0.3.0+) power the Plan.md /
 action-item execution loop — `aeko_get_action_plan`, `aeko_complete_action_item`,
@@ -155,7 +168,6 @@ Currently available skills (Claude unless noted):
 | `/aeko-fix-store-level` | Execute a store-level (llms.txt, robots.txt, schema) fix |
 | `/aeko-create-own-content` | Draft own-site content from a v2 brief |
 | `/aeko-create-external-content` | Draft external-media content from a v2 brief |
-| `/aeko-draft-from-campaign` | Draft content from a campaign recommendation |
 
 ### Example usage
 

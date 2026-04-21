@@ -9,9 +9,10 @@ Contract reference: `docs/contracts/action-item-contract.md`.
 from typing import Any, List, Optional
 
 from ..server import mcp, client
+from ._annotations import READ_ONLY, WRITE
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 def aeko_get_action_plan(item_id: str) -> str:
     """Fetch a Plan.md for one action item.
 
@@ -29,7 +30,7 @@ def aeko_get_action_plan(item_id: str) -> str:
     return client.get_text(f"/api/action-items/{item_id}", accept="text/markdown")
 
 
-@mcp.tool()
+@mcp.tool(annotations=WRITE)
 def aeko_complete_action_item(
     item_id: str,
     artifact_summary: Optional[str] = None,
