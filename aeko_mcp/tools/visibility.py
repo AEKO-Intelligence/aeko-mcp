@@ -1,3 +1,5 @@
+from typing import Optional
+
 from ..server import mcp, client
 from ._annotations import READ_ONLY
 
@@ -109,17 +111,112 @@ def _format_domain(data: dict) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(annotations=READ_ONLY)
-def aeko_get_visibility_summary(domain_id: str) -> str:
-    """Get brand visibility metrics across AI engines (ChatGPT, Claude, Gemini, Perplexity).
+def _format_cited_pages(cited_pages: list) -> str:
+    """Render the cited_pages slice of /api/visibility/summary."""
+    if not cited_pages:
+        return (
+            "# Cited Pages\n\n"
+            "No cited pages yet. AI engines haven't referenced your domain's "
+            "pages in the responses AEKO has collected."
+        )
 
-    Returns mention counts, citation counts, source counts, sentiment trends,
-    month-over-month changes, and recent brand mentions with response snippets.
+    lines = [f"# Cited Pages ({len(cited_pages)})", ""]
+    lines.append("| Page | Citations | AI Engines | Top Prompt |")
+    lines.append("|------|-----------|------------|------------|")
+    for p in cited_pages[:20]:
+        url = p.get("url") or p.get("page_url") or "(unknown)"
+        citation_count = p.get("citation_count") or p.get("count") or 0
+        engines_list = p.get("ai_platforms") or p.get("engines") or []
+        engines = ", ".join(engines_list) if isinstance(engines_list, list) else str(engines_list)
+        top_prompt = p.get("top_prompt") or p.get("prompt") or ""
+        if len(top_prompt) > 60:
+            top_prompt = top_prompt[:57] + "..."
+        lines.append(f"| {url} | {citation_count} | {engines} | {top_prompt} |")
+    return "\n".join(lines)
+
+
+def _format_tracked_metrics(data: dict) -> str:
+    """7-day WoW metrics — used when scope='tracked_prompt_metrics'."""
+    def _trend(value: Optional[float]) -> str:
+        if value is None:
+            return "— (no prior data)"
+        if value > 0:
+            return f"+{value:.1f}% ↑"
+        if value < 0:
+            return f"{value:.1f}% ↓"
+        return "0% →"
+
+    lines = ["# Performance Metrics (Last 7 Days)", ""]
+    lines.append("| Metric | Value | vs Previous 7 Days |")
+    lines.append("|--------|-------|--------------------|")
+
+    mentions = data.get("total_mentions", 0)
+    citations = data.get("total_citations", 0)
+    sentiment = data.get("avg_sentiment_score")
+    visibility = data.get("avg_visibility_score")
+
+    lines.append(f"| Mentions | {mentions} | {_trend(data.get('mentions_diff'))} |")
+    lines.append(f"| Citations | {citations} | {_trend(data.get('citations_diff'))} |")
+    if sentiment is not None:
+        lines.append(f"| Avg Sentiment | {sentiment:.1f}% | {_trend(data.get('sentiment_diff'))} |")
+    if visibility is not None:
+        lines.append(f"| Avg Visibility | {visibility:.1f} | {_trend(data.get('visibility_diff'))} |")
+
+    share_pct = data.get("mention_share_pct")
+    share_total = data.get("mention_share_total")
+    if share_pct is not None and share_total is not None:
+        lines.append(f"| Mention Share | {share_pct:.1f}% ({share_total} tracked) | — |")
+
+    lines.append("")
+    current = data.get("data_points_current", 0)
+    previous = data.get("data_points_previous", 0)
+    lines.append(f"*Based on {current} data points (current) vs {previous} (previous period).*")
+    return "\n".join(lines)
+
+
+_VISIBILITY_SCOPES = {"overview", "cited_sources", "tracked_prompt_metrics"}
+
+
+@mcp.tool(annotations=READ_ONLY)
+def aeko_get_visibility_summary(
+    domain_id: str,
+    scope: str = "overview",
+    window: Optional[str] = None,
+) -> str:
+    """Brand visibility + citation metrics across AI engines.
+
+    One-tool consolidation of the prior `aeko_get_visibility_summary`,
+    `aeko_get_cited_sources`, and `aeko_get_metrics` surfaces — pick the
+    view via `scope`.
 
     Args:
-        domain_id: UUID of the domain to analyze.
+        domain_id: UUID of the domain.
+        scope:
+          - `overview` (default) — mention / citation / source counts, 30-day
+            trend, recent brand mentions across ChatGPT / Claude / Gemini /
+            Perplexity.
+          - `cited_sources` — the subset of your pages AI engines cited,
+            with per-page citation counts + triggering prompts.
+          - `tracked_prompt_metrics` — 7-day performance across tracked
+            prompts with week-over-week trends (mentions / citations /
+            sentiment / visibility / mention share).
+        window: Optional time window hint. Currently only honored for the
+            `tracked_prompt_metrics` scope (backend fixed at 7d + 7d WoW);
+            reserved for future use on other scopes.
     """
+    if scope not in _VISIBILITY_SCOPES:
+        allowed = ", ".join(sorted(_VISIBILITY_SCOPES))
+        return f"Invalid `scope`: {scope}. Allowed: {allowed}."
+
+    if scope == "tracked_prompt_metrics":
+        data = client.get("/api/tracked-prompts/metrics", params={"domain_id": domain_id})
+        return _format_tracked_metrics(data)
+
     data = client.get("/api/visibility/summary", params={"domain_id": domain_id})
+
+    if scope == "cited_sources":
+        return _format_cited_pages(data.get("cited_pages") or [])
+
     return _format_visibility(data)
 
 

@@ -119,6 +119,51 @@ def aeko_list_store_integrations() -> str:
     return "\n".join(lines)
 
 
+@mcp.tool(annotations=READ_ONLY)
+def aeko_get_product_description(
+    integration_id: str,
+    external_product_id: str,
+) -> str:
+    """Fetch the raw editable product description HTML from the connected store.
+
+    Returns the source-of-truth description as stored in Cafe24 (`description`
+    field) or Shopify (`body_html`) — distinct from what a live-page
+    WebFetch would return. Use this to read → patch → write back via
+    `aeko_update_product_description`, e.g. for a JSON-LD refresh that
+    updates `AggregateRating.ratingValue` without touching the rest of the
+    HTML.
+
+    Args:
+        integration_id: UUID of the store integration. Call
+            `aeko_list_store_integrations` first to discover it.
+        external_product_id: The product's platform-native id — Cafe24
+            product_no or Shopify product id.
+    """
+    path = (
+        f"/api/store-integrations/{integration_id}/products/"
+        f"{external_product_id}/description"
+    )
+    data = client.get(path)
+    platform = data.get("platform", "unknown")
+    description_html = data.get("description_html") or ""
+    fetched_at = data.get("fetched_at", "")
+    lines = [
+        f"# Product description ({platform})",
+        "",
+        f"- **Integration**: `{integration_id}`",
+        f"- **External product ID**: `{external_product_id}`",
+        f"- **Fetched at**: {fetched_at}",
+        f"- **Length**: {len(description_html)} chars",
+        "",
+        "## description_html",
+        "",
+        "```html",
+        description_html,
+        "```",
+    ]
+    return "\n".join(lines)
+
+
 @mcp.tool(annotations=WRITE)
 def aeko_update_product_description(
     integration_id: str,

@@ -1,5 +1,7 @@
+from typing import Any, Optional
+
 from ..server import mcp, client
-from ._annotations import READ_ONLY
+from ._annotations import READ_ONLY, WRITE
 
 
 PLATFORM_DISPLAY = {
@@ -195,20 +197,30 @@ def aeko_search_research_prompts(
     country: str | None = None,
     ai_platform: str | None = None,
     query_type: str | None = None,
+    persona_type: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> str:
     """Search the research prompt library with filters.
 
     Browse pre-built research prompts to understand how AI engines respond
-    to queries in your industry. At least one filter must be provided.
+    to queries in your industry. Powers the find-prompts-to-track loop: the
+    skill narrows the library by platform + persona + country, surfaces the
+    best candidates, and the user tracks them with `aeko_track_prompt`.
+
+    At least one filter must be provided.
 
     Args:
         scope: Industry scope (e.g., "beauty", "fashion", "electronics").
         keyword: Search text in prompt content or keywords.
         country: Country code (e.g., "US", "KR", "JP").
-        ai_platform: AI platform filter ("openai", "anthropic", "google", "perplexity").
-        query_type: Query type filter (e.g., "comparison", "recommendation").
+        ai_platform: AI platform filter (`openai`, `anthropic`, `google`,
+            `perplexity`).
+        query_type: Query type filter (e.g., `comparison`, `recommendation`).
+        persona_type: Persona type filter — narrows prompts to those tagged
+            against a specific buyer persona (e.g., `new_mom`,
+            `enthusiast`). Use together with `ai_platform` for
+            high-precision audience research.
         page: Page number (default 1).
         page_size: Results per page (default 20, max 100).
     """
@@ -223,6 +235,8 @@ def aeko_search_research_prompts(
         params["ai_platform"] = ai_platform
     if query_type:
         params["query_type"] = query_type
+    if persona_type:
+        params["persona_type"] = persona_type
     data = client.get("/api/research/prompts", params=params)
     return _format_prompts(data)
 
@@ -237,6 +251,221 @@ def aeko_get_tracked_prompts() -> str:
     """
     data = client.get("/api/tracked-prompts")
     return _format_tracked_prompts(data)
+
+
+@mcp.tool(annotations=WRITE)
+def aeko_track_prompt(
+    raw_prompt: str,
+    ai_platform: str,
+    prompt_en: Optional[str] = None,
+    prompt_ko: Optional[str] = None,
+    model: Optional[str] = None,
+    language: Optional[str] = None,
+    country: Optional[str] = None,
+    industry: Optional[str] = None,
+    vertical: Optional[str] = None,
+    persona: Optional[str] = None,
+    tags: Optional[list[str]] = None,
+) -> str:
+    """Start tracking a prompt so AEKO re-queries it across AI engines.
+
+    Use after `aeko_search_research_prompts` to pick a research prompt to
+    track — pass the same `raw_prompt` / `ai_platform` / `country` / etc.
+    that the search surfaced. Creates a user-owned tracked-prompt row that
+    AEKO's pipeline will re-query on cadence so you can watch how AI
+    responses shift over time.
+
+    Idempotent: tracking a prompt you already track returns a 409; tracking
+    one you previously untracked reactivates it. Package limits (max tracked
+    prompts, max markets) apply.
+
+    Args:
+        raw_prompt: The prompt text to track (required).
+        ai_platform: Target AI engine — `openai`, `anthropic`, `google`, or
+            `perplexity` (required).
+        prompt_en / prompt_ko: Optional pre-translated forms.
+        model: Specific model name (e.g. `claude-sonnet-4-5`).
+        language: Language code (`en`, `ko`, etc.). Derived from `country`
+            if omitted.
+        country: ISO-3166 country code (must be in your account's
+            selected_markets).
+        industry / vertical: Classification fields matching the research
+            prompt's shape — pass through from the search result.
+        persona: Optional persona label (max 500 chars).
+        tags: Optional list of free-form tags.
+    """
+    body: dict[str, Any] = {
+        "raw_prompt": raw_prompt,
+        "ai_platform": ai_platform,
+    }
+    for key, val in (
+        ("prompt_en", prompt_en),
+        ("prompt_ko", prompt_ko),
+        ("model", model),
+        ("language", language),
+        ("country", country),
+        ("industry", industry),
+        ("vertical", vertical),
+        ("persona", persona),
+        ("tags", tags),
+    ):
+        if val is not None:
+            body[key] = val
+
+    resp = client.post("/api/tracked-prompts", json=body)
+    prompt_id = resp.get("id", "?")
+    status_val = resp.get("status", "tracked")
+    display = resp.get("prompt_en") or resp.get("raw_prompt") or raw_prompt
+    return f"Tracked prompt `{prompt_id}` ({status_val}): {display[:120]}"
+
+
+@mcp.tool(annotations=WRITE)
+def aeko_untrack_prompt(prompt_id: str) -> str:
+    """Stop tracking a prompt. Historical response data is preserved.
+
+    Sets the user-prompt status to `untracked` — AEKO stops re-querying it,
+    but existing responses / citations / source crawls remain readable via
+    `aeko_get_tracked_prompt(prompt_id)`. Idempotent: calling on a prompt
+    the user never tracked returns 404; calling twice is a no-op after the
+    first call.
+
+    Args:
+        prompt_id: UUID of the prompt to stop tracking.
+    """
+    client.delete(f"/api/tracked-prompts/{prompt_id}")
+    return f"Untracked prompt `{prompt_id}`. Historical data preserved."
+
+
+def _format_tracked_prompt_detail(data: dict) -> str:
+    """Compact rendering of the citation-forensics payload for one prompt."""
+    prompt = data.get("prompt") or {}
+    responses = data.get("responses") or []
+    window = data.get("window", "latest")
+
+    prompt_text = prompt.get("prompt_en") or prompt.get("raw_prompt") or "(unknown)"
+    prompt_ko = prompt.get("prompt_ko")
+
+    lines: list[str] = []
+    lines.append(f"# Tracked prompt deep-dive ({window})")
+    lines.append("")
+    lines.append(f"**Prompt**: {prompt_text}")
+    if prompt_ko:
+        lines.append(f"**Korean**: {prompt_ko}")
+    lines.append(f"- **ID**: `{prompt.get('id', '?')}`")
+    meta_bits: list[str] = []
+    for key in ("country", "industry", "vertical", "query_type", "funnel_stage", "persona"):
+        val = prompt.get(key)
+        if val:
+            meta_bits.append(f"{key}={val}")
+    if meta_bits:
+        lines.append(f"- {' · '.join(meta_bits)}")
+    lines.append("")
+
+    if not responses:
+        lines.append("_No responses yet in this window._")
+        return "\n".join(lines)
+
+    for idx, resp in enumerate(responses, 1):
+        platform = PLATFORM_DISPLAY.get(
+            resp.get("ai_platform", ""), resp.get("ai_platform", "Unknown")
+        )
+        date = resp.get("response_date", "N/A")
+        lines.append(f"## {idx}. {platform} — {date}")
+
+        header_bits: list[str] = []
+        mention_count = resp.get("mention_count") or 0
+        citation_count = resp.get("citation_count") or 0
+        source_count = resp.get("source_count") or 0
+        sentiment = resp.get("sentiment")
+        header_bits.append(f"mentions={mention_count}")
+        header_bits.append(f"citations={citation_count}")
+        header_bits.append(f"sources={source_count}")
+        if sentiment is not None:
+            header_bits.append(f"sentiment={sentiment}")
+        lines.append(f"- {' · '.join(header_bits)}")
+
+        snippet = resp.get("response_snippet_en") or resp.get("response_snippet")
+        if snippet:
+            lines.append(f"- **Snippet**: {snippet[:300]}{'...' if len(snippet) > 300 else ''}")
+
+        mentions = resp.get("mentions") or {}
+        if mentions:
+            top = sorted(mentions.items(), key=lambda kv: kv[1], reverse=True)[:8]
+            brand_str = ", ".join(f"{name} ({count}x)" for name, count in top)
+            lines.append(f"- **Brands mentioned**: {brand_str}")
+
+        citations = resp.get("citations") or []
+        truncated = resp.get("citations_truncated")
+        if citations:
+            lines.append("")
+            cap_note = " (truncated at 20)" if truncated else ""
+            lines.append(f"**Citations{cap_note}**:")
+            for cit in citations:
+                domain = cit.get("domain") or "(unknown)"
+                url = cit.get("source_url") or ""
+                src_type = cit.get("source_type") or ""
+                pos = cit.get("position_in_response")
+                pos_str = f" · pos {pos}" if pos is not None else ""
+                type_str = f" [{src_type}]" if src_type else ""
+                if url:
+                    lines.append(f"- {domain}{type_str}{pos_str} — {url}")
+                else:
+                    lines.append(f"- {domain}{type_str}{pos_str}")
+                ctx = cit.get("context_snippet")
+                if ctx:
+                    trimmed = ctx if len(ctx) <= 200 else ctx[:197] + "..."
+                    lines.append(f"  > {trimmed}")
+
+                crawl = cit.get("crawl") or {}
+                if crawl:
+                    # Surface the most useful crawl fields compactly.
+                    json_ld_types: list[str] = []
+                    for block in crawl.get("json_ld") or []:
+                        if isinstance(block, dict):
+                            t = block.get("@type")
+                            if isinstance(t, str):
+                                json_ld_types.append(t)
+                            elif isinstance(t, list):
+                                json_ld_types.extend(x for x in t if isinstance(x, str))
+                    if json_ld_types:
+                        lines.append(f"    • JSON-LD: {', '.join(sorted(set(json_ld_types)))}")
+                    analysis = crawl.get("source_analysis") or {}
+                    if isinstance(analysis, dict):
+                        score = analysis.get("citability_score")
+                        if score is not None:
+                            lines.append(f"    • Citability: {score}")
+
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+@mcp.tool(annotations=READ_ONLY)
+def aeko_get_tracked_prompt(
+    prompt_id: str,
+    window: Optional[str] = None,
+) -> str:
+    """Full citation-forensics payload for one tracked prompt.
+
+    Returns the prompt's responses per AI platform, each response's citations
+    (source URL + domain + position + context snippet), and crawled source
+    metadata (JSON-LD types, extracted text, source-analysis scores). This is
+    AEKO's "which competitors win this prompt and which sources AI engines
+    cite" primitive — core input for `/aeko-prompt-deep-dive`,
+    `/aeko-brand-competitor-analysis`, and content skills that mimic winning
+    source structures.
+
+    Args:
+        prompt_id: UUID of the tracked prompt. Must be a prompt the current
+            user has a UserPrompts row for (tracked or previously-tracked).
+        window: `latest` (default) = most recent response per AI platform.
+            `7d` / `30d` / `90d` = all responses in that window, newest first.
+    """
+    params: dict[str, Any] = {}
+    if window:
+        params["window"] = window
+    data = client.get(f"/api/tracked-prompts/{prompt_id}", params=params)
+    return _format_tracked_prompt_detail(data)
 
 
 def _format_trend(value: float | None) -> str:
