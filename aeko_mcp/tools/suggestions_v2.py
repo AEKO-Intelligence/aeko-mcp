@@ -143,7 +143,50 @@ def _render_suggestion(s: dict, index: int | None = None) -> list[str]:
     return lines
 
 
-def _render_category(category: str, items: list[dict]) -> list[str]:
+def _render_suggestion_summary(s: dict, index: int | None = None) -> list[str]:
+    """Compact one-suggestion block for the list view.
+
+    The detailed ``_render_suggestion`` renders up to ~20 lines per item —
+    across 4 categories with dozens of items each that can easily exceed the
+    MCP response size budget. For the list view we emit the essentials only
+    (5-6 lines) and point users at ``aeko_get_suggestion(key)`` for the full
+    brief.
+    """
+    lines: list[str] = []
+    title = s.get("title") or "Suggestion"
+    prefix = f"{index}. " if index is not None else ""
+    lines.append(f"### {prefix}{title}")
+
+    key = s.get("key")
+    priority = s.get("priority")
+    header_bits: list[str] = []
+    if key:
+        header_bits.append(f"`{key}`")
+    if priority:
+        header_bits.append(f"{priority}")
+    if header_bits:
+        lines.append(f"- {' · '.join(header_bits)}")
+
+    brief = s.get("brief") or {}
+    target = brief.get("target_url") or brief.get("target_domain")
+    if target:
+        lines.append(f"- **Target**: {target}")
+    content_type = brief.get("content_type")
+    if content_type:
+        lines.append(f"- **Type**: {content_type}")
+
+    rationale = s.get("rationale") or s.get("description")
+    if rationale:
+        trimmed = rationale if len(rationale) <= 160 else rationale[:157] + "..."
+        lines.append(f"- {trimmed}")
+
+    if key:
+        lines.append(f"- Full brief: `aeko_get_suggestion('{key}')`")
+    lines.append("")
+    return lines
+
+
+def _render_category(category: str, items: list[dict], detailed: bool = False) -> list[str]:
     lines: list[str] = []
     label = CATEGORY_LABELS.get(category, category)
     skill = CATEGORY_SKILL.get(category)
@@ -162,8 +205,24 @@ def _render_category(category: str, items: list[dict]) -> list[str]:
         p = s.get("priority")
         return PRIORITY_ORDER.index(p) if p in PRIORITY_ORDER else len(PRIORITY_ORDER)
 
-    for i, s in enumerate(sorted(items, key=_p_rank), 1):
-        lines.extend(_render_suggestion(s, i))
+    renderer = _render_suggestion if detailed else _render_suggestion_summary
+    # Soft cap on the list view — dumping every suggestion with a brief blew
+    # past the MCP response size budget for high-volume domains. In list
+    # mode, show the top N by priority and nudge the user toward filters
+    # (category, priority, group_id) or per-key detail for the rest.
+    CATEGORY_ITEM_CAP = 25
+    sorted_items = sorted(items, key=_p_rank)
+    shown = sorted_items if detailed else sorted_items[:CATEGORY_ITEM_CAP]
+    for i, s in enumerate(shown, 1):
+        lines.extend(renderer(s, i))
+    remaining = len(sorted_items) - len(shown)
+    if remaining > 0:
+        lines.append(
+            f"_… and {remaining} more in this category. Filter with "
+            f"`priority=` / `group_id=` or fetch a specific key with "
+            f"`aeko_get_suggestion(key)`._"
+        )
+        lines.append("")
     return lines
 
 
