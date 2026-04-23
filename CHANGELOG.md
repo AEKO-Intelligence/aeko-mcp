@@ -8,7 +8,7 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 
 _No unreleased changes._
 
-## [0.5.0] — 2026-04-23 (pending tag)
+## [0.5.0] — 2026-04-23
 
 Major tool-layer consolidation. Driven by the full audit recorded at
 `.claude/plans/tranquil-baking-iverson.md`. **53 tools in → 22 tools out**
