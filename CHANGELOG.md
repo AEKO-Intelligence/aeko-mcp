@@ -8,6 +8,46 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 
 _No unreleased changes._
 
+## [0.5.1] — 2026-04-23
+
+Patch release — docstring + module-header cleanup. No tool surface
+changes. After v0.5.0 deployed, the tool descriptions shown in MCP
+clients still referenced retired skills (most visibly
+`aeko_get_action_plan` leading with "Internal helper for `/aeko-run-action`").
+This release refreshes docstrings and list-output dispatch hints to point
+at the v0.5.0 executor skills (`/aeko-update-pdp`,
+`/aeko-create-content`, `/aeko-fix-technical`).
+
+### Changed
+- `aeko_get_action_plan` — first-line docstring rewritten. Now reads
+  "Fetch the Plan.md for one Action or Technical item." instead of
+  the old "Internal helper for `/aeko-run-action`" defensive blurb
+  (the `/aeko-run-action` skill is retired). Standalone use is
+  explicitly OK.
+- `aeko_list_action_items` list output — "Run:" hint now branches on
+  `execution_class`:
+  - `store_write_artifact` → `/aeko-update-pdp <item_id>`
+  - `local_content_artifact` → `/aeko-create-content <item_id>`
+  - `technical_artifact` → `/aeko-fix-technical <item_id>`
+  - unknown/missing → `/aeko-action-center <item_id>`
+- `aeko_list_action_items` / `aeko_get_brand_kit` / `aeko_update_brand_kit`
+  docstrings — replaced `/aeko-run-action` references with the v0.5.0
+  executor skill names.
+- `aeko_mcp/tools/store_write.py` module header — removed the retired
+  `aeko_update_product_jsonld` from the tool-list comment; added
+  `aeko_get_product_description` and a note that JSON-LD writes go
+  through `aeko_update_product_description`.
+- `aeko_mcp/templates/pdp_responsive_scaffold.html` header comment —
+  updated "produced by aeko-run-action" to "produced by /aeko-update-pdp".
+
+### Notes for MCP-client UX
+- The MCP-server-level description in Claude Desktop connector settings
+  is sourced from Anthropic's Directory listing, not from the `instructions`
+  field in MCP code. To make AEKO show a description next to the URL in
+  Claude Desktop, submit AEKO to the Directory. The `instructions` string
+  in `server.py` is still used by Claude as context once connected, just
+  not in the settings card.
+
 ## [0.5.0] — 2026-04-23
 
 Major tool-layer consolidation. Driven by the full audit recorded at

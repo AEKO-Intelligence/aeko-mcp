@@ -1,8 +1,9 @@
 """Action-item / Plan.md tools.
 
-These wrap the backend's action-items endpoints so the `aeko-run-action`
-skill can fetch a Plan.md, execute it, and report completion. The Plan.md
-payload is YAML frontmatter + prose body — the skill parses both.
+These wrap the backend's action-items endpoints so executor skills
+(`/aeko-update-pdp`, `/aeko-create-content`, `/aeko-fix-technical`) can
+fetch a Plan.md, execute it, and report completion. The Plan.md payload
+is YAML frontmatter + templated prose body — the skill parses both.
 
 Contract reference: `docs/contracts/action-item-contract.md`.
 """
@@ -53,8 +54,12 @@ def _render_item_summary(item: dict, index: int | None = None) -> list[str]:
         trimmed = preview if len(preview) <= 160 else preview[:157] + "..."
         lines.append(f"- {trimmed}")
     if item_id:
-        tab = item.get("tab")
-        hint = "/aeko-run-action" if tab == "action" else "/aeko-fix-technical"
+        executor_by_class = {
+            "store_write_artifact": "/aeko-update-pdp",
+            "local_content_artifact": "/aeko-create-content",
+            "technical_artifact": "/aeko-fix-technical",
+        }
+        hint = executor_by_class.get(execution_class or "", "/aeko-action-center")
         lines.append(f"- Run: `{hint} {item_id}`")
     lines.append("")
     return lines
@@ -111,12 +116,13 @@ def aeko_list_action_items(
 
     Action items are the user-facing optimization tasks (PDP rewrites, content
     drafts, external-media placements) that `/aeko-action-center` dispatches
-    to `/aeko-run-action <item_id>`. Each item carries a title, priority,
-    artifact_type, execution_class, write_mode, and a short `preview` snippet
-    of its Plan.md prose.
+    to the right executor based on `execution_class` — `/aeko-update-pdp` for
+    store writes, `/aeko-create-content` for local content artifacts. Each
+    item carries a title, priority, artifact_type, execution_class,
+    write_mode, and a short `preview` snippet of its Plan.md prose.
 
-    Returns a markdown list with a ready-to-copy `/aeko-run-action <item_id>`
-    hint under each item so the user (or Claude) can pick one and execute.
+    Returns a markdown list with a ready-to-copy executor command under each
+    item so the user (or Claude) can pick one and run it directly.
 
     Args:
         domain_id: UUID string of the domain to scope results. Omit to list
@@ -157,11 +163,15 @@ def aeko_list_technical_items(
 
 @mcp.tool(annotations=READ_ONLY)
 def aeko_get_action_plan(item_id: str) -> str:
-    """Internal helper for `/aeko-run-action`; not intended for standalone use.
+    """Fetch the Plan.md for one Action or Technical item.
 
-    Fetches a Plan.md for one action item. Returns a single markdown string:
-    YAML frontmatter between `---` fences, followed by the prose body. Consumers
-    parse frontmatter for machine values and treat prose as narrative guidance.
+    Returns a single markdown string: YAML frontmatter between `---` fences,
+    followed by the templated prose body. Consumers parse frontmatter for
+    machine values (execution_class, write_mode, target_url, etc.) and treat
+    prose as narrative guidance. Shared endpoint — serves both Action-tab and
+    Technical-tab items. Normally called by the executor skills
+    (`/aeko-update-pdp`, `/aeko-create-content`, `/aeko-fix-technical`) but
+    safe to call standalone to inspect an item's contract.
 
     Status gate: backend 409s if the item is not in {ready, completed}. The
     409 body is plain text like "Plan is still being generated — retry in a

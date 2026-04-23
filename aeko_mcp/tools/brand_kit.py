@@ -96,7 +96,7 @@ def aeko_get_brand_kit(domain_id: str) -> str:
     """Fetch the active Brand Kit for a domain.
 
     Returns the live kit (voice, persona, guardrails, snapshot_version,
-    account tier). `aeko-run-action` uses this to check for stale snapshots
+    account tier). Executor skills use this to check for stale snapshots
     and to enforce `requires_brand_kit` plans.
 
     Args:
@@ -124,9 +124,10 @@ def aeko_update_brand_kit(
 ) -> str:
     """Patch a Brand Kit. Only pass the fields you want to change.
 
-    Every successful update bumps `snapshot_version`. Downstream
-    `aeko-run-action` runs against a Plan.md with an older snapshot will
-    warn the user before proceeding.
+    Every successful update bumps `snapshot_version`. Downstream executor
+    skills (`/aeko-update-pdp`, `/aeko-create-content`, `/aeko-fix-technical`)
+    running against a Plan.md with an older snapshot will warn the user
+    before proceeding.
 
     `status` may only be set to `active` or `draft` by clients;
     `generating` / `failed` are system-controlled.

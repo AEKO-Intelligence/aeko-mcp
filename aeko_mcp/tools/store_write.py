@@ -6,12 +6,16 @@ pdp_update suggestions directly to a merchant's live store.
 
 Seven tools total:
   - aeko_list_store_integrations  ← discovery (read-only, all tiers)
+  - aeko_get_product_description  ← raw editable HTML (read-only)
   - aeko_update_product_description
-  - aeko_update_product_jsonld
   - aeko_update_product_tags
   - aeko_update_product_meta
   - aeko_list_store_writes
   - aeko_revert_store_write
+
+JSON-LD lives inside the description HTML and is written via
+`aeko_update_product_description` — there is no separate JSON-LD
+write tool.
 
 All write tools require a Growth+ plan at the AEKO backend — Starter
 calls return a 403 from the backend which surfaces as a RuntimeError
