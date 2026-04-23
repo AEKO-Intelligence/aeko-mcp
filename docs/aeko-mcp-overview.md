@@ -12,6 +12,8 @@ In practice, it is the bridge between the user's local computer (files, browser 
 
 aeko-mcp is a thin, stateless process. It holds no database. Every call hits the AEKO backend over HTTPS.
 
+> **v0.5.0 update (2026-04-23):** the tool catalog and skill list below describe v0.4.0. The audit shipped in v0.5.0 consolidated the surface from 53 tools → 22 tools (18 kept + 4 new, 35 deprecated) and rebuilt the skill layer (12 skills, 8 new + 4 kept). See `CHANGELOG.md` for the full diff. The **three-tier principle** below still holds and is the operating rule for all future additions.
+
 ### The three-tier surface (as of v0.4.0)
 
 The MCP surface is organized into three tiers. This frames how tools and skills compose for different user moments.
