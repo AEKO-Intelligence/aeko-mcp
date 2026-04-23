@@ -8,6 +8,46 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 
 _No unreleased changes._
 
+## [0.5.2] — 2026-04-23
+
+Patch — fixes tool display names in MCP clients. Before this, Claude
+Desktop and other clients rendered each tool as its raw Python
+function name (e.g. `aeko_get_action_plan`) because we only set
+`annotations`, never the `title` kwarg on `@mcp.tool`. The MCP 2025-06
+spec surfaces `title` as the human-readable label; clients fall back to
+`name` when it's missing.
+
+### Changed
+
+Added `title="..."` on every one of the 22 tool decorators. The titles
+are short verb-phrases that read cleanly in a connector sidebar:
+
+- `aeko_list_domains` → "List connected domains"
+- `aeko_get_domain_info` → "Get domain info"
+- `aeko_get_visibility_summary` → "Get visibility summary"
+- `aeko_get_score` → "Get AEKO score"
+- `aeko_search_research_prompts` → "Search research prompts"
+- `aeko_get_tracked_prompts` → "List tracked prompts"
+- `aeko_get_tracked_prompt` → "Get tracked prompt details"
+- `aeko_track_prompt` → "Track a prompt"
+- `aeko_untrack_prompt` → "Untrack a prompt"
+- `aeko_list_action_items` → "List action items"
+- `aeko_list_technical_items` → "List technical items"
+- `aeko_get_action_plan` → "Get action plan (Plan.md)"
+- `aeko_complete_action_item` → "Complete action item"
+- `aeko_get_brand_kit` → "Get brand kit"
+- `aeko_update_brand_kit` → "Update brand kit"
+- `aeko_list_store_integrations` → "List connected stores"
+- `aeko_get_product_description` → "Get product description HTML"
+- `aeko_update_product_description` → "Update product description"
+- `aeko_update_product_tags` → "Update product tags"
+- `aeko_update_product_meta` → "Update product SEO meta"
+- `aeko_list_store_writes` → "List store write history"
+- `aeko_revert_store_write` → "Revert store write"
+
+No tool `name` or schema changed — `name` is the callable identifier
+and must remain stable for existing callers.
+
 ## [0.5.1] — 2026-04-23
 
 Patch release — docstring + module-header cleanup. No tool surface

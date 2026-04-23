@@ -65,7 +65,7 @@ def _update_product(
     return "\n".join(lines)
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="List connected stores", annotations=READ_ONLY)
 def aeko_list_store_integrations() -> str:
     """List every Cafe24 / Shopify store connected to the current user's AEKO account.
 
@@ -123,7 +123,7 @@ def aeko_list_store_integrations() -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="Get product description HTML", annotations=READ_ONLY)
 def aeko_get_product_description(
     integration_id: str,
     external_product_id: str,
@@ -168,7 +168,7 @@ def aeko_get_product_description(
     return "\n".join(lines)
 
 
-@mcp.tool(annotations=WRITE)
+@mcp.tool(title="Update product description", annotations=WRITE)
 def aeko_update_product_description(
     integration_id: str,
     external_product_id: str,
@@ -194,7 +194,7 @@ def aeko_update_product_description(
     )
 
 
-@mcp.tool(annotations=WRITE)
+@mcp.tool(title="Update product tags", annotations=WRITE)
 def aeko_update_product_tags(
     integration_id: str,
     external_product_id: str,
@@ -216,7 +216,7 @@ def aeko_update_product_tags(
     )
 
 
-@mcp.tool(annotations=WRITE)
+@mcp.tool(title="Update product SEO meta", annotations=WRITE)
 def aeko_update_product_meta(
     integration_id: str,
     external_product_id: str,
@@ -247,7 +247,7 @@ def aeko_update_product_meta(
     )
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="List store write history", annotations=READ_ONLY)
 def aeko_list_store_writes(limit: int = 20, offset: int = 0) -> str:
     """List recent store writes for the current user, newest first.
 
@@ -286,7 +286,7 @@ def aeko_list_store_writes(limit: int = 20, offset: int = 0) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(annotations=DESTRUCTIVE)
+@mcp.tool(title="Revert store write", annotations=DESTRUCTIVE)
 def aeko_revert_store_write(audit_id: str) -> str:
     """Revert a past store write by pushing the 'before' snapshot back.
 

@@ -190,7 +190,7 @@ def _format_tracked_prompts(data: list) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="Search research prompts", annotations=READ_ONLY)
 def aeko_search_research_prompts(
     scope: str | None = None,
     keyword: str | None = None,
@@ -241,7 +241,7 @@ def aeko_search_research_prompts(
     return _format_prompts(data)
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="List tracked prompts", annotations=READ_ONLY)
 def aeko_get_tracked_prompts() -> str:
     """List all prompts you are actively tracking.
 
@@ -253,7 +253,7 @@ def aeko_get_tracked_prompts() -> str:
     return _format_tracked_prompts(data)
 
 
-@mcp.tool(annotations=WRITE)
+@mcp.tool(title="Track a prompt", annotations=WRITE)
 def aeko_track_prompt(
     raw_prompt: str,
     ai_platform: str,
@@ -319,7 +319,7 @@ def aeko_track_prompt(
     return f"Tracked prompt `{prompt_id}` ({status_val}): {display[:120]}"
 
 
-@mcp.tool(annotations=WRITE)
+@mcp.tool(title="Untrack a prompt", annotations=WRITE)
 def aeko_untrack_prompt(prompt_id: str) -> str:
     """Stop tracking a prompt. Historical response data is preserved.
 
@@ -440,7 +440,7 @@ def _format_tracked_prompt_detail(data: dict) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="Get tracked prompt details", annotations=READ_ONLY)
 def aeko_get_tracked_prompt(
     prompt_id: str,
     window: Optional[str] = None,

@@ -91,7 +91,7 @@ def _format_brand_kit(kit: dict) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="Get brand kit", annotations=READ_ONLY)
 def aeko_get_brand_kit(domain_id: str) -> str:
     """Fetch the active Brand Kit for a domain.
 
@@ -106,7 +106,7 @@ def aeko_get_brand_kit(domain_id: str) -> str:
     return _format_brand_kit(data)
 
 
-@mcp.tool(annotations=WRITE)
+@mcp.tool(title="Update brand kit", annotations=WRITE)
 def aeko_update_brand_kit(
     kit_id: str,
     name: Optional[str] = None,

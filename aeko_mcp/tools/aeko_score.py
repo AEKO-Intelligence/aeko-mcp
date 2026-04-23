@@ -2,7 +2,7 @@ from ..server import mcp, client
 from ._annotations import READ_ONLY
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="Get AEKO score", annotations=READ_ONLY)
 def aeko_get_score(domain_id: str) -> str:
     """Get composite AEKO Score for a domain. Combines 5 components: AI Mention Frequency (30%), Citation Rate (20%), Content Citability (20%), Technical Readiness (20%), Sentiment (10%). Weights redistribute dynamically when a component lacks data. Returns overall score (0-100), letter grade (A-F), component breakdown, and top competitors.
 

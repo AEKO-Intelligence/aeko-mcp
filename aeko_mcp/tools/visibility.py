@@ -177,7 +177,7 @@ def _format_tracked_metrics(data: dict) -> str:
 _VISIBILITY_SCOPES = {"overview", "cited_sources", "tracked_prompt_metrics"}
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="Get visibility summary", annotations=READ_ONLY)
 def aeko_get_visibility_summary(
     domain_id: str,
     scope: str = "overview",
@@ -220,7 +220,7 @@ def aeko_get_visibility_summary(
     return _format_visibility(data)
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="Get domain info", annotations=READ_ONLY)
 def aeko_get_domain_info(domain_id: str) -> str:
     """Get domain details and AI-readiness infrastructure status.
 
@@ -266,7 +266,7 @@ def _format_domain_list(domains: list[dict]) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="List connected domains", annotations=READ_ONLY)
 def aeko_list_domains() -> str:
     """List every domain the authenticated AEKO user has connected.
 

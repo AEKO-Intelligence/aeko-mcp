@@ -105,7 +105,7 @@ def _list_items(
     return "\n".join(lines)
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="List action items", annotations=READ_ONLY)
 def aeko_list_action_items(
     domain_id: Optional[str] = None,
     status: Optional[str] = "pending,ready",
@@ -137,7 +137,7 @@ def aeko_list_action_items(
     return _list_items("action", domain_id, status, limit, offset)
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="List technical items", annotations=READ_ONLY)
 def aeko_list_technical_items(
     domain_id: Optional[str] = None,
     status: Optional[str] = "pending,ready",
@@ -161,7 +161,7 @@ def aeko_list_technical_items(
     return _list_items("technical", domain_id, status, limit, offset)
 
 
-@mcp.tool(annotations=READ_ONLY)
+@mcp.tool(title="Get action plan (Plan.md)", annotations=READ_ONLY)
 def aeko_get_action_plan(item_id: str) -> str:
     """Fetch the Plan.md for one Action or Technical item.
 
@@ -183,7 +183,7 @@ def aeko_get_action_plan(item_id: str) -> str:
     return client.get_text(f"/api/action-items/{item_id}", accept="text/markdown")
 
 
-@mcp.tool(annotations=WRITE)
+@mcp.tool(title="Complete action item", annotations=WRITE)
 def aeko_complete_action_item(
     item_id: str,
     artifact_summary: Optional[str] = None,
