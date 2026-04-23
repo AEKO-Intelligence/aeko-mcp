@@ -191,32 +191,6 @@ def aeko_update_product_description(
 
 
 @mcp.tool(annotations=WRITE)
-def aeko_update_product_jsonld(
-    integration_id: str,
-    external_product_id: str,
-    json_ld: dict,
-) -> str:
-    """Replace the JSON-LD structured data embedded in a product's description HTML.
-
-    Does NOT touch the surrounding prose — the backend fetches the current
-    description, strips any existing <script type="application/ld+json">
-    block, and injects the new one at the end.
-
-    Args:
-        integration_id: UUID of the store integration.
-        external_product_id: Cafe24 product_no or Shopify product id.
-        json_ld: The structured data object (typed as a dict).
-            Example: {"@context": "https://schema.org", "@type": "Product",
-            "name": "Mattress X", ...}
-    """
-    return _update_product(
-        integration_id,
-        external_product_id,
-        {"json_ld": json_ld},
-    )
-
-
-@mcp.tool(annotations=WRITE)
 def aeko_update_product_tags(
     integration_id: str,
     external_product_id: str,
