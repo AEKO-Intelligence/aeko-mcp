@@ -1,6 +1,6 @@
 # aeko-mcp — What It Does
 
-> Notion paste-ready overview of the AEKO MCP (Model Context Protocol) server. Everything below reflects the actual shipped state of the repo at [`github.com/AEKO-Intelligence/aeko-mcp`](https://github.com/AEKO-Intelligence/aeko-mcp).
+> Notion paste-ready overview of the AEKO MCP (Model Context Protocol) server. Reflects the shipped state as of **v0.5.0 (2026-04-23)**: 22 tools + 12 skills after the major consolidation audit. Source of truth: [`github.com/AEKO-Intelligence/aeko-mcp`](https://github.com/AEKO-Intelligence/aeko-mcp). For tool-level details, always cross-check with `aeko_mcp/tools/*.py`.
 
 ---
 
@@ -12,17 +12,15 @@ In practice, it is the bridge between the user's local computer (files, browser 
 
 aeko-mcp is a thin, stateless process. It holds no database. Every call hits the AEKO backend over HTTPS.
 
-> **v0.5.0 update (2026-04-23):** the tool catalog and skill list below describe v0.4.0. The audit shipped in v0.5.0 consolidated the surface from 53 tools → 22 tools (18 kept + 4 new, 35 deprecated) and rebuilt the skill layer (12 skills, 8 new + 4 kept). See `CHANGELOG.md` for the full diff. The **three-tier principle** below still holds and is the operating rule for all future additions.
-
-### The three-tier surface (as of v0.4.0)
+### The three-tier surface
 
 The MCP surface is organized into three tiers. This frames how tools and skills compose for different user moments.
 
-- **Tier 1 — Ingredients (advertised tools).** Composable primitives Claude can freestyle with: `aeko_get_score`, `aeko_get_visibility_summary`, `aeko_search_research_prompts`, `aeko_get_citability`, `aeko_score_text`, `aeko_get_product_analysis`, `aeko_list_domains`, `aeko_get_brand_kit`, `aeko_inspect_product_page`, `aeko_get_tracked_prompts`, `aeko_list_action_items`, `aeko_list_technical_items`, `aeko_scan_content_directory`, `aeko_audit_content_file`, `aeko_list_store_integrations`, etc. Value is in the **data**; Claude assembles the sequence.
-- **Tier 2 — Meal kits (skills / slash commands).** Opinionated workflows with guardrails: `/aeko-action-center`, `/aeko-run-action`, `/aeko-fix-technical`, `/aeko-brand-kit`, `/aeko-create-own-content`, `/aeko-create-external-content`, `/aeko-fix-store-level`, `/aeko-competitive-pdp-input`. Value is in the **sequence**; the skill enforces the contract (JSON-LD, responsive HTML, brand voice, audit trail).
-- **Tier 3 — Plumbing (internal helpers).** Tools wired for skills but not intended for standalone use: `aeko_get_action_plan`, `aeko_get_content_brief`, `aeko_get_store_level_brief`, `aeko_get_pdp_optimization_brief`, `aeko_validate_llms_txt`. Their descriptions open with "Internal helper for `/aeko-<skill>`" so Claude deprioritizes them in standalone reasoning.
+- **Tier 1 — Ingredients (advertised tools).** Composable primitives Claude freestyles with: `aeko_list_domains`, `aeko_get_domain_info`, `aeko_get_visibility_summary` (scope-consolidated), `aeko_get_score`, `aeko_search_research_prompts`, `aeko_get_tracked_prompts`, `aeko_get_tracked_prompt` (new v0.5.0), `aeko_track_prompt` / `aeko_untrack_prompt` (new v0.5.0), `aeko_get_brand_kit`, `aeko_list_store_integrations`, `aeko_get_product_description` (new v0.5.0). Value is in the **data**; Claude assembles the sequence.
+- **Tier 2 — Meal kits (skills / slash commands).** Opinionated workflows with guardrails: `/aeko-action-center`, `/aeko-update-pdp`, `/aeko-create-content`, `/aeko-fix-technical`, `/aeko-brand-kit`, `/aeko-visibility-report`, `/aeko-find-prompts-to-track`, `/aeko-prompt-deep-dive`, `/aeko-brand-competitor-analysis`, `/aeko-product-competitor-analysis`, `/aeko-refresh-jsonld`, plus the utility `/aeo-audit`. Value is in the **sequence**; the skill enforces the contract (JSON-LD, responsive HTML, brand voice, audit trail).
+- **Tier 3 — Plumbing (internal helpers).** Tools wired for skills but not intended for standalone use: `aeko_get_action_plan`, `aeko_complete_action_item`, `aeko_update_brand_kit`, `aeko_update_product_description`, `aeko_update_product_tags`, `aeko_update_product_meta`, `aeko_list_store_writes`, `aeko_revert_store_write`. Their descriptions open with "Internal helper for `/aeko-<skill>`" (where applicable) so Claude deprioritizes them in standalone reasoning.
 
-The decision test for new additions: **does value come from the data, or from the sequence?** Data → Tier 1 tool. Sequence → Tier 2 skill. If a tool is only useful inside one skill, it belongs in Tier 3.
+**The v0.5.0 operating principle:** MCP tools earn their slot only when they expose AEKO-unique backend intelligence (visibility forensics, citation mentions, action items, brand kit, tracked-prompt forensics, store writes with audit). If Plan.md + generic primitives (domain info, brand kit, tracked prompts) + web-accessible data cover it, it belongs in a skill — not as a tool. Skills earn their slot by compressing useful workflow, whether AEKO-grounded or not (`/aeo-audit` is the canonical exception). See `CHANGELOG.md` v0.5.0 for the 53 → 22 audit rationale.
 
 ---
 
@@ -137,79 +135,55 @@ aeko-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 
 ---
 
-## 5. Tools exposed
+## 5. Tools exposed (22 total — v0.5.0)
 
-aeko-mcp ships a growing set of tools across several functional groups — visibility, content, product, suggestions, research, generate, report, citability, score, campaigns, content_recommendations, store_write, and pdp. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the current source of truth.
+aeko-mcp ships 22 tools across six modules — `visibility`, `research`, `aeko_score`, `action_plan`, `brand_kit`, `store_write`. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the source of truth.
 
-### Scoring & metrics (3)
+### Domain / account (2)
 | Tool | Purpose |
 |---|---|
-| `aeko_get_score` | Composite AEKO Score (0–100, grade A–F) with 5-component breakdown: AI Mention Frequency, Citation Rate, Content Citability, Technical Readiness, Sentiment. Includes top competitors. |
-| `aeko_get_metrics` | 7-day performance metrics with week-over-week trends. |
-| `aeko_get_visibility_summary` | Brand visibility across ChatGPT / Claude / Gemini / Perplexity over 30 days. |
+| `aeko_list_domains` | List the user's connected domains. |
+| `aeko_get_domain_info` | Domain details + AI-readiness infrastructure status (llms.txt, robots.txt AI blockers, JSON-LD, sitemap). |
 
-### Domain & page analysis (3)
+### Visibility / citation forensics (3)
 | Tool | Purpose |
 |---|---|
-| `aeko_get_domain_info` | Domain details and AI-readiness infrastructure status (llms.txt, robots.txt AI blockers, JSON-LD, sitemap). |
-| `aeko_get_page_analysis` | Per-page AI-readiness score, structured data status, issues, and recommendations. |
-| `aeko_get_cited_sources` | Pages from your domain that AI engines have cited, with citation counts and source prompts. |
+| `aeko_get_score` | Composite AEKO Score (0–100, grade A–F) with 5-component breakdown. Powers the Brand Visibility page. |
+| `aeko_get_visibility_summary(domain_id, scope?, window?)` | **Consolidated in v0.5.0** — `scope` selects one of `overview` (default), `cited_sources`, `tracked_prompt_metrics`. Optional `window` = `7d / 30d / 90d`. Absorbs the retired `aeko_get_metrics` and `aeko_get_cited_sources`. |
+| `aeko_get_tracked_prompt(prompt_id, window?)` | **New in v0.5.0** — citation-forensics payload for one tracked prompt: responses per AI platform, per-response citation array, crawled source metadata (JSON-LD types, extracted text, source-analysis scores). Core primitive for the deep-dive + content skills. |
 
-### Research prompts (3)
+### Research prompts (4)
 | Tool | Purpose |
 |---|---|
-| `aeko_search_research_prompts` | Search the research prompt library by scope, keyword, country, AI platform, query type. Returns KO + EN phrasing and latest AI response with mention metrics. |
+| `aeko_search_research_prompts` | Search the research prompt library (country, AI platform, query type, funnel stage, persona). Returns KO + EN phrasing with latest response metrics. Persona filter added in v0.5.0. |
 | `aeko_get_tracked_prompts` | List prompts actively tracked for the user's domain. |
-| `aeko_get_product_analysis` | Competitive analysis for a product URL — competitor positioning, visibility gaps, market opportunities. |
+| `aeko_track_prompt(raw_prompt, ai_platform, ...)` | **New in v0.5.0 (WRITE)** — closes the find-prompts-to-track loop. |
+| `aeko_untrack_prompt(prompt_id)` | **New in v0.5.0 (WRITE)** — inverse; preserves historical data (`UserPrompts.status='untracked'`). |
 
-### AI citability (2)
+### Action Items / Plan.md (4)
 | Tool | Purpose |
 |---|---|
-| `aeko_get_citability` | Citability score for a specific page, with 5-dimension breakdown: Answer Block Quality, Self-Containment, Structural Readability, Statistical Density, Uniqueness Signals. |
-| `aeko_score_text` | Score arbitrary text for AI citability (supports language-specific analysis). |
+| `aeko_list_action_items(domain_id, status, ...)` | List pending items from the Action tab (`store_write_artifact` + `local_content_artifact`). |
+| `aeko_list_technical_items(domain_id, status, ...)` | List pending items from the Technical tab (`technical_artifact`). |
+| `aeko_get_action_plan(item_id)` | Fetch one item's Plan.md (YAML frontmatter + templated prose). Same endpoint serves Action and Technical tabs. |
+| `aeko_complete_action_item(item_id, ...)` | Mark an item complete with optional `artifact_summary`, `artifact_paths`, `write_result`. |
 
-### Infrastructure & content preparation (5)
+### Brand Kit (2)
 | Tool | Purpose |
 |---|---|
-| `aeko_prepare_llms_txt` | Gather data for llms.txt generation. |
-| `aeko_prepare_robots_txt_fix` | Analyze robots.txt for AI crawler blocks, return a fix snippet. |
-| `aeko_validate_llms_txt` | Validate an existing llms.txt for spec compliance. |
-| `aeko_prepare_json_ld` | Gather data for JSON-LD generation with field guidance per schema type (Product, FAQ, Article, Organization, WebSite, HowTo). |
-| `aeko_prepare_report` | Aggregate all domain data for report generation. |
+| `aeko_get_brand_kit(domain_id)` | Fetch the active Brand Kit. |
+| `aeko_update_brand_kit(kit_id, ...)` | Patch Brand Kit fields. Bumps `snapshot_version` only on semantic field changes. |
 
-### PDP workflow (5)
+### Store write (Cafe24 / Shopify) (7)
 | Tool | Purpose |
 |---|---|
-| `aeko_list_pdp_candidates` | List synced products that are strong candidates for PDP optimization. |
-| `aeko_inspect_product_page` | Fetch the live PDP and extract title/meta/headings/image URLs. |
-| `aeko_read_product_page_image` | Open one extracted live PDP image directly through MCP vision. |
-| `aeko_get_pdp_optimization_brief` | Build the product-first PDP rewrite brief. |
-| `aeko_deploy_pdp_html` | Either instruct manual deployment or write the HTML back to the store via API. |
-
-### Suggestions & optimization (3)
-| Tool | Purpose |
-|---|---|
-| `aeko_get_suggestions` | Prioritized optimization suggestions (legacy flat list). |
-| `aeko_complete_suggestion` | Mark a suggestion as completed (logged to backend as `completed_via='mcp'`). |
-| `aeko_check_brand_entity` | Check Wikipedia/Wikidata entity recognition for a brand. |
-
-### Preview (1)
-| Tool | Purpose |
-|---|---|
-| `aeko_preview_optimized_page` | Generate a self-contained HTML preview (Tailwind + JS) with Original / Optimized / Diff / JSON-LD tabs, Rich Result card, and AEO checklist. Auto-opens in the browser. |
-
-### Suggestions v2 — the 4-category action model (6, new)
-
-The v2 suggestion layer organizes optimization work into 4 action buckets and attaches a **rich content brief** to every suggestion (target domain/URL, required structure, persona, tone, required JSON-LD, must-include fields, competitor source evidence). These tools consume a forward-looking backend contract (`/api/suggestions/v2`, `/api/suggestions/v2/{key}`, `/api/prompt-groups`). They degrade gracefully with a markdown fallback when the backend endpoints are not yet live, so they can ship ahead of backend.
-
-| Tool | Purpose |
-|---|---|
-| `aeko_get_suggestions_v2` | Fetch categorized suggestions grouped into the 4 buckets: **pdp_update**, **own_content**, **external_content**, **store_level**. Optional filters: `category`, `group_id`, `priority`. |
-| `aeko_get_suggestion` | Hydrate a single v2 suggestion with its full brief and source evidence. |
-| `aeko_list_prompt_groups` | List prompt groups defined for a domain (e.g. "mattress category") so work can be scoped by intent. |
-| `aeko_get_pdp_brief` | Product-detail-page rewrite brief — combines the v2 brief with the current page analysis and citability score for `brief.target_url`. Accepts an optional `domain_id` override. |
-| `aeko_get_content_brief` | Content-creation brief for `own_content` or `external_content` suggestions, with supporting tracked-prompt context. |
-| `aeko_get_store_level_brief` | Store-level-fix brief (llms.txt, robots.txt, sitemap, schema infra) with a recommended tool chain. |
+| `aeko_list_store_integrations` | List connected Cafe24 / Shopify stores. Available on all tiers. |
+| `aeko_get_product_description(integration_id, external_product_id)` | **New in v0.5.0** — returns raw editable description HTML (Cafe24 `description` / Shopify `body_html`). Load-bearing for JSON-LD refresh + `append_below_existing` flows. |
+| `aeko_update_product_description(...)` | Replace full description HTML. Writes JSON-LD too (embedded `<script>` blocks inside the HTML). |
+| `aeko_update_product_tags(...)` | Replace the tag list. |
+| `aeko_update_product_meta(...)` | Update SEO title + meta description. |
+| `aeko_list_store_writes` | Audit history of recent writes. |
+| `aeko_revert_store_write(audit_id)` | Push the before-snapshot back. |
 
 ---
 
@@ -219,144 +193,193 @@ aeko-mcp holds no state. Every tool maps to one or more backend HTTP calls.
 
 | Endpoint | Method | Used by |
 |---|---|---|
+| `/api/domains` | GET | `aeko_list_domains` |
+| `/api/domains/{domain_id}` | GET | `aeko_get_domain_info` |
 | `/api/geo-score` | GET | `aeko_get_score` |
-| `/api/tracked-prompts/metrics` | GET | `aeko_get_metrics` |
-| `/api/visibility/summary` | GET | `aeko_get_visibility_summary`, `aeko_get_cited_sources` |
-| `/api/domains/{domain_id}` | GET | `aeko_get_domain_info`, `aeko_prepare_llms_txt`, `aeko_prepare_robots_txt_fix`, `aeko_prepare_json_ld`, `aeko_prepare_report` |
-| `/api/store-pages/analysis` | GET | `aeko_get_page_analysis`, `aeko_get_pdp_brief` (v2) |
-| `/api/suggestions` | GET | `aeko_get_suggestions` (legacy) |
-| `/api/suggestions/complete` | POST | `aeko_complete_suggestion` (body: `{suggestion_key, completed_via: "mcp"}`) |
+| `/api/visibility/summary` | GET | `aeko_get_visibility_summary` (all three scopes) |
 | `/api/research/prompts` | GET | `aeko_search_research_prompts` |
-| `/api/tracked-prompts` | GET | `aeko_get_tracked_prompts` |
-| `/api/citability/page` | GET | `aeko_get_citability`, `aeko_get_pdp_brief` (v2) |
-| `/api/citability/score` | POST | `aeko_score_text` |
-| `/api/product-analyses` | GET | `aeko_prepare_report` |
-| `/api/brand-entities` | GET | `aeko_check_brand_entity` |
-| `/api/suggestions/v2` | GET | `aeko_get_suggestions_v2` **(backend not yet shipped)** |
-| `/api/suggestions/v2/{key}` | GET | `aeko_get_suggestion`, `aeko_get_pdp_brief`, `aeko_get_content_brief`, `aeko_get_store_level_brief` **(backend not yet shipped)** |
-| `/api/prompt-groups` | GET | `aeko_list_prompt_groups` **(backend not yet shipped)** |
+| `/api/tracked-prompts` | GET/POST/DELETE | `aeko_get_tracked_prompts`, `aeko_track_prompt`, `aeko_untrack_prompt` |
+| `/api/tracked-prompts/{prompt_id}` | GET | `aeko_get_tracked_prompt` (composes Responses + ResponseCitations + Sources + CrawledPages) |
+| `/api/action-items` | GET | `aeko_list_action_items`, `aeko_list_technical_items` (distinguished by `tab` param) |
+| `/api/action-items/{item_id}` | GET | `aeko_get_action_plan` |
+| `/api/action-items/{item_id}/complete` | POST | `aeko_complete_action_item` |
+| `/api/brand-kit/{domain_id}` | GET | `aeko_get_brand_kit` |
+| `/api/brand-kits/{kit_id}` | PATCH | `aeko_update_brand_kit` |
+| `/api/store-integrations` | GET | `aeko_list_store_integrations` |
+| `/api/store-integrations/{id}/products/{ext_id}/description` | GET | `aeko_get_product_description` |
+| `/api/store-integrations/{id}/products/{ext_id}` | POST | `aeko_update_product_description`, `aeko_update_product_tags`, `aeko_update_product_meta` |
+| `/api/store-write-audit` | GET | `aeko_list_store_writes` |
+| `/api/store-write-audit/{audit_id}/revert` | POST | `aeko_revert_store_write` |
 
-Everything is authenticated with `Authorization: Bearer <token>`. In hosted HTTP mode, the MCP client obtains and refreshes that token via AEKO's OAuth flow. Errors are mapped to user-friendly messages: 401 → reconnect your AEKO session, 403 → subscription or scope may not include this feature, 404 → resource not found, 5xx → server error, try again later. The v2 tools additionally swallow *all* exceptions and return a friendly "endpoint unavailable" markdown block, so the MCP can be shipped before the backend finishes the v2 contract.
+Everything is authenticated with `Authorization: Bearer <token>`. In hosted HTTP mode, the MCP client obtains and refreshes that token via AEKO's OAuth flow. Errors are mapped to user-friendly messages: 401 → reconnect your AEKO session, 403 → subscription or scope may not include this feature, 404 → resource not found, 5xx → server error, try again later.
 
 ---
 
-## 7. How suggestions flow through MCP
+## 7. How Action Items flow through MCP (v0.5.0)
 
-The suggestion lifecycle is the beating heart of aeko-mcp:
+The Action Items + Plan.md pipeline is the beating heart of aeko-mcp. The v2 Suggestions layer was retired in v0.5.0 — Action Items is now the single routing surface.
 
 ```
 ┌────────────────┐   scheduled   ┌────────────────┐
 │ Tracked prompts│──────────────▶│ AEKO pipelines │
 │ + synced store│               │ (source scrape,│
-└────────────────┘               │  brief gen)    │
+└────────────────┘               │  item gen +    │
+                                 │  Plan.md       │
+                                 │  templating)   │
                                  └───────┬────────┘
                                          │ writes
                                          ▼
-                                ┌──────────────────┐
-                                │ suggestions table│
-                                │  + content brief │
-                                └────────┬─────────┘
+                                ┌─────────────────────┐
+                                │ ActionItems table   │
+                                │  + templated        │
+                                │    Plan.md prose    │
+                                └────────┬────────────┘
                                          │
-                    ┌────────────────────┼─────────────────────┐
-                    │                    │                     │
-                    ▼                    ▼                     ▼
-          aeko_get_suggestions_v2  aeko_get_pdp_brief    aeko_get_content_brief
-          (categorized)            aeko_get_store_level_brief
-                    │                    │                     │
-                    └────────────┬───────┴─────────────────────┘
-                                 ▼
-                          Claude drafts artifacts locally
-                          (HTML, JSON-LD, markdown, files)
-                                 │
-                                 ▼
-                          aeko_save_content(...)
-                                 │
-                                 ▼
-                        aeko_complete_suggestion(key)
-                                 │  POST /api/suggestions/complete
-                                 ▼
-                        { status: completed, completed_via: "mcp" }
+             ┌───────────────────────────┼────────────────────────────┐
+             │                           │                            │
+             ▼                           ▼                            ▼
+    aeko_list_action_items        aeko_list_technical_items    (execution_class branches)
+    (Action tab)                  (Technical tab)
+             │                           │
+             └─────────────┬─────────────┘
+                           ▼
+                  /aeko-action-center  ── surfaces 3 categories:
+                                         • Technical
+                                         • 상품 페이지 개선 (PDP)
+                                         • Content generation
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+      /aeko-fix-      /aeko-update-   /aeko-create-
+      technical       pdp             content
+              │            │            │
+              └────────────┼────────────┘
+                           ▼
+                  aeko_get_action_plan(item_id)
+                  + aeko_get_brand_kit(domain_id)
+                  + aeko_get_tracked_prompt / aeko_get_product_description
+                  + WebFetch (for target_url + crawled sources)
+                           │
+                           ▼
+                  Claude drafts the artifact locally
+                  (HTML, JSON-LD, markdown)
+                           │
+                           ▼
+                  write path diverges by execution_class:
+                  • store_write_artifact → aeko_update_product_description (+ optional revert)
+                  • technical_artifact   → Write to local file + deployment guidance
+                  • local_content_artifact → Write to local file
+                           │
+                           ▼
+                  aeko_complete_action_item(item_id, artifact_summary, ...)
+                  POST /api/action-items/{item_id}/complete
+                  { status: completed, completed_via: "mcp" }
 ```
 
-The user never edits suggestion rows in Postgres. They invoke a skill, Claude calls the right brief tool, drafts the output, saves it, and the completion API flips the suggestion state. Every completion is tagged `completed_via='mcp'` so AEKO can measure MCP-driven adoption.
+The user never edits ActionItems rows in Postgres. They invoke `/aeko-action-center`, pick a category, dispatch to the executor skill, the skill fetches Plan.md + live context, drafts the artifact, writes it (store API or local disk per `execution_class`), and flips the item to `completed`. Every completion is tagged `completed_via='mcp'` so AEKO can measure MCP-driven adoption.
 
 ---
 
-## 8. Skills (guided workflows)
+## 8. Skills (guided workflows) — v0.5.0
 
-Skills are slash commands the user invokes in their MCP host. They encode the opinionated sequence: *gather data → draft → preview → save → complete*. 12 ship today in v0.4.0 (8 retired in the 2026-04 consolidation — see `CHANGELOG.md`).
+Skills are slash commands the user invokes in their MCP host. They encode the opinionated sequence: *gather data → draft → preview → save → complete*. 12 skills ship in v0.5.0 (8 retired + 8 new + 4 kept vs. v0.4.0 — see `CHANGELOG.md`).
 
-### Retired in 2026-04
+### Retired in v0.5.0 (alongside v0.4.0 retirements)
 
-`/aeo-optimize`, `/generate-jsonld`, `/generate-faq`, `/create-blog-article`, `/create-social-content`, `/create-marketing-materials`, `/aeko-optimize-pdp`, `/aeko-update-pdp`. Replacements: use `/aeko-action-center` → `/aeko-run-action` for PDP work; JSON-LD and FAQ generation are now inline in the executor skills.
+`/aeko-run-action` (split by `execution_class`), `/aeko-create-own-content`, `/aeko-create-external-content` (both merged into `/aeko-create-content`), `/aeko-competitive-pdp-input` (absorbed into `/aeko-update-pdp` + `/aeko-brand-competitor-analysis`), `/aeko-fix-store-level` (merged into `/aeko-fix-technical`), `/aeo-audit-local`, `/competitive-research`, `/create-visibility-report`.
 
-### Utility (3)
+### Router + executors (4)
 | Skill | Command | What it does |
 |---|---|---|
-| AEO Audit | `/aeo-audit` | 5-category weighted AEO readiness audit for any URL (Schema 25% / Citability 25% / Infrastructure 20% / Content 20% / Platform 10%). |
-| AEO Audit Local | `/aeo-audit-local` | Batch citability audit of a local directory (HTML, MD, PDF, DOCX). |
-| Create Visibility Report | `/create-visibility-report` | Full AI visibility report with AEKO Score, page-by-page analysis, and ranked actions. |
-| Competitive Research | `/competitive-research` | AI visibility gap analysis against a competitor. |
+| **Action Center** | `/aeko-action-center [domain_id]` | Router. Lists pending items grouped into three categories by `execution_class`: Technical / PDP (상품 페이지 개선) / Content generation. Prints ready-to-copy dispatch blocks. Never executes items itself. |
+| **Update PDP** | `/aeko-update-pdp <item_id>` | Executor for `store_write_artifact` items. Fetches Plan.md → WebFetch product page + images → drafts responsive HTML + JSON-LD → writes shadow product (default) or appends below existing → marks complete with audit trail. |
+| **Create Content** | `/aeko-create-content <item_id>` | Executor for `local_content_artifact` items. Pulls tracked-prompt citation forensics to identify winning source structures (Reddit, Naver blogs, partner media, etc.) → drafts content that mimics those structures in user's brand voice → saves locally only. Never writes to store. |
+| **Fix Technical** | `/aeko-fix-technical <item_id>` | Executor for `technical_artifact` items (llms.txt, robots.txt, site-level JSON-LD). Self-contained with embedded llmstxt.org + robots.txt AI-crawler + schema.org JSON-LD spec rules. Produces artifacts locally with deployment guidance. |
 
-### v2 — AEKO-grounded executors (8)
-
-One skill per action bucket, plus a router. Each skill expects a v2 `Suggestion` brief and draws on `source_evidence` (scraped winning competitor structures) as the load-bearing instruction to "mirror what already wins AI citations."
-
+### Brand Kit (1)
 | Skill | Command | What it does |
 |---|---|---|
-| **Action Center** | `/aeko-action-center [domain_id]` | Router. Lists pending Action + Technical items for a domain; prints ready-to-copy `/aeko-run-action` or `/aeko-fix-technical` blocks. Never executes items itself. |
-| **Run Action** | `/aeko-run-action <item_id>` | Executor for Action-tab items. Fetches Plan.md → asks image strategy → OCR-ingests PDP images → generates responsive HTML + JSON-LD → writes shadow product (default) → marks complete with audit trail. |
-| **Fix Technical** | `/aeko-fix-technical <item_id>` | Executor for Technical-tab items (llms.txt, robots.txt, site-level JSON-LD). Produces artifacts locally with deployment guidance. |
 | **Brand Kit** | `/aeko-brand-kit <domain_id>` | View or edit a domain's brand kit (voice, tone, must-include, forbidden). Load-bearing input for every content + PDP skill. |
-| **Create Own Content** | `/aeko-create-own-content <suggestion_key>` | Own Store · Content. Drafts a blog article / FAQ / landing page on the user's own domain matching the brief's structure, persona, and tone. |
-| **Create External Content** | `/aeko-create-external-content <suggestion_key>` | Other Media · Content. Drafts Wikipedia entries, partner media guest posts, Naver 블로그 / Tistory / Brunch drafts, press releases. **Never auto-publishes** — outputs local files only. |
-| **Competitive PDP Input** | `/aeko-competitive-pdp-input <product_id>` | Research input for a PDP rewrite — competitor-focused, enriches the brief with `source_evidence` before `/aeko-run-action`. |
-| **Fix Store-Level** | `/aeko-fix-store-level <suggestion_key>` | Own Store · Store-Level. Generates llms.txt, robots.txt fixes, sitemap.xml, or schema infra. Flags Cafe24 hosting caveats for llms.txt. |
+
+### Visibility intelligence (3)
+| Skill | Command | What it does |
+|---|---|---|
+| **Visibility Report** | `/aeko-visibility-report [domain_id] [window=7d\|14d\|30d\|90d] [depth=summary\|full]` | On-demand visibility report. `depth=summary` → C-level snapshot. `depth=full` → deep dive with per-page analysis + ranked actions. |
+| **Find Prompts to Track** | `/aeko-find-prompts-to-track [domain_id]` | Discovery loop. Searches the research prompt library with filters (AI platform, persona, funnel stage, country), surfaces candidates, tracks the ones the user picks. |
+| **Prompt Deep Dive** | `/aeko-prompt-deep-dive <prompt_id> [window]` | Citation-forensics deep-dive on one tracked prompt. Lists per-platform responses, ranks cited sources, explains why they win citations, recommends a concrete action. The AEKO-unique value prop operationalized. |
+
+### Competitor analysis (2)
+| Skill | Command | What it does |
+|---|---|---|
+| **Brand Competitor Analysis** | `/aeko-brand-competitor-analysis [domain_id] <competitor>` | Brand-level competitor positioning via WebSearch + Wikipedia/Wikidata + tracked-prompt cross-reference. |
+| **Product Competitor Analysis** | `/aeko-product-competitor-analysis <product_id> [competitor_urls...]` | Product-level property comparison. WebSearch finds comparable products if not specified, WebFetch inspects each PDP, Claude builds a comparison matrix aligned with what AI engines care about. |
+
+### JSON-LD maintenance (1)
+| Skill | Command | What it does |
+|---|---|---|
+| **Refresh JSON-LD** | `/aeko-refresh-jsonld <product_id>` | Periodic JSON-LD refresh (review counts, aggregate rating, recent reviews). Fetch current description via `aeko_get_product_description` → patch JSON-LD blocks in place → write back via `aeko_update_product_description`. Designed to be scheduled. |
+
+### Utility (1)
+| Skill | Command | What it does |
+|---|---|---|
+| **AEO Audit** | `/aeo-audit [url]` | 5-category weighted AEO readiness audit for any URL (Schema 25% / Citability 25% / Infrastructure 20% / Content 20% / Platform 10%). Calls no AEKO MCP tools — pure workflow compression. |
 
 ---
 
-## 9. Typical user workflows
+## 9. Typical user workflows (v0.5.0)
 
 **1. Morning triage in Claude Code**
 ```
 /aeko-action-center
 ```
-Claude shows how many suggestions live in each of the 4 buckets, highlights critical items, and prints ready-to-copy command blocks for the highest-priority suggestion in each bucket. User picks one and runs it.
+Claude shows pending items grouped into Technical / PDP / Content categories, highlights critical items, and prints ready-to-copy dispatch commands for each. User picks one and runs the corresponding executor (`/aeko-fix-technical`, `/aeko-update-pdp`, or `/aeko-create-content`).
 
 **2. Rewriting a product detail page**
 ```
-/aeko-update-pdp sugg_pdp_abc123
+/aeko-update-pdp itm_pdp_abc123
 ```
-Claude pulls the brief (structure, persona, required JSON-LD, competitor evidence), mirrors the winning H2 spine, drafts a bilingual KO/EN description, generates `Product` + `FAQPage` JSON-LD, opens a browser preview with before/after diff, saves to `aeko_output/pdp/`, and marks the suggestion complete. User copies the HTML into Cafe24 admin.
+Claude pulls Plan.md (frontmatter + templated prose), fetches Brand Kit + live page via WebFetch, mirrors the winning H2 spine, drafts bilingual KO/EN description, generates `Product` + `FAQPage` (+ `Review`/`AggregateRating` if data exists) JSON-LD, writes to a shadow product (default) via `aeko_update_product_description`, and marks the item complete with audit trail. Revert is available via `aeko_revert_store_write`.
 
-**3. Fresh AEO audit of a product URL**
+**3. Fresh AEO audit of any URL**
 ```
 /aeo-audit https://mystore.com/products/mattress-queen
 ```
 Claude runs the 5-category weighted audit, returns a ranked list of fixes with severity and effort estimates.
 
-**4. Generating a Wikipedia draft**
+**4. Discovering prompts to track**
 ```
-/aeko-create-external-content sugg_ext_xyz789
+/aeko-find-prompts-to-track
 ```
-Claude drafts a neutral-POV Wikipedia article referencing reliable third-party sources, verifies brand entity recognition, saves to `aeko_output/content/external/wikipedia.org/`. The user submits it manually — the skill never touches the network.
+Claude asks for filter criteria (AI platform, persona, funnel stage, country), queries the research prompt library, surfaces 10–20 candidates grouped by persona/platform, the user picks which to track, and the skill calls `aeko_track_prompt` for each.
 
-**5. Local content audit of a directory of drafts**
+**5. Deep-diving a tracked prompt**
 ```
-/aeko-audit-local ./drafts
+/aeko-prompt-deep-dive prm_xxx 30d
 ```
-Claude scans every HTML / MD / PDF / DOCX in the directory, scores each for citability, and returns a report ranked by impact.
+Claude pulls the full citation-forensics payload — responses per AI platform, citation arrays, crawled source metadata — ranks the top sources, explains why they win citations, and recommends one concrete action (mirror page, fix missing JSON-LD, track a related prompt).
+
+**6. Refreshing JSON-LD on a flagship product**
+```
+/aeko-refresh-jsonld prd_xxx
+```
+Claude fetches the current description HTML via `aeko_get_product_description`, parses the embedded JSON-LD, updates `AggregateRating.ratingValue` / `reviewCount` / fresh `review[]` entries, and writes the patched HTML back via `aeko_update_product_description`. Designed for periodic scheduling.
+
+**7. Weekly / monthly visibility report**
+```
+/aeko-visibility-report 7d summary
+```
+C-level snapshot: headline KPI movement, top-performing prompts, new citations this week, notable losses, recommended next action. Use `depth=full` for the page-by-page deep dive.
 
 ---
 
 ## 10. Limitations / not-yet
 
-- **v2 backend contract is not yet live.** `/api/suggestions/v2`, `/api/suggestions/v2/{key}`, and `/api/prompt-groups` are scheduled. The 6 v2 tools and 5 v2 skills ship now and degrade gracefully with a markdown "endpoint unavailable" message. The legacy `aeko_get_suggestions` + 10 legacy skills keep working regardless.
-- **No write-back to e-commerce platforms.** aeko-mcp drafts PDP HTML, JSON-LD, and articles to local files but does not POST them to Shopify / Cafe24 / Naver Smartstore. The user pastes into the admin themselves. This is intentional for Phase 1; write-back is being scoped as a Phase 2.
+- **Shadow product endpoint is pending.** The canonical PDP write mode is `shadow_product`, but until `POST /api/store-integrations/{id}/products/{ext_id}/shadow` ships, backend stamps `preview_only` + `write_target=local` on `pdp_html` items. `/aeko-update-pdp` handles both modes end-to-end.
+- **Store write-back covers Cafe24 + Shopify only.** Naver Smartstore, Coupang, and other KR-specific platforms are not yet wired. Content skills write to local disk; users paste into those admins manually.
 - **No URL → domain_id reverse lookup.** Tools that need a `domain_id` require the UUID up front. The skills prompt the user when it is missing.
 - **Single-tenant.** One AEKO bearer token per install today. Multi-workspace will need a rethink.
-- **No prompt-group CRUD from MCP.** Once prompt groups exist in the backend, aeko-mcp can *read* them (`aeko_list_prompt_groups`) but not create or edit them. Group management is a dashboard concern.
 - **No offline mode.** Every tool is a live backend call. No caching, no stale snapshots.
+- **Filesystem MCP prerequisite for Claude Desktop.** Skills that write artifacts locally need `Read`/`Write`/`Glob`/`Bash`. Claude Code has these natively. Claude Desktop requires installing `@modelcontextprotocol/server-filesystem` or equivalent — see `aeko-plugin/README.md`.
 
 ---
 

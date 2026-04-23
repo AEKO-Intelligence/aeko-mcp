@@ -11,6 +11,14 @@ Version format: `<YYYY-MM-DD>.<tab>.v<major>.<minor>`. Additive changes (new opt
 
 ### Changelog
 
+**v1.3 (2026-04-23)** — aeko-mcp v0.5.0 tool consolidation:
+- `/aeko-run-action` is retired. It split into three executors aligned with `execution_class`: `/aeko-update-pdp` (store_write_artifact), `/aeko-create-content` (local_content_artifact), `/aeko-fix-technical` (technical_artifact). Contract references to "the executor skill" below apply to whichever of the three matches `execution_class`.
+- Retired MCP tools referenced in prior contract revisions — `aeko_inspect_product_page`, `aeko_fetch_source_content`, `aeko_update_product_jsonld`. Replacements: executors WebFetch `target_url` + crawled source URLs directly; JSON-LD lives inside the description HTML and is written via `aeko_update_product_description`. New read primitive `aeko_get_product_description` exposes the raw editable HTML for read → patch → write-back flows.
+- §3.1 Authoring split and §3.3 `## Execution` prose: updated tool-list guidance to reflect the v0.5.0 surface (brand kit + tracked-prompt forensics + WebFetch, no more `aeko_inspect_product_page`).
+- §4 Technical Guide Document: clarified that technical items share `aeko_get_action_plan` — there is no separate `aeko_get_technical_guide` tool (was proposed in v1.1, never shipped). Section kept for its frontmatter contract, which technical items still honour.
+- §7a Store Write Response: removed `aeko_update_product_jsonld` from the list of direct-write tools.
+- §8 tool surface: removed `aeko_get_technical_guide` stub. Added `aeko_get_product_description` and new tracked-prompt forensics primitive `aeko_get_tracked_prompt(prompt_id, window?)` that the content executor relies on.
+
 **v1.2 (2026-04-20, late)** — prose-templating pivot:
 - Backend retires Sonnet prose generation. `api/services/plan_md.py::render_plan_prose` emits a deterministic templated body at item-create time; no Service Bus round-trip, no async wait. Local Claude (in the aeko-run-action skill) fetches real context via MCP tools at execution time.
 - `ItemStatus`: `generating_prose` is no longer emitted by the backend on new inserts; new rows land directly in `ready`. Skills still recognise `generating_prose` for legacy rows but the retry branch is expected-dead code.
@@ -111,7 +119,7 @@ interface AekoItemSummary {
 ### 3.1 Authoring split (revised under v1.2 prose-templating pivot)
 
 - **Backend app layer** stamps the YAML frontmatter AND a thin templated prose body at item-create time. Both are deterministic functions of the `ActionItems` row; no AI model is invoked during plan generation. Source: `api/services/plan_md.py::build_plan_md` + `render_plan_prose`.
-- **Local Claude in the executor skill** (`aeko-run-action`) does the creative synthesis at run time: calls `aeko_get_brand_kit`, `aeko_get_tracked_prompts` / `aeko_search_research_prompts`, `aeko_inspect_product_page`, `aeko_fetch_source_content` to pull live context, then composes the actual artifact against the frontmatter's machine contract. The templated prose points Claude at exactly these tools — it is execution scaffolding, not narrative guidance.
+- **Local Claude in the executor skill** (`/aeko-update-pdp`, `/aeko-create-content`, or `/aeko-fix-technical` per `execution_class`) does the creative synthesis at run time: calls `aeko_get_brand_kit`, `aeko_get_tracked_prompts` / `aeko_search_research_prompts` / `aeko_get_tracked_prompt`, plus `aeko_get_product_description` (raw editable HTML) and/or `WebFetch` (live page + crawled source URLs) to pull live context, then composes the actual artifact against the frontmatter's machine contract. The templated prose points Claude at exactly these tools — it is execution scaffolding, not narrative guidance.
 
 The skill parses frontmatter for dispatch (all machine values) and reads the templated prose for execution steps (tool list, citability rules, JSON-LD rules, ad-law guardrails, acceptance-criteria echo). Frontmatter remains the sole source of machine truth; prose never re-declares a frontmatter value.
 
@@ -191,7 +199,7 @@ The prose body is concatenated after the closing `---` of the frontmatter with a
 
 1. `# Plan: <item.title>`
 2. `## Why this plan matters` — 1-2 sentence stub keyed on `artifact_type`. No invented competitive context or fake prompt IDs.
-3. `## Execution` — an explicit `- aeko_get_brand_kit(...)` / `- aeko_search_research_prompts(...)` / `- aeko_inspect_product_page(...)` tool list for the executor to run. Honors curated inputs: if `prompts_to_rank_on` is populated, that is the ground-truth set and discovery is skipped. When `prompts_to_rank_on`, `keywords`, and brand-kit are all empty, a visible thin-input advisory is emitted. Closes with a reminder to call `aeko_complete_action_item(item_id=..., artifact_summary=..., artifact_paths=[...])` on success.
+3. `## Execution` — an explicit tool list for the executor to run, composed from the v0.5.0 surface: `aeko_get_brand_kit(...)`, `aeko_get_tracked_prompts(...)` / `aeko_search_research_prompts(...)` / `aeko_get_tracked_prompt(...)` for live context, `aeko_get_product_description(...)` for `store_write_artifact` items that need the editable HTML, and `WebFetch` for target URLs / crawled source pages (replacing the retired `aeko_inspect_product_page` and `aeko_fetch_source_content`). Honors curated inputs: if `prompts_to_rank_on` is populated, that is the ground-truth set and discovery is skipped. When `prompts_to_rank_on`, `keywords`, and brand-kit are all empty, a visible thin-input advisory is emitted. Closes with a reminder to call `aeko_complete_action_item(item_id=..., artifact_summary=..., artifact_paths=[...])` on success.
 4. `## Content citability rules` — static passage-structure rules (80-167 words, name the subject explicitly, definition patterns, no fabricated facts — emit `[VERIFY: <field>]`).
 5. `## JSON-LD rules` — emitted only when `artifact_type == pdp_html` AND `pdp_responsive_contract.json_ld_required`. Covers Product schema required vs conditional fields, `[VERIFY]` never inside JSON-LD, `type="application/ld+json"` exactness. FAQPage sub-section emitted only when `faq_jsonld_required`.
 6. `## Ad-law guardrails` — country-specific (KR populated today). Always emits a visible section; markets without curated rules get an explicit "no guardrails curated yet — apply good-faith judgment" stub so the executor knows compliance was considered.
@@ -253,11 +261,11 @@ interface AekoOcrCacheEntry {
 
 ## 4. Technical Guide Document (guide.md)
 
-`aeko_get_technical_guide(item_id)` returns a single markdown string — the guide.md for the item. Same dual-format as Plan.md: YAML frontmatter (dispatch surface) plus a Sonnet-authored prose body stored in the `guide_prose` column.
+Technical items share the same fetch tool as Action items — `aeko_get_action_plan(item_id)` — because the backend's `GET /api/action-items/{item_id}` endpoint serves both tabs. The returned markdown is the guide.md for technical items (YAML frontmatter + templated prose body, same dual-format as §3). The stub `aeko_get_technical_guide` proposed in the v1.1 contract draft was never shipped and has been removed from §8. Skills for technical artifacts (e.g. `/aeko-fix-technical`) call `aeko_get_action_plan`.
 
 ### 4.1 Authoring split
 
-Identical rule to §3.1: backend app layer stamps frontmatter from DB columns; Sonnet authors only the prose body and references fields by name; frontmatter is machine-only and not echoed to the user; prose language follows `target_language` on the parent item (technical items inherit language from the domain when not set).
+Identical rule to §3.1: backend app layer stamps frontmatter from DB columns and renders the templated prose body inline at item-create time (v1.2 pivot — no AI model); frontmatter is machine-only and not echoed to the user; prose language follows `target_language` on the parent item (technical items inherit language from the domain when not set).
 
 ### 4.2 Frontmatter keys (required unless marked optional)
 
@@ -285,7 +293,7 @@ Identical rule to §3.1: backend app layer stamps frontmatter from DB columns; S
 
 Serialization rules identical to §3.2.
 
-### 4.3 Prose body structure (Sonnet output)
+### 4.3 Prose body structure (backend-templated)
 
 Recommended sections:
 
@@ -377,7 +385,7 @@ interface AekoCompleteItemRequest {
 
 ## 7a. Store Write Response (shared by direct-write tools)
 
-In Stage 1, the existing direct-write tools (`aeko_update_product_description`, `aeko_update_product_jsonld`, `aeko_update_product_tags`, `aeko_update_product_meta`) MUST return this structured response so the skill can build consistent `write_result` payloads for `aeko_complete_action_item`:
+The direct-write tools (`aeko_update_product_description`, `aeko_update_product_tags`, `aeko_update_product_meta`) MUST return this structured response so the skill can build consistent `write_result` payloads for `aeko_complete_action_item`. (`aeko_update_product_jsonld` was retired in aeko-mcp v0.5.0 — JSON-LD lives inside the description HTML and is written via `aeko_update_product_description`.)
 
 ```ts
 interface AekoStoreWriteResponse {
@@ -393,7 +401,7 @@ interface AekoStoreWriteResponse {
 }
 ```
 
-If Stage 1 ships the existing tools still returning markdown-only, `aeko-run-action` handles the gap by setting `write_result.audit_id = null` and surfacing a warning to the user: "audit_id unavailable — revert is not supported for this write."
+If the direct-write tools return markdown-only (missing `audit_id`), the executor skill (`/aeko-update-pdp`) handles the gap by setting `write_result.audit_id = null` and surfacing a warning to the user: "audit_id unavailable — revert is not supported for this write."
 
 ## 7. Shadow Product Response
 
@@ -413,7 +421,7 @@ interface AekoShadowProductResponse {
 }
 ```
 
-If any required field is missing, `aeko-run-action` MUST refuse to mark the item complete and surface the missing field to the user.
+If any required field is missing, `/aeko-update-pdp` MUST refuse to mark the item complete and surface the missing field to the user.
 
 ## 8. MCP Tool Signatures (new surface)
 
@@ -440,15 +448,12 @@ def aeko_list_technical_items(
 
 @mcp.tool()
 def aeko_get_action_plan(item_id: str) -> str:
-    """Fetch the Action item Plan.md (YAML frontmatter + Sonnet prose)."""
-    # Backend: GET /api/action-items/{item_id} -> Plan.md string (see §3)
-    # Response = "---\n" + yaml_frontmatter + "\n---\n\n" + plan_prose
-
-@mcp.tool()
-def aeko_get_technical_guide(item_id: str) -> str:
-    """Fetch the Technical item guide.md (YAML frontmatter + Sonnet prose)."""
-    # Backend: GET /api/technical-items/{item_id} -> guide.md string (see §4)
-    # Response = "---\n" + yaml_frontmatter + "\n---\n\n" + guide_prose
+    """Fetch the Plan.md / guide.md for an item (Action or Technical).
+    Shared endpoint: backend returns the templated markdown (YAML frontmatter
+    + prose body) for any tab. §3 describes the Action shape; §4 describes
+    the Technical shape."""
+    # Backend: GET /api/action-items/{item_id} -> Plan.md / guide.md string
+    # Response = "---\n" + yaml_frontmatter + "\n---\n\n" + prose_body
 
 @mcp.tool()
 def aeko_get_domain_info(domain_id: str) -> str:
@@ -510,7 +515,7 @@ def aeko_get_product_description(
     external_product_id: str,
 ) -> str:
     """Fetch the current editable description HTML for a store product.
-    Required for append_below_existing write mode so aeko-run-action can
+    Required for append_below_existing write mode so /aeko-update-pdp can
     preserve the existing HTML deterministically instead of scraping the
     rendered page. Returns raw description_html as stored in Cafe24/Shopify,
     plus title + current selling flag so the skill can render a full summary.
@@ -540,7 +545,7 @@ All MCP tools return markdown strings for human-facing output.
 
 ## 9. Defaults and Invariants
 
-- `aeko_get_action_plan` and `aeko_get_technical_guide` each return ONE Plan.md / guide.md string assembled from one DB row. MCP never reconstructs plan state from multiple endpoints.
+- `aeko_get_action_plan` returns ONE Plan.md / guide.md string assembled from one DB row (shared across Action and Technical tabs — see §4). MCP never reconstructs plan state from multiple endpoints.
 - Plan.md / guide.md are dual-format: YAML frontmatter + prose body. Both are deterministic backend outputs of the row (v1.2 pivot — prose is templated, no AI author). Prose MUST reference fields by name, never by value.
 - `aeko_update_brand_kit` is patch semantics keyed on `kit_id`. Omitted fields unchanged. `snapshot_version` bumps only on SEMANTIC field changes (`brand_voice_summary`, `tone_of_voice`, `target_audience`, `must_include`, `forbidden`). See §5.
 - `aeko_complete_action_item` always posts `completed_via="mcp"`, `status="completed"`.
@@ -554,7 +559,7 @@ All MCP tools return markdown strings for human-facing output.
 - `aeko_get_action_plan` output starts with `---\n`, has a closing `\n---\n` before a blank line and the first `#` header; YAML between the fences parses; every required frontmatter key from §3.2 is present.
 - `aeko_get_action_plan` for a PDP item → frontmatter has `requires_ocr_ingest: true`, `responsive_html_required: true`, `write_mode` set, and the `pdp_responsive_contract.*` block present.
 - `aeko_get_action_plan` for a non-PDP content item → frontmatter has `execution_class: local_content_artifact` and NO `pdp_responsive_contract.*` keys.
-- `aeko_get_technical_guide` → frontmatter has `execution_class: technical_artifact`; `validation_hints` present when applicable; every required §4.2 key present.
+- `aeko_get_action_plan` on a technical-tab item → frontmatter has `execution_class: technical_artifact`; `validation_hints` present when applicable; every required §4.2 key present.
 - Frontmatter / prose drift test: for any Plan.md, no line in the prose body equals `---` (no stray closing fence); no bullet *line* in the prose body equals, verbatim (after stripping leading bullet markers and whitespace), any string listed in `must_include` or `forbidden`. Whole-line equality only — legitimate narrative references to those values within a sentence are permitted.
 - `aeko_get_brand_kit` → `aeko_update_brand_kit` round-trip does not drop unspecified fields.
 - `aeko_complete_action_item` accepts both store-write and non-store-write completions.
@@ -579,12 +584,12 @@ All MCP tools return markdown strings for human-facing output.
 
 Skills reference these tools; Stage-1 backend work must land them (or skills must degrade cleanly with clear messaging until they do):
 
-- `aeko_get_action_plan` / `aeko_get_technical_guide` — MUST assemble frontmatter from DB columns + prose body and return a single markdown string.
+- `aeko_get_action_plan` — MUST assemble frontmatter from DB columns + templated prose body and return a single markdown string. Serves both Action and Technical items via the shared `GET /api/action-items/{item_id}` endpoint.
 - `aeko_list_action_items` / `aeko_list_technical_items` — MUST return tab-scoped summaries.
 - `aeko_get_brand_kit` / `aeko_update_brand_kit` — MUST exist for Brand Kit checks to work. `metadata.account_tier` and `metadata.billing_url` MUST be populated for the `tier_required` gate + upgrade copy to resolve correctly; if absent, skills fall through to the backend as the authoritative gate (see §3.2).
 - `aeko_complete_action_item` — MUST accept both store-write and non-store-write completions.
 - `aeko_create_shadow_product` — MUST return `AekoShadowProductResponse` with all six provenance fields.
-- `aeko_get_product_description` — required for `append_below_existing` write mode; until wired, `aeko-run-action` aborts that mode with a clear user message (per skill Step 3B.3).
+- `aeko_get_product_description` — required for `append_below_existing` write mode; until wired, `/aeko-update-pdp` aborts that mode with a clear user message. Shipped in aeko-mcp v0.5.0.
 - `aeko_update_product_description` — MUST return `AekoStoreWriteResponse` (§7a); until upgraded, skill flags `audit_id: null` and warns revert is unavailable.
 - `aeko_check_ocr_cache` / `aeko_store_ocr_result` — optional per §8; skills degrade to live OCR when absent.
 
