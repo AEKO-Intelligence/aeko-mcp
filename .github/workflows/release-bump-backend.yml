@@ -40,9 +40,11 @@ jobs:
         working-directory: backend
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
-          FILE="requirements.txt"
+          # panomix/aeko is a monorepo — aeko_backend/ holds the FastAPI
+          # service and requirements.txt. The root has no requirements file.
+          FILE="aeko_backend/requirements.txt"
           if [ ! -f "$FILE" ]; then
-            echo "::error::requirements.txt not found in backend"
+            echo "::error::$FILE not found in panomix/aeko checkout"
             exit 1
           fi
 
