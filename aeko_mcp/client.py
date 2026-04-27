@@ -5,8 +5,9 @@ import httpx
 
 # Fallback messages when the backend doesn't surface a useful ``detail``.
 # Whenever the backend sends a FastAPI-style {"detail": ...} body, that
-# message wins — so the Growth+ upgrade pitch on store-write endpoints
-# reaches Starter users instead of getting masked by a generic fallback.
+# message wins — so backend upgrade pitches (e.g., Pro+ for Content
+# Generation, or trial-expired prompts) reach the user instead of
+# getting masked by a generic fallback.
 ERROR_MESSAGES = {
     401: "Authentication failed. Your AEKO session may be expired or invalid. Reconnect through your MCP client.",
     403: "Access denied. Your subscription may not include this feature.",

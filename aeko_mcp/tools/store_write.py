@@ -17,11 +17,11 @@ JSON-LD lives inside the description HTML and is written via
 `aeko_update_product_description` — there is no separate JSON-LD
 write tool.
 
-All write tools require a Growth+ plan at the AEKO backend — Starter
-calls return a 403 from the backend which surfaces as a RuntimeError
-with the full upgrade-pitch message. ``aeko_list_store_integrations``
-is available on every tier so Starter users can still see what's
-connected.
+Post-tier-restructure (4→3 tiers, 2026-04-27): all write tools are
+available on every active subscription tier (Starter / Pro / Enterprise).
+Inactive or trial-expired accounts surface a 403 from the backend as a
+RuntimeError with the full upgrade-pitch message. ``aeko_list_store_integrations``
+remains available on every tier so users can always see what's connected.
 """
 from typing import Any
 
@@ -78,7 +78,8 @@ def aeko_list_store_integrations() -> str:
     Settings → Store Integrations tab.
 
     Returns markdown with one block per integration. Available on every
-    subscription tier (the write tools themselves are Growth+).
+    subscription tier (and post-2026-04-27 the write tools themselves are
+    also available on every active tier — Starter / Pro / Enterprise).
     """
     result, err = _safe(client.get, "/api/store-integrations")
     if err:

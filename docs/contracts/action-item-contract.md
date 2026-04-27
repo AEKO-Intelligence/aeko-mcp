@@ -26,9 +26,14 @@ Version format: `<YYYY-MM-DD>.<tab>.v<major>.<minor>`. Additive changes (new opt
 - §5 `AekoBrandKit`: aligned with live backend schema. Fields dropped that never shipped (`brand_description`, `persona`, `competitors`, `viewpoint`, `writing_style`, `tone`, `writing_guidelines`, `cta_text`, `cta_link`, `sample_headlines`, `sample_bodies`). Fields kept/added that match `api/schemas/brand_kits.py`: `brand_name`, `tagline`, `tone_of_voice`, `brand_voice_summary`, `target_audience`, `primary_color`, `logo_url`, `sample_urls`, `must_include`, `forbidden`, `status`, `metadata.account_tier`, `metadata.billing_url`.
 - §8 tool signatures: completion tool is canonically `aeko_complete_action_item` (matches backend prose). `aeko_update_brand_kit` takes `(kit_id, <fields>)` and PATCHes `/api/brand-kits/{kit_id}` — there is no PATCH-by-domain route on the backend.
 
+**v1.2 (2026-04-27)** — tier restructure (4→3 tiers):
+- `SubscriptionTier`: removed `growth`. New ladder is `starter | pro | enterprise`. Backend keeps `growth` as a deprecated PackageType alias for one week to absorb in-flight requests, then drops it. MCP clients SHOULD treat any inbound `growth` as `starter` during the alias window.
+- `tier_required` semantics: store-write artifacts (`pdp_html`, `json_ld`) and shadow products are now Starter+ (was Growth+). Content-generation artifacts (`own_store_markdown`, `external_media_markdown`) move to Pro+ (was Growth+).
+- Brand Kit auto-generation moves to Pro+ (was Growth+) — pairs with Content Generation.
+
 **v1.1 (2026-04-20)** — additive alignment with the Phase 3 backend plan:
 - `ItemStatus`: added `generating_prose`, `ready`; retired `in_progress` (no prior consumer). Async prose generation → the executable states are now `pending` (legacy / prose pre-generated at create) and `ready` (Phase 3 / prose generated asynchronously by Sonnet).
-- `SubscriptionTier`: added `growth` between `starter` and `pro`.
+- `SubscriptionTier`: added `growth` between `starter` and `pro` (subsequently removed in v1.2 — see above).
 - `WriteTarget` documented explicitly as `live | shadow | local` (previously implicit in §3.2). This is the canonical set; backend stamping MUST use these values, not `shadow | production | none`.
 - §11.2 Stage-1 guidance: while `aeko_create_shadow_product` is pending, backend MUST stamp `write_mode: preview_only` + `write_target: local` on `pdp_html` items. Flip to `shadow_product` + `shadow` once the shadow endpoint is live.
 - `pdp_responsive_contract`: added `faq_jsonld_required`, `review_jsonld_when_available`.
@@ -76,9 +81,12 @@ type ItemStatus =
 
 type SubscriptionTier =
   | "starter"
-  | "growth"
   | "pro"
   | "enterprise";
+// "growth" was removed in the 4→3 tier restructure (2026-04-27).
+// Backend keeps "growth" in PackageType as a deprecated alias for one
+// week (T+7d cleanup migration drops it). MCP clients SHOULD treat
+// any inbound "growth" value as "starter" during that window.
 ```
 
 Dispatch rule: MCP branches on `execution_class`, NOT on UI action type.
@@ -596,7 +604,7 @@ Skills reference these tools; Stage-1 backend work must land them (or skills mus
 Any skill referencing a Stage-1 tool that is absent at runtime MUST stop with "<tool> is not yet available — required for this item's write_mode/artifact_type" rather than producing partial output.
 
 **Frontmatter keys added across v1.x** — backend stamping responsibility:
-- `tier_required` — set from the item's source policy. `append_below_existing` items SHOULD stamp `tier_required: "growth"` (live-store writes are Growth+); `shadow_product` items SHOULD stamp `tier_required: "starter"`. Optional; absent = Starter-accessible.
+- `tier_required` — set from the item's source policy. Post-2026-04-27 (4→3 tier restructure), `append_below_existing` and `shadow_product` items both stamp `tier_required: "starter"` (live-store writes and shadow products are Starter+). Content-generation artifacts (`own_store_markdown`, `external_media_markdown`) stamp `tier_required: "pro"`. Optional; absent = Starter-accessible.
 - `write_target` — second safety signal, MUST agree with `write_mode` per the pairing rule in §3.2, and MUST use the canonical values `live | shadow | local` (not `production` / `none`). Optional but strongly recommended so the skill can refuse cleanly on misconfigured items.
 - `faq_jsonld_required` / `review_jsonld_when_available` — see §3.2 for semantics.
 
