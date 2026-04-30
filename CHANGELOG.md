@@ -8,6 +8,20 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 
 _No unreleased changes._
 
+## [0.6.1] — 2026-04-30
+
+Patch — restores UUID visibility on tracked-prompt list output so skills can resolve `prompts_to_rank_on` text entries to UUIDs without a separate detail call per prompt.
+
+### Changed
+
+- `aeko_get_tracked_prompts` formatter (`_format_tracked_prompts`) now
+  includes an `ID` column in the markdown table. The backend has always
+  returned `id` per row; the formatter was dropping it, which broke the
+  text-to-UUID resolution path the `aeko-create-content` skill needs when
+  a Plan's `prompts_to_rank_on` is authored as raw text rather than UUIDs.
+  Trailer line now points the caller at `aeko_get_tracked_prompt` for full
+  forensics instead of the previous generic "use individual prompt IDs."
+
 ## [0.6.0] — 2026-04-30
 
 Minor — adds two new tools and expands tracked-prompt forensics, primarily to support the `aeko-create-content` skill quality lift in `aeko-plugin`.

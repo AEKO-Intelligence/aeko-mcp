@@ -167,24 +167,25 @@ def _format_tracked_prompts(data: list) -> str:
     lines.append(f"You are tracking {len(data)} prompt(s).")
     lines.append("")
 
-    lines.append("| # | Prompt | Platform | Country | Status |")
-    lines.append("|---|--------|----------|---------|--------|")
+    lines.append("| # | ID | Prompt | Platform | Country | Status |")
+    lines.append("|---|----|--------|----------|---------|--------|")
 
     for i, p in enumerate(data, 1):
+        prompt_id = p.get("id", "N/A")
         prompt_text = p.get("prompt_en") or p.get("raw_prompt", "N/A")
         if len(prompt_text) > 60:
             prompt_text = prompt_text[:57] + "..."
         platform = PLATFORM_DISPLAY.get(p.get("ai_platform", ""), p.get("ai_platform", "N/A"))
         country = p.get("country", "N/A")
         status = p.get("status", "tracked")
-        lines.append(f"| {i} | {prompt_text} | {platform} | {country} | {status} |")
+        lines.append(f"| {i} | `{prompt_id}` | {prompt_text} | {platform} | {country} | {status} |")
         prompt_ko = p.get("prompt_ko")
         if prompt_ko:
             ko_text = (prompt_ko[:57] + "...") if len(prompt_ko) > 60 else prompt_ko
-            lines.append(f"|   | *{ko_text}* |   |   |   |")
+            lines.append(f"|   |   | *{ko_text}* |   |   |   |")
 
     lines.append("")
-    lines.append("Use individual prompt IDs to get detailed response data.")
+    lines.append("Pass an `ID` from the table to `aeko_get_tracked_prompt` for full forensics (cited sources, JSON-LD `@types`, citability scores).")
     lines.append("")
 
     return "\n".join(lines)
