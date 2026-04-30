@@ -8,6 +8,56 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 
 _No unreleased changes._
 
+## [0.6.0] — 2026-04-30
+
+Minor — adds two new tools and expands tracked-prompt forensics, primarily to support the `aeko-create-content` skill quality lift in `aeko-plugin`.
+
+### Added
+
+- `aeko_crawl_url(url, force_refresh=False)` — re-fetches a URL through AEKO's
+  crawler and returns title, meta description, canonical URL, OG fields,
+  heading hierarchy, paragraph / list / image stats, raw JSON-LD blocks
+  (rendered as fenced JSON code blocks for skill copy-paste), microdata
+  `itemtype` values, and citability score. Replaces `WebFetch` whenever a
+  skill needs JSON-LD or schema-parity signal — `WebFetch` strips
+  `<script type="application/ld+json">` during HTML→markdown conversion.
+- `aeko_list_own_content(domain_id, type, limit)` — lists the brand's own
+  on-site content (blog posts, PDPs, or both). Counterpart to
+  `aeko_get_tracked_prompt` for the brand's own-domain side; lets content
+  skills mimic in-house tone, dedupe against existing pages, and anchor
+  cross-channel narratives. Returns `[{url, title, summary, content_type,
+  last_seen}]`.
+
+### Changed
+
+- `aeko_get_tracked_prompt` formatter now surfaces two fields the backend
+  was already sending but the formatter was dropping:
+  - **Per-citation `crawl.extracted_text`** (capped at 600 chars,
+    whitespace-collapsed) so skills can tone-match against the cited
+    source body.
+  - **Per-response full body** via `response_body_en` (capped at 2500
+    chars). Falls back to the existing 300-char `response_snippet_en`
+    when the backend hasn't shipped the field yet — old payloads continue
+    to render with the legacy `**Snippet**` label.
+
+### Backend dependency notes
+
+This release ships the MCP-side contract for two new backend routes that
+do not exist yet:
+
+- `GET /api/crawl?url=&force_refresh=` — the `aeko_crawl_url` tool's
+  backing endpoint. Reuses the existing crawl/audit pipeline that already
+  populates `aeko_get_tracked_prompt`'s per-citation `crawl` payload;
+  exposes it against arbitrary URLs.
+- `GET /api/domains/{domain_id}/own-content?type=&limit=` — the
+  `aeko_list_own_content` tool's backing endpoint.
+- `crawl.extracted_text` and `response_body_en` need to be added to the
+  `/api/tracked-prompts/{id}` serializer in `panomix/aeko`.
+
+Until these land in the backend, both new tools surface the standard
+"Resource not found" message, and the `aeko-create-content` skill's
+graceful-degrade paths in §3.4 / §3.6 / Error paths absorb the failure.
+
 ## [0.5.2] — 2026-04-23
 
 Patch — fixes tool display names in MCP clients. Before this, Claude

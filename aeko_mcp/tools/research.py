@@ -384,9 +384,24 @@ def _format_tracked_prompt_detail(data: dict) -> str:
             header_bits.append(f"sentiment={sentiment}")
         lines.append(f"- {' · '.join(header_bits)}")
 
+        # Prefer the full response body (post backend rollout) over the
+        # legacy snippet; fall back to the snippet so we degrade gracefully
+        # when the backend hasn't shipped the full body yet. The skill's
+        # structural mimicry needs the surrounding text where citations
+        # appear, not just a 300-char teaser.
+        #
+        # Canonical field name aligned with the rest of the payload: the
+        # backend already uses `response_snippet_en` so the matching
+        # full-body field is `response_body_en`. Legacy fallback to the
+        # snippet only — six aliases would mask a real backend rename.
+        body = resp.get("response_body_en")
         snippet = resp.get("response_snippet_en") or resp.get("response_snippet")
-        if snippet:
-            lines.append(f"- **Snippet**: {snippet[:300]}{'...' if len(snippet) > 300 else ''}")
+        display = body or snippet
+        if display:
+            label = "Response body" if body else "Snippet"
+            cap = 2500
+            trimmed = display if len(display) <= cap else display[: cap - 3] + "..."
+            lines.append(f"- **{label}**: {trimmed}")
 
         mentions = resp.get("mentions") or {}
         if mentions:
@@ -434,6 +449,20 @@ def _format_tracked_prompt_detail(data: dict) -> str:
                         score = analysis.get("citability_score")
                         if score is not None:
                             lines.append(f"    • Citability: {score}")
+                    # Surface a slice of crawl.extracted_text so the skill can
+                    # tone-match against the cited source body. Cap at 600
+                    # chars per citation to keep the rendered payload bounded
+                    # when many citations land on one prompt.
+                    extracted = crawl.get("extracted_text")
+                    if isinstance(extracted, str) and extracted.strip():
+                        ex_cap = 600
+                        ex_trim = (
+                            extracted
+                            if len(extracted) <= ex_cap
+                            else extracted[: ex_cap - 3] + "..."
+                        )
+                        ex_oneline = " ".join(ex_trim.split())
+                        lines.append(f"    • Extracted: {ex_oneline}")
 
         lines.append("")
 
@@ -447,11 +476,13 @@ def aeko_get_tracked_prompt(
 ) -> str:
     """Full citation-forensics payload for one tracked prompt.
 
-    Returns the prompt's responses per AI platform, each response's citations
-    (source URL + domain + position + context snippet), and crawled source
-    metadata (JSON-LD types, extracted text, source-analysis scores). This is
-    AEKO's "which competitors win this prompt and which sources AI engines
-    cite" primitive — core input for `/aeko-prompt-deep-dive`,
+    Returns the prompt's responses per AI platform — each response renders the
+    full body (or a 300-char snippet fallback if the backend hasn't shipped
+    `response_body_en` yet) plus its citations: source URL + domain + position
+    + context snippet, and crawled source metadata (JSON-LD `@type` list,
+    extracted body text, source-analysis citability score). This is AEKO's
+    "which competitors win this prompt and which sources AI engines cite"
+    primitive — core input for `/aeko-prompt-deep-dive`,
     `/aeko-brand-competitor-analysis`, and content skills that mimic winning
     source structures.
 
