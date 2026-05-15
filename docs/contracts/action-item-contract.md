@@ -4,12 +4,17 @@ Source of truth for the post-consolidation AEKO MCP surface (Action, Technical, 
 All new skills and MCP tools MUST reference this document.
 
 Contract version pinning (semver inside date):
-- Action plan: `2026-04-17.action.v1.1`
+- Action plan: `2026-04-17.action.v1.4` (current — proposed, pending backend wiring; see v1.4 changelog entry for the four prerequisite tasks)
 - Technical guide: `2026-04-17.technical.v1.1`
 
 Version format: `<YYYY-MM-DD>.<tab>.v<major>.<minor>`. Additive changes (new optional keys, new optional frontmatter fields, new enum values added to existing optional fields) bump `minor` and do not break skills pinned on `major`. Breaking changes (renamed / removed / type-changed keys) bump `major` and require matching skill updates. Skills MUST gate only on `<YYYY-MM-DD>.<tab>.v<major>.` (trailing dot) — never on the full minor string.
 
 ### Changelog
+
+**v1.4 (proposed — pending backend wiring)** — `products[]` frontmatter field:
+- New optional frontmatter field `products: ProductRef[]` for action items created from the dashboard's `상품 선택` content-scope mode. Documents the shape in §3.2.1 (id, **source_id**, name, slug, sku, outbound_url, image_url, short_description). `source_id` is required: it is the external brand-registered identifier (e.g., Shopify variant ID) that the aeko.shop backend joins on (`Product.source_id`), distinct from `id` (AEKO's internal UUID).
+- Consumer surface: `/aeko-create-content` parses `products[]` in Step 1 and renders product references in `aeko_shop`-channel artifacts as `<figure role="callout" data-variant="product" data-product-source-id="<source_id>">` callouts in body HTML. The aeko.shop sanitizer (`aeko-shop-backend/app/sanitizer.py`) rejects every `<script>` element, so `aeko_shop` body HTML **does not** embed JSON-LD — the frontend regenerates Article + Product structured data from `PostUpsert` fields at render time (`aeko-shop-front/lib/structured-data.ts`). `/aeko-publish-content` reads `featured_products[].product_source_id` from the artifact's sibling `<slug>.meta.json` (a 1:1 mirror of `PostUpsert`); JSON-LD parsing was removed.
+- **Not yet landed.** Four prerequisite tasks block the version bump from being live: (1) `api/services/plan_md.py::build_plan_md` must hydrate `products[]` from `selected_product_ids`, populating both `id` and `source_id`; (2) the action-item-create endpoint must accept those IDs from the dashboard payload; (3) executor skills bump `contract_version` pin from v1.3 to v1.4 once 1+2 ship; (4) the aeko.shop `aeko_publish_content` MCP handler must ship (does not currently exist under `aeko-mcp/aeko_mcp/tools/`). Until those land, all live Plan.md continues to be stamped at v1.3 and `/aeko-create-content` drafts `aeko_shop` articles without product callouts (the recipe's "no products" fallback path).
 
 **v1.3 (2026-04-23)** — aeko-mcp v0.5.0 tool consolidation:
 - `/aeko-run-action` is retired. It split into three executors aligned with `execution_class`: `/aeko-update-pdp` (store_write_artifact), `/aeko-create-content` (local_content_artifact), `/aeko-fix-technical` (technical_artifact). Contract references to "the executor skill" below apply to whichever of the three matches `execution_class`.
@@ -156,6 +161,7 @@ The skill parses frontmatter for dispatch (all machine values) and reads the tem
 | `channels` | string[] | empty array allowed, never omitted |
 | `keywords` | string[] | empty array allowed, never omitted |
 | `prompts_to_rank_on` | string[] | empty array allowed, never omitted |
+| `products` | ProductRef[] (optional, **proposed v1.4 — not yet landed**) | When the v1.4 backend wiring ships, this field will be populated for action items created from the dashboard's 상품 선택 mode. Drives `aeko_shop`-channel product callout rendering (`<figure role="callout" data-variant="product" data-product-source-id="<source_id>">`) in body HTML and the sibling `<slug>.meta.json` sidecar's `featured_products[].product_source_id` consumed at publish. **No in-body JSON-LD** — the aeko.shop frontend regenerates Article + Product structured data from `PostUpsert` fields at render time. See §3.2.1 for the field shape. Until v1.4 lands, all live Plan.md continues to be stamped at v1.3 with no `products[]` field; executor skills tolerate the absence. See changelog for the four prerequisite tasks. |
 | `persona_label` | string (optional) | |
 | `requires_ocr_ingest` | boolean | |
 | `requires_brand_kit` | boolean | |
@@ -200,6 +206,46 @@ pdp_responsive_contract:
 ```
 
 YAML serialization rules: stable key order (above), empty arrays serialized as `[]` not omitted, booleans canonical (`true`/`false`), timestamps ISO-8601 with `Z` suffix.
+
+### 3.2.1 Products dictionary (proposed v1.4 — not yet landed)
+
+This section documents the **target shape** for the `products[]` frontmatter field once v1.4 ships. The field is **not** populated on v1.3 Plan.md today; executor skills accept it when present and ignore its absence cleanly. See the changelog for the four prerequisite tasks blocking v1.4.
+
+When the dashboard's `콘텐츠 범위` selector is set to `상품 선택`, the user picks 1+ products from the brand's catalog. Once v1.4 lands, those selections SHOULD flow into `frontmatter.products[]` as a list of `ProductRef` objects. Each entry:
+
+| Path | Type | Notes |
+|---|---|---|
+| `products[].id` | string (UUID) | Stable AEKO-internal Product table identifier. Required. Used for cross-AEKO references; **not** what aeko.shop publish joins on. |
+| `products[].source_id` | string (1..240) | External brand-registered identifier (e.g., Shopify variant ID, Cafe24 SKU). Required for v1.4 forward. This is the value `PostUpsert.featured_products[].product_source_id` joins on in the aeko.shop backend (`Product.source_id` via `_product_by_source(brand_id, source_id)` in `aeko-shop-backend/app/routes/internal.py`). It is also the value rendered into the `data-product-source-id` attribute on every `<figure role="callout" data-variant="product">` callout in `aeko_shop` body HTML. **Not** the same ID space as `id`. |
+| `products[].name` | string | Display name. Required. |
+| `products[].slug` | string | URL slug, used for aeko.shop deep links (`https://aeko.shop/brands/<brand>/products/<slug>`). Required. |
+| `products[].sku` | string (optional) | Stock-keeping unit if present in the catalog. Not consumed by `aeko_shop` body HTML (the sanitizer's `<a>`/`<figure>` allow-list has no `data-product-sku` attribute). Renderable as plain text in non-`aeko_shop` channels. |
+| `products[].outbound_url` | string (URL) | Deep link to the product page — aeko.shop URL when the product lives on aeko.shop, or the client store's product URL when off-platform. Required. |
+| `products[].image_url` | string (URL) | `https://cdn.aeko.shop/...` image URL. Used for `aeko_shop` product callout `<img src>` and the article's `<slug>.meta.json` `hero_image_url` (first entry only). Required. The aeko.shop sanitizer rejects every non-`cdn.aeko.shop` `<img src>` with HTTP 400, so this field must be CDN-hosted. |
+| `products[].short_description` | string (optional, ≤240 chars) | Used in the `<figure><figcaption>` callout caption for `aeko_shop`. Plain-text rendering for non-`aeko_shop` channels. Omit when absent — do not fabricate. |
+
+State-volatile fields from the Product model (`about_md`, `price_minor`, `currency`, `available`) are **deliberately excluded** from the Plan.md payload. aeko.shop's renderer hydrates these from its live Product table at publish time, joining via `PostUpsert.featured_products[].product_source_id` (NOT `id`).
+
+YAML rendering example:
+
+```yaml
+products:
+  - id: "3f2c1a04-...-..."
+    name: "쿨링 슬립웨어"
+    slug: "cool-sleep"
+    sku: "BIO-CLS-001"
+    outbound_url: "https://aeko.shop/brands/bioelements/products/cool-sleep"
+    image_url: "https://cdn.aeko.shop/brands/bioelements/catalog/cool-sleep-hero.jpg"
+    short_description: "체온 1.5°C 낮추는 메리노 울 슬립웨어"
+```
+
+**Consumer surface:**
+
+- `aeko-create-content` parses `products[]` in Step 1 (skill SKILL.md §1). Drives the `aeko_shop` channel's product callout rendering at §5.3 (sanitizer-safe `<figure role="callout" data-variant="product" data-product-source-id="<source_id>">` per the editorial-html-jsonld recipe's "Product callout pattern" section) and the sibling `<slug>.meta.json` sidecar's `featured_products[]` array.
+- `aeko-publish-content` reads `featured_products[].product_source_id` from the artifact's `<slug>.meta.json` (the 1:1 mirror of `PostUpsert`) — **not** from Plan.md and **not** from JSON-LD parsing. The aeko.shop backend joins on `Product.source_id` via `_product_by_source(brand_id, source_id)` (`aeko-shop-backend/app/routes/internal.py`). `id` (the AEKO internal UUID) is used only for cross-AEKO references, not for the publish join. Plan.md is consulted at publish time only as an **advisory drift check** — its unavailability does not block publish.
+- No other channel consumes `products[]` — Tistory / Naver Blog / social channels / editorial channels render product names as plain text only.
+
+**Backend wiring (prerequisite, separate ticket):** Four tasks block v1.4 from being live: (1) `api/services/plan_md.py::build_plan_md` accepts `selected_product_ids` (list of UUIDs) from the action-item-create payload and hydrates the `ProductRef` fields (both `id` and `source_id`) by joining against the Product table at plan-build time. (2) Frontend `상품 선택` form surfaces selected product IDs to the action-item-create endpoint. (3) Executor skills bump `contract_version` minor from 1.3 to 1.4 once 1+2 ship. (4) The aeko.shop `aeko_publish_content` MCP handler ships under `aeko-mcp/aeko_mcp/tools/` — does not currently exist.
 
 ### 3.3 Prose body structure (backend-templated)
 

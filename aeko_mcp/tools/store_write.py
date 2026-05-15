@@ -23,7 +23,15 @@ Inactive or trial-expired accounts surface a 403 from the backend as a
 RuntimeError with the full upgrade-pitch message. ``aeko_list_store_integrations``
 remains available on every tier so users can always see what's connected.
 """
+import base64
+import hashlib
+import mimetypes
+import os
+import re
+from pathlib import Path
 from typing import Any
+
+import httpx
 
 from ..server import mcp, client
 from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE
@@ -63,6 +71,55 @@ def _update_product(
         return "# Write failed\n\n(no response body)"
     lines = [f"# Store write: {result.get('status', '?').upper()}", ""] + _format_result(result)
     return "\n".join(lines)
+
+
+def _upload_local_images_for_aeko_shop(
+    source_content_id: str,
+    html: str,
+    aeko_shop_brand_id: str | None = None,
+) -> str:
+    pattern = re.compile(r'(<img\b[^>]*\bsrc=["\'])(file://[^"\']+|\./[^"\']+|\.\./[^"\']+)(["\'])', re.IGNORECASE)
+
+    def repl(match: re.Match[str]) -> str:
+        if not aeko_shop_brand_id:
+            raise RuntimeError(
+                "Local <img src> requires aeko_shop_brand_id (backend MediaPresignRequest.brand_id is required). "
+                "Either pass aeko_shop_brand_id to aeko_update_product_description, or set skip_aeko_shop=True "
+                "to leave local image references untouched."
+            )
+        prefix, src, suffix = match.groups()
+        path = Path(src[7:]) if src.startswith("file://") else Path.cwd() / src
+        data = path.read_bytes()
+        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        sha256 = hashlib.sha256(data).hexdigest()
+        content_md5 = base64.b64encode(hashlib.md5(data).digest()).decode()
+        presign = client.post(
+            "/api/aeko-shop/media/presign",
+            json={
+                "brand_id": aeko_shop_brand_id,
+                "source_content_id": source_content_id,
+                "filename": path.name,
+                "content_type": content_type,
+                "content_sha256": sha256,
+                "content_md5": content_md5,
+                "byte_length": len(data),
+            },
+        )
+        upload_url = presign["upload_url"]
+        with httpx.Client(timeout=60.0) as http:
+            resp = http.put(
+                upload_url,
+                content=data,
+                headers={
+                    "x-ms-blob-type": "BlockBlob",
+                    "Content-Type": content_type,
+                    "Content-MD5": content_md5,
+                },
+            )
+            resp.raise_for_status()
+        return f"{prefix}{presign['public_url']}{suffix}"
+
+    return pattern.sub(repl, html)
 
 
 @mcp.tool(title="List connected stores", annotations=READ_ONLY)
@@ -174,6 +231,8 @@ def aeko_update_product_description(
     integration_id: str,
     external_product_id: str,
     description_html: str,
+    skip_aeko_shop: bool = False,
+    aeko_shop_brand_id: str | None = None,
 ) -> str:
     """Replace the full description HTML for a product on a connected store.
 
@@ -187,11 +246,26 @@ def aeko_update_product_description(
             <script type="application/ld+json"> block; if it does, any
             existing JSON-LD block in the store's current description is
             replaced.
+        skip_aeko_shop: When True, leave local ``<img src>`` references
+            untouched (no upload to aeko.shop CDN). Use this for stores
+            whose brand doesn't have an aeko.shop tenant.
+        aeko_shop_brand_id: aeko.shop brand UUID — required when
+            ``skip_aeko_shop=False`` AND the description contains local
+            image references (file://, ./, ../). Maps to backend
+            ``MediaPresignRequest.brand_id`` (non-optional). Pass the
+            domain's aeko.shop brand UUID, NOT the store integration_id.
+            Pass-through to ``_upload_local_images_for_aeko_shop``.
     """
+    source_content_id = f"store-product:{integration_id}:{external_product_id}"
+    clean_html = (
+        description_html
+        if skip_aeko_shop
+        else _upload_local_images_for_aeko_shop(source_content_id, description_html, aeko_shop_brand_id)
+    )
     return _update_product(
         integration_id,
         external_product_id,
-        {"description": description_html},
+        {"description": clean_html, "skip_aeko_shop": skip_aeko_shop},
     )
 
 
