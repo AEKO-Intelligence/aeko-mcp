@@ -11,10 +11,19 @@ Version format: `<YYYY-MM-DD>.<tab>.v<major>.<minor>`. Additive changes (new opt
 
 ### Changelog
 
+**v1.5 (proposed — pending backend wiring)** — backend-saved content variations + item-based publishing:
+- New `Destination` enum in §1 with closed values `own_store_blog | aeko_shop`. Used by the new content-variation tools and `ActionItemSummary.publish_statuses`.
+- New §7b "Content Variation Response" — describes the variation row shape (`variation_id, item_id, destination, title, body_html?, body_markdown?, metadata, status (saved|published|failed), created_at, published_at?, publish_result?, last_error?, meta_summary`), the lifecycle (`saved → published | failed`), and the `publish_statuses` aggregation surfaced on `ActionItemSummary` / `ActionItemDetail` per destination with precedence `published > failed > saved`.
+- New MCP tools in §8: `aeko_save_content_variation` (WRITE_ONCE, called by `/aeko-create-content` Step 7.5 after local artifact validation), `aeko_list_content_variations` (READ_ONLY, called by `/aeko-publish-content` Step 1), `aeko_publish_content_variation` (WRITE_ONCE, called by `/aeko-publish-content` Step 6 — the backend branches per destination: `aeko_shop` → live aeko.shop publish via existing `AekoShopPublisher`; `own_store_blog` → AEKO-owned draft row in `aeko_content_drafts`, NEVER calls Cafe24/Shopify live APIs).
+- `aeko_shop` variation metadata may include Plan.md-derived `featured_products[]` snapshots. Publish upserts those rows into aeko.shop `products` first, then creates the post so aeko.shop maps `post_products` from `featured_product_source_ids`. This supports products that were selected in the content plan but are not yet present in AEKO's synced `store_products` table.
+- **Retires v1.4 prerequisite #4** (the never-shipped `aeko_publish_content` handler) — the three-tool surface above subsumes it. `/aeko-publish-content` reads backend rows; the disk-scan path is gone.
+- Lifecycle clarification on §6 Item Completion: with v1.5's Step 7.5 in `/aeko-create-content`, an item stays `pending` if the user opts into backend save AND any save call fails. Local-only completion (user declines the save prompt OR no publishable destinations were drafted) still fires `aeko_complete_action_item` normally.
+- Backend tables added (informational; not part of skill contract surface): `content_variations` (the variation rows), `aeko_content_drafts` (own_store_blog destination only — AEKO-authored drafts pending push to the user's connected store). See `/Users/seanhan/.claude/plans/backend-saved-content-variations-snoopy-wozniak.md` §1.1 + §1.2 for column shapes.
+
 **v1.4 (proposed — pending backend wiring)** — `products[]` frontmatter field:
 - New optional frontmatter field `products: ProductRef[]` for action items created from the dashboard's `상품 선택` content-scope mode. Documents the shape in §3.2.1 (id, **source_id**, name, slug, sku, outbound_url, image_url, short_description). `source_id` is required: it is the external brand-registered identifier (e.g., Shopify variant ID) that the aeko.shop backend joins on (`Product.source_id`), distinct from `id` (AEKO's internal UUID).
 - Consumer surface: `/aeko-create-content` parses `products[]` in Step 1 and renders product references in `aeko_shop`-channel artifacts as `<figure role="callout" data-variant="product" data-product-source-id="<source_id>">` callouts in body HTML. The aeko.shop sanitizer (`aeko-shop-backend/app/sanitizer.py`) rejects every `<script>` element, so `aeko_shop` body HTML **does not** embed JSON-LD — the frontend regenerates Article + Product structured data from `PostUpsert` fields at render time (`aeko-shop-front/lib/structured-data.ts`). `/aeko-publish-content` reads `featured_products[].product_source_id` from the artifact's sibling `<slug>.meta.json` (a 1:1 mirror of `PostUpsert`); JSON-LD parsing was removed.
-- **Not yet landed.** Four prerequisite tasks block the version bump from being live: (1) `api/services/plan_md.py::build_plan_md` must hydrate `products[]` from `selected_product_ids`, populating both `id` and `source_id`; (2) the action-item-create endpoint must accept those IDs from the dashboard payload; (3) executor skills bump `contract_version` pin from v1.3 to v1.4 once 1+2 ship; (4) the aeko.shop `aeko_publish_content` MCP handler must ship (does not currently exist under `aeko-mcp/aeko_mcp/tools/`). Until those land, all live Plan.md continues to be stamped at v1.3 and `/aeko-create-content` drafts `aeko_shop` articles without product callouts (the recipe's "no products" fallback path).
+- **Not yet landed.** Three prerequisite tasks block the version bump from being live: (1) `api/services/plan_md.py::build_plan_md` must hydrate `products[]` from `selected_product_ids`, populating both `id` and `source_id`; (2) the action-item-create endpoint must accept those IDs from the dashboard payload; (3) executor skills bump `contract_version` pin from v1.3 to v1.4 once 1+2 ship. (Prerequisite #4 — the never-shipped `aeko_publish_content` handler — is **superseded by v1.5's three-tool content-variation surface**; see the v1.5 changelog entry above.) Until those land, all live Plan.md continues to be stamped at v1.3 and `/aeko-create-content` drafts `aeko_shop` articles without product callouts (the recipe's "no products" fallback path).
 
 **v1.3 (2026-04-23)** — aeko-mcp v0.5.0 tool consolidation:
 - `/aeko-run-action` is retired. It split into three executors aligned with `execution_class`: `/aeko-update-pdp` (store_write_artifact), `/aeko-create-content` (local_content_artifact), `/aeko-fix-technical` (technical_artifact). Contract references to "the executor skill" below apply to whichever of the three matches `execution_class`.
@@ -88,6 +97,17 @@ type SubscriptionTier =
   | "starter"
   | "pro"
   | "enterprise";
+
+type Destination =
+  // Closed-set for v1.5. Used by content-variation rows and
+  // ActionItemSummary.publish_statuses. Backend picks HTML vs markdown
+  // body per destination platform; see §7b for the row shape and the
+  // per-destination publish branching in /aeko-publish-content.
+  | "own_store_blog"   // AEKO-authored draft for the user's connected store CMS;
+                       //   publish creates an aeko_content_drafts row only,
+                       //   NEVER calls Cafe24/Shopify live APIs.
+  | "aeko_shop";       // Live publish to aeko.shop via the existing AekoShopPublisher;
+                       //   enforces Pro+ tier and brand.aeko_shop_disabled gates server-side.
 // "growth" was removed in the 4→3 tier restructure (2026-04-27).
 // Backend keeps "growth" in PackageType as a deprecated alias for one
 // week (T+7d cleanup migration drops it). MCP clients SHOULD treat
@@ -477,6 +497,68 @@ interface AekoShadowProductResponse {
 
 If any required field is missing, `/aeko-update-pdp` MUST refuse to mark the item complete and surface the missing field to the user.
 
+## 7b. Content Variation Response (v1.5)
+
+Variation rows are append-only records keyed `(item_id, variation_id)` where `variation_id` is a server-issued UUID. Created by `aeko_save_content_variation` after `/aeko-create-content` Step 7.5; consumed by `aeko_publish_content_variation` from `/aeko-publish-content`. Lifecycle is **independent** of the action item's `status` — an item can be `completed` with zero variations saved (the user declined the Step 7.5 save), or `pending` with no variations (save failed mid-loop and the skill stopped before completion).
+
+```ts
+interface ContentVariation {
+  id: string;                       // variation_id (server-issued UUID)
+  item_id: string;                  // FK to action_items.item_id (Text)
+  destination: Destination;         // "own_store_blog" | "aeko_shop" per §1
+  title: string;
+  body_html: string | null;         // populated for aeko_shop (sanitizer-safe body)
+  body_markdown: string | null;     // populated for own_store_blog (and aeko_shop's debug mirror)
+  metadata: object | null;          // mirrors the local .meta.json sidecar; per-destination required keys
+                                    //   enforced server-side (aeko_shop needs
+                                    //   og_description, featured_product_source_ids,
+                                    //   and, when Plan.md products exist,
+                                    //   featured_products[] snapshots;
+                                    //   hero_image_url is optional)
+  artifact_paths: string[] | null;  // local-disk audit references from the create-content run
+  status: "saved" | "published" | "failed";
+  last_error: string | null;        // populated when status="failed"
+  created_at: string;               // ISO-8601 timestamptz
+  updated_at: string;
+  published_at: string | null;      // set when publish succeeded
+  publish_result: object | null;    // stored handles such as post_id/slug/url or draft_id
+  meta_summary: {                   // flat summary surfaced by aeko_list_content_variations
+    featured_products_count: number;
+    has_hero_image: boolean;
+    locale: string | null;
+  };
+}
+
+interface ContentVariationPublishResponse {
+  variation_id: string;
+  destination: Destination;
+  status: "published" | "failed";
+  // exactly one of the following pair is populated per destination:
+  aeko_shop_url: string | null;     // populated when destination="aeko_shop"
+  post_id: string | null;           // populated when destination="aeko_shop"
+  draft_id: string | null;          // populated when destination="own_store_blog"
+}
+```
+
+**`ActionItemSummary.publish_statuses`** — populated server-side by `/api/action-items` (list + detail). Aggregates content_variation rows per `(item_id, destination)` with precedence `published > failed > saved` so a single failed variation doesn't get masked by a more recent `saved` row of the same destination:
+
+```ts
+interface ActionItemSummary {
+  // ... existing fields ...
+  publish_statuses?: {              // optional; absent / {} / null all render identically (no badges)
+    own_store_blog?: "saved" | "published" | "failed";
+    aeko_shop?: "saved" | "published" | "failed";
+  };
+}
+```
+
+**Publish branching by destination** (server-side, inside `POST /api/content-variations/{variation_id}/publish`):
+
+- `aeko_shop`: build an `AekoShopPostPublishRequest` adapter from the variation row's `title` / `body_html` / `metadata` → call existing `AekoShopPublisher.publish_post(...)`. `body_html` and `og_description` are required; `hero_image_url` is optional. If `metadata.featured_products[]` is present, publish first upserts those Plan.md-derived product snapshots into aeko.shop's `products` table (without replacing the whole catalog), then creates the post so aeko.shop can populate `post_products` from `featured_product_source_ids`. Pro+ tier, `brand.aeko_shop_disabled`, and the 10/hour rate limit are enforced inside `publisher.enforce_publish_gate`. On success the variation flips to `published`, `published_at` is set, and `publish_result` stores the post handles IN THE SAME TRANSACTION as the publisher's row insert.
+- `own_store_blog`: insert a new `aeko_content_drafts` row with `synthetic_external_id = f"aeko:{item_id}:{variation_id}"`. Flip variation to `published` in the same transaction. **NEVER calls Cafe24/Shopify live APIs** — this is draft-only storage; the user pushes manually via the AEKO dashboard or via a future auto-connector (deferred to a separate ticket).
+
+**Failure semantics**: 4xx for tier / disabled / 422-adapter / 404-not-owned. Already-published rows return a normal `published` response populated from `publish_result` and do not create duplicates. 502 for aeko-shop upstream errors. Retriable failures (tier, disabled, rate-limit) leave the row as `saved`; 422 and 502 may flip to `failed` with `last_error` populated.
+
 ## 8. MCP Tool Signatures (new surface)
 
 ```python
@@ -593,6 +675,66 @@ def aeko_store_ocr_result(ocr_cache_key: str, payload: dict) -> str:
     payload shape: AekoOcrCacheEntry (without ocr_cache_key — backend takes it from the path).
     """
     # Backend: PUT /api/ocr-cache/{ocr_cache_key}  body: AekoOcrCacheEntry
+
+# --- v1.5: Content variation surface (replaces the never-shipped aeko_publish_content) ---
+
+@mcp.tool()
+def aeko_save_content_variation(
+    item_id: str,
+    destination: str,                       # "own_store_blog" | "aeko_shop" per Destination enum (§1)
+    title: str,
+    body_html: str | None = None,           # at least one of body_html / body_markdown required (validated tool-side)
+    body_markdown: str | None = None,
+    metadata: dict | None = None,           # mirrors .meta.json; aeko_shop requires og_description
+                                            #   + featured_product_source_ids; include
+                                            #   featured_products[] snapshots when
+                                            #   Plan.md products exist; hero_image_url
+                                            #   is optional
+    artifact_paths: list[str] | None = None,
+) -> str:
+    """Save a publishable variation to the backend. Called by /aeko-create-content
+    Step 7.5 after local-artifact validation. Backend derives brand_kit_id from
+    action_items.brand_kit_id (the tool does NOT carry brand_id).
+    """
+    # Backend: POST /api/content-variations  body: ContentVariationCreate
+    # Auth: require_dual_auth_with_rate_limit + require_scope("mcp:write")
+    # Response: ContentVariationResponse (incl. server-issued variation_id)
+    # Annotation: WRITE_ONCE (same args called twice creates two rows — append-only)
+
+@mcp.tool()
+def aeko_list_content_variations(
+    item_id: str,
+    destination: str | None = None,
+    status: str | None = None,
+    limit: int = 20,
+) -> str:
+    """List saved variations for an item, ordered newest-first.
+    Called by /aeko-publish-content Step 1 to discover what's available to publish.
+    """
+    # Backend: GET /api/content-variations?item_id=<uuid>&destination=...&status=...&limit=...
+    # Auth: require_dual_auth_with_rate_limit
+    # Response: ContentVariationListResponse (hard cap limit=50)
+    # Annotation: READ_ONLY
+
+@mcp.tool()
+def aeko_publish_content_variation(
+    item_id: str,
+    variation_id: str,
+) -> str:
+    """Publish a saved variation. Backend reads the row server-side and branches
+    on destination: aeko_shop → live publish via existing AekoShopPublisher;
+    own_store_blog → AEKO-owned draft row in aeko_content_drafts (never calls
+    Cafe24/Shopify live APIs). The skill carries only item_id at publish time;
+    the backend reads all publish payload fields from the stored row.
+    item_id is kept in the tool signature for the skill's downstream
+    aeko_complete_action_item write_result handoff.
+    """
+    # Backend: POST /api/content-variations/{variation_id}/publish
+    # Body: {"item_id": item_id} for defense-in-depth item/variation matching.
+    # Auth: require_dual_auth_with_rate_limit + require_scope("mcp:write")
+    # Response: ContentVariationPublishResponse (aeko_shop_url + post_id for aeko_shop;
+    #            draft_id for own_store_blog; already-published rows return stored handles)
+    # Annotation: WRITE_ONCE
 ```
 
 All MCP tools return markdown strings for human-facing output.
