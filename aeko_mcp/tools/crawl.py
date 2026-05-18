@@ -13,8 +13,6 @@ Prefer this over `WebFetch` for forensics: WebFetch returns markdown
 which is fine for human reading but useless for schema mirroring.
 """
 
-from __future__ import annotations
-
 import json
 from typing import Any
 

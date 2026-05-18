@@ -15,8 +15,6 @@ fetches one PDP's HTML by id). Different from `aeko_list_domains`, which
 returns the AEKO-side domain catalog rather than the URLs *on* a domain.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from ..server import mcp, client

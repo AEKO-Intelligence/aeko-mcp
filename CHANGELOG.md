@@ -8,6 +8,14 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 
 _No unreleased changes._
 
+## [0.8.1] — 2026-05-18
+
+Patch — restores backend worker boot. `aeko_mcp/tools/crawl.py` and `aeko_mcp/tools/own_content.py` (introduced in the v0.6 line) and `aeko_mcp/tools/media_upload.py` (introduced in v0.7) each started with `from __future__ import annotations`, which turns every parameter annotation into a string at runtime. Older `mcp` SDK releases within the declared range `mcp>=1.11.0,<1.16.0` (confirmed against `mcp==1.11.0`) have a `Tool.from_function` that calls `issubclass(param.annotation, Context)` without resolving string annotations — so the first `@mcp.tool` decoration in any affected module raises `TypeError: issubclass() arg 1 must be a class` and the embedded backend worker (panomix/aeko) fails to boot. The bug was carried into v0.8.0 and only reached production this release because earlier minor versions weren't tagged.
+
+### Fixed
+
+- `aeko_mcp/tools/crawl.py`, `aeko_mcp/tools/own_content.py`, `aeko_mcp/tools/media_upload.py` no longer use PEP 563 deferred annotations. The decorated tool signatures use only plain class annotations (`str`, `bool`, `int`) so the future import was load-bearing for nothing; PEP 585/604 syntax in those modules only appears in private helper return types and local-variable annotations, which `inspect.signature()` doesn't introspect. Reproduced + verified the fix in a clean venv against `mcp==1.11.0` (crash → `boot OK`).
+
 ## [0.8.0] — 2026-05-18
 
 Minor — adds a dedicated text→UUID resolver for `prompts_to_rank_on` so the `aeko-create-content` skill no longer has to grep-parse `aeko_get_tracked_prompts` markdown. The 0.6.1 patch only fixed the ID column for English rows; `prompt_ko` still renders on a separate row without the ID column, which is why text-resolution kept failing for Korean Plan.md inputs and forcing the "인용 포렌식 없이 계속 진행 / UUID 확인 후 재실행" prompt.

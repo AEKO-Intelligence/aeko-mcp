@@ -1,6 +1,4 @@
 """Media upload helper for aeko.shop syndication."""
-from __future__ import annotations
-
 from ..server import client, mcp
 from ._annotations import WRITE
 
