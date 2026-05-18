@@ -8,6 +8,24 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 
 _No unreleased changes._
 
+## [0.8.0] — 2026-05-18
+
+Minor — adds a dedicated text→UUID resolver for `prompts_to_rank_on` so the `aeko-create-content` skill no longer has to grep-parse `aeko_get_tracked_prompts` markdown. The 0.6.1 patch only fixed the ID column for English rows; `prompt_ko` still renders on a separate row without the ID column, which is why text-resolution kept failing for Korean Plan.md inputs and forcing the "인용 포렌식 없이 계속 진행 / UUID 확인 후 재실행" prompt.
+
+### Added
+
+- `aeko_resolve_prompts_by_text(texts: list[str])` — calls
+  `GET /api/tracked-prompts` once and returns one deterministic line
+  per input: either `"text" → `uuid` (matched_via: prompt_en | prompt_ko | raw_prompt)`,
+  `` `uuid` → already a UUID `` for inputs that already match the UUID
+  regex, or `"text" → UNRESOLVED`. Normalization is server-side (NFC
+  + lowercase + strip punctuation + collapse whitespace), so Korean /
+  CJK inputs match cleanly without the caller having to align columns
+  across markdown rows. When backend rows arrive with no `id` field,
+  the response surfaces a one-line warning rather than silently
+  dropping them — exposes the backend regression that the 0.6.1
+  formatter patch worked around.
+
 ## [0.6.1] — 2026-04-30
 
 Patch — restores UUID visibility on tracked-prompt list output so skills can resolve `prompts_to_rank_on` text entries to UUIDs without a separate detail call per prompt.

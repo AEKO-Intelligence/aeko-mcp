@@ -1,7 +1,26 @@
+import re
+import unicodedata
 from typing import Any, Optional
 
 from ..server import mcp, client
 from ._annotations import READ_ONLY, WRITE
+
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_prompt_text(s: str) -> str:
+    # NFC + lowercase + drop punctuation + collapse whitespace. CJK
+    # word characters are preserved by \w under re.UNICODE.
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFC", s).lower()
+    s = re.sub(r"[^\w\s]", " ", s, flags=re.UNICODE)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
 
 PLATFORM_DISPLAY = {
@@ -252,6 +271,88 @@ def aeko_get_tracked_prompts() -> str:
     """
     data = client.get("/api/tracked-prompts")
     return _format_tracked_prompts(data)
+
+
+@mcp.tool(title="Resolve prompt texts to UUIDs", annotations=READ_ONLY)
+def aeko_resolve_prompts_by_text(texts: list[str]) -> str:
+    """Resolve raw prompt strings to tracked-prompt UUIDs.
+
+    Use when a workflow (e.g. `/aeko-create-content`) receives
+    `prompts_to_rank_on` entries as *text* (older Plan-builders,
+    manually authored Plans) and needs UUIDs to pass to
+    `aeko_get_tracked_prompt` for citation forensics. Replaces the
+    fragile pattern of grep-parsing `aeko_get_tracked_prompts`
+    markdown — that output renders `prompt_ko` on a separate row from
+    the UUID, so cross-lang matches silently miss the ID column.
+
+    Fetches the user's tracked prompts once and matches each input
+    against `prompt_en`, `prompt_ko`, and `raw_prompt` after
+    normalization (NFC, lowercase, strip punctuation, collapse
+    whitespace). Inputs that already look like UUIDs are echoed back
+    unchanged — safe to pass a mixed list straight from
+    `frontmatter.prompts_to_rank_on`.
+
+    Output is one line per input: ``"text" → `uuid` (matched_via: …)``
+    or ``"text" → UNRESOLVED``. No table parsing required by callers.
+
+    Args:
+        texts: Prompt strings to resolve (raw text, UUID, or mixed).
+    """
+    if not texts:
+        return "No input texts provided."
+
+    data = client.get("/api/tracked-prompts")
+    if not isinstance(data, list):
+        return "Backend returned unexpected payload (expected a JSON list)."
+
+    # {normalized_text: (uuid, matched_field)}. First non-empty match
+    # wins so results are stable across calls; cross-row collisions on
+    # the normalized form are rare.
+    index: dict[str, tuple[str, str]] = {}
+    no_id_count = 0
+    for p in data:
+        uuid = p.get("id")
+        if not uuid:
+            no_id_count += 1
+            continue
+        for field in ("prompt_en", "prompt_ko", "raw_prompt"):
+            val = p.get(field)
+            if not isinstance(val, str):
+                continue
+            key = _normalize_prompt_text(val)
+            if key and key not in index:
+                index[key] = (uuid, field)
+
+    lines = ["# Prompt UUID resolution", ""]
+    if no_id_count:
+        lines.append(
+            f"_Warning: {no_id_count} tracked-prompt row(s) returned "
+            f"with no `id` field — backend issue, skipped._"
+        )
+        lines.append("")
+
+    resolved = 0
+    for text in texts:
+        if not isinstance(text, str) or not text.strip():
+            lines.append("- (empty input) → UNRESOLVED")
+            continue
+        stripped = text.strip()
+        if _UUID_RE.match(stripped):
+            lines.append(f"- `{stripped}` → already a UUID")
+            resolved += 1
+            continue
+        key = _normalize_prompt_text(stripped)
+        hit = index.get(key)
+        if hit:
+            uuid, field = hit
+            lines.append(f'- "{stripped}" → `{uuid}` (matched_via: {field})')
+            resolved += 1
+        else:
+            lines.append(f'- "{stripped}" → UNRESOLVED')
+
+    lines.append("")
+    lines.append(f"Resolved {resolved}/{len(texts)}.")
+    return "\n".join(lines)
 
 
 @mcp.tool(title="Track a prompt", annotations=WRITE)
