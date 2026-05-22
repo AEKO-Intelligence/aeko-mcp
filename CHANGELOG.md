@@ -6,7 +6,9 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Docs
+
+- README: document Gemini CLI as a first-class DCR client alongside Claude Code and Codex CLI. Adds `gemini mcp add --transport http ...` to the CLI clients section plus the equivalent `~/.gemini/settings.json` `mcpServers` block (`httpUrl` form), and notes the consolidated `url` + `type: "http"` form from google-gemini/gemini-cli#13762. Authentication section now calls out Gemini CLI's `dynamic_discovery` OAuth provider, which reads `/.well-known/oauth-authorization-server` on first connect. No code change; package version unchanged.
 
 ## [0.8.1] — 2026-05-18
 

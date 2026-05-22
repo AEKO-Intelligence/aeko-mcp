@@ -19,7 +19,7 @@ The hosted AEKO MCP server is already running at `https://aeko-intelligence.com/
 
 The pre-registered client routes the callback through `https://claude.ai/api/mcp/auth_callback`, which is reliable across Desktop's sandboxed runtime.
 
-### Claude Code / Codex CLI
+### Claude Code / Codex CLI / Gemini CLI
 
 These use Dynamic Client Registration (RFC 7591) automatically — no client ID needed:
 
@@ -29,16 +29,33 @@ claude mcp add --transport http aeko https://aeko-intelligence.com/mcp
 
 # Codex
 codex mcp add --transport http aeko https://aeko-intelligence.com/mcp
+
+# Gemini CLI
+gemini mcp add --transport http aeko https://aeko-intelligence.com/mcp
 ```
 
 The client opens a browser, you sign in at AEKO, approve access — done. Tokens refresh automatically.
+
+If you prefer to edit Gemini's `~/.gemini/settings.json` directly, the equivalent block is:
+
+```json
+{
+  "mcpServers": {
+    "aeko": {
+      "httpUrl": "https://aeko-intelligence.com/mcp"
+    }
+  }
+}
+```
+
+Recent Gemini CLI builds also accept the consolidated `url` form with `"type": "http"` (see google-gemini/gemini-cli#13762). Either works. After editing, run `/mcp reload` inside Gemini CLI.
 
 ## Authentication
 
 Browser OAuth 2.1 flow with PKCE. Two paths depending on client:
 
 - **Pre-registered public client** (Claude Desktop custom connector, and any future tool that supports hosted callbacks) — paste `aeko-mcp-v1` into the connector's client-ID field. No secret.
-- **Dynamic Client Registration** (Claude Code, Codex CLI, any generic MCP client with loopback) — client auto-registers with AEKO via RFC 7591. No manual configuration.
+- **Dynamic Client Registration** (Claude Code, Codex CLI, Gemini CLI, any generic MCP client with loopback) — client auto-registers with AEKO via RFC 7591. No manual configuration. Gemini CLI uses its built-in `dynamic_discovery` provider, which reads `/.well-known/oauth-authorization-server` on first connect.
 
 AEKO is the authorization server and resource server. Tokens are opaque (not JWTs) and persist in the `oauth_access_tokens` / `oauth_refresh_tokens` tables. OAuth discovery lives at `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource`.
 
