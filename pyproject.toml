@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "aeko-mcp"
 version = "0.8.1"
-description = "AEKO MCP — AI Engine Optimization tools for Claude and Codex"
+description = "AEKO MCP — AI Engine Optimization tools for Claude, Codex, and Gemini"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [
     { name = "AEKO Intelligence" },
 ]
-keywords = ["aeo", "ai-visibility", "ecommerce", "mcp", "claude", "codex"]
+keywords = ["aeo", "ai-visibility", "ecommerce", "mcp", "claude", "codex", "gemini"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
