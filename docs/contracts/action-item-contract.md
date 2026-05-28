@@ -4,14 +4,18 @@ Source of truth for the post-consolidation AEKO MCP surface (Action, Technical, 
 All new skills and MCP tools MUST reference this document.
 
 Contract version pinning (semver inside date):
-- Action plan: `2026-04-17.action.v1.4` (current — proposed, pending backend wiring; see v1.4 changelog entry for the four prerequisite tasks)
+- Action plan: `2026-04-17.action.v1.5` (current — backend-saved content variations + selected `brand_kit_id` frontmatter)
 - Technical guide: `2026-04-17.technical.v1.1`
 
 Version format: `<YYYY-MM-DD>.<tab>.v<major>.<minor>`. Additive changes (new optional keys, new optional frontmatter fields, new enum values added to existing optional fields) bump `minor` and do not break skills pinned on `major`. Breaking changes (renamed / removed / type-changed keys) bump `major` and require matching skill updates. Skills MUST gate only on `<YYYY-MM-DD>.<tab>.v<major>.` (trailing dot) — never on the full minor string.
 
 ### Changelog
 
-**v1.5 (proposed — pending backend wiring)** — backend-saved content variations + item-based publishing:
+**v1.5 (current)** — backend-saved content variations + selected Brand Kit identity:
+
+- Plan.md frontmatter now includes optional `brand_kit_id`, allowing executor skills to load the exact kit selected in the AEKO app instead of relying on active-by-domain lookup. This also gives aeko.shop media presign the correct Brand Kit id.
+- New MCP helpers: `aeko_get_brand_kit_by_id` and `aeko_list_brand_kits`. `aeko_request_media_upload` sends `brand_kit_id`.
+- Backend-saved content variations + item-based publishing:
 - New `Destination` enum in §1 with closed values `own_store_blog | aeko_shop`. Used by the new content-variation tools and `ActionItemSummary.publish_statuses`.
 - New §7b "Content Variation Response" — describes the variation row shape (`variation_id, item_id, destination, title, body_html?, body_markdown?, metadata, status (saved|published|failed), created_at, published_at?, publish_result?, last_error?, meta_summary`), the lifecycle (`saved → published | failed`), and the `publish_statuses` aggregation surfaced on `ActionItemSummary` / `ActionItemDetail` per destination with precedence `published > failed > saved`.
 - New MCP tools in §8: `aeko_save_content_variation` (WRITE_ONCE, called by `/aeko-create-content` Step 7.5 after local artifact validation), `aeko_list_content_variations` (READ_ONLY, called by `/aeko-publish-content` Step 1), `aeko_publish_content_variation` (WRITE_ONCE, called by `/aeko-publish-content` Step 6 — the backend branches per destination: `aeko_shop` → live aeko.shop publish via existing `AekoShopPublisher`; `own_store_blog` → AEKO-owned draft row in `aeko_content_drafts`, NEVER calls Cafe24/Shopify live APIs).
@@ -185,6 +189,7 @@ The skill parses frontmatter for dispatch (all machine values) and reads the tem
 | `persona_label` | string (optional) | |
 | `requires_ocr_ingest` | boolean | |
 | `requires_brand_kit` | boolean | |
+| `brand_kit_id` | string (optional) | Selected Brand Kit UUID when the action item was created. Executor skills should prefer this exact kit over active-by-domain lookup. |
 | `responsive_html_required` | boolean | |
 | `brand_kit_snapshot_version` | string (optional) | present if `requires_brand_kit`; ISO-8601 |
 | `pdp_ocr_cache_key` | string (optional) | present for PDP items with a prior OCR run |
@@ -603,6 +608,19 @@ def aeko_get_brand_kit(domain_id: str) -> str:
     # Backend: GET /api/brand-kit/{domain_id} -> AekoBrandKit
 
 @mcp.tool()
+def aeko_get_brand_kit_by_id(kit_id: str) -> str:
+    """Fetch a Brand Kit by kit id, regardless of status."""
+    # Backend: GET /api/brand-kits/{kit_id} -> AekoBrandKit
+
+@mcp.tool()
+def aeko_list_brand_kits(
+    domain_id: str | None = None,
+    status: str | None = None,
+) -> str:
+    """List Brand Kits, optionally filtered by domain and status."""
+    # Backend: GET /api/brand-kits?domain_id=<uuid>&status=...
+
+@mcp.tool()
 def aeko_update_brand_kit(
     kit_id: str,
     name: str | None = None,
@@ -747,6 +765,7 @@ All MCP tools return markdown strings for human-facing output.
 - `aeko_complete_action_item` always posts `completed_via="mcp"`, `status="completed"`.
 - `write_mode` lives on the item contract (frontmatter), not as a runtime flag to the skill.
 - `execution_class` is the only dispatch key the executor relies on.
+- `brand_kit_id` should be present in frontmatter whenever the action item was created with a selected Brand Kit. Executors prefer this exact kit over active-by-domain lookup.
 - `brand_kit_snapshot_version` is mandatory in frontmatter whenever `requires_brand_kit: true`, so plans can prove freshness.
 
 ## 10. Contract Tests
@@ -782,7 +801,7 @@ Skills reference these tools; Stage-1 backend work must land them (or skills mus
 
 - `aeko_get_action_plan` — MUST assemble frontmatter from DB columns + templated prose body and return a single markdown string. Serves both Action and Technical items via the shared `GET /api/action-items/{item_id}` endpoint.
 - `aeko_list_action_items` / `aeko_list_technical_items` — MUST return tab-scoped summaries.
-- `aeko_get_brand_kit` / `aeko_update_brand_kit` — MUST exist for Brand Kit checks to work. `metadata.account_tier` and `metadata.billing_url` MUST be populated for the `tier_required` gate + upgrade copy to resolve correctly; if absent, skills fall through to the backend as the authoritative gate (see §3.2).
+- `aeko_get_brand_kit` / `aeko_get_brand_kit_by_id` / `aeko_list_brand_kits` / `aeko_update_brand_kit` — MUST exist for Brand Kit checks to work. `metadata.account_tier` and `metadata.billing_url` MUST be populated for the `tier_required` gate + upgrade copy to resolve correctly; if absent, skills fall through to the backend as the authoritative gate (see §3.2).
 - `aeko_complete_action_item` — MUST accept both store-write and non-store-write completions.
 - `aeko_create_shadow_product` — MUST return `AekoShadowProductResponse` with all six provenance fields.
 - `aeko_get_product_description` — required for `append_below_existing` write mode; until wired, `/aeko-update-pdp` aborts that mode with a clear user message. Shipped in aeko-mcp v0.5.0.

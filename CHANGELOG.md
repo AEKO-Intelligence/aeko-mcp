@@ -6,6 +6,14 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 
 ## [Unreleased]
 
+### Added
+
+- `aeko_get_brand_kit_by_id(kit_id)` and `aeko_list_brand_kits(domain_id=None, status=None)` so executor skills can resolve the exact Brand Kit selected in the AEKO app instead of relying only on active-by-domain lookup.
+
+### Fixed
+
+- `aeko_request_media_upload` now sends `brand_kit_id` to `/api/aeko-shop/media/presign`; the previous `brand_id` field was ignored by the backend schema and forced an active-kit fallback.
+
 ### Docs
 
 - README: document Gemini CLI as a first-class DCR client alongside Claude Code and Codex CLI. Adds `gemini mcp add --transport http ...` to the CLI clients section plus the equivalent `~/.gemini/settings.json` `mcpServers` block (`httpUrl` form), and notes the consolidated `url` + `type: "http"` form from google-gemini/gemini-cli#13762. Authentication section now calls out Gemini CLI's `dynamic_discovery` OAuth provider, which reads `/.well-known/oauth-authorization-server` on first connect. No code change; package version unchanged.

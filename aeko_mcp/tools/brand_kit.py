@@ -36,6 +36,8 @@ def _format_brand_kit(kit: dict) -> str:
     lines.append(f"- **Status**: {kit.get('status', 'unknown')}")
     lines.append(f"- **Snapshot version**: `{kit.get('snapshot_version', 'N/A')}`")
     lines.append(f"- **Updated**: {kit.get('updated_at', 'N/A')}")
+    if "aeko_shop_disabled" in kit:
+        lines.append(f"- **aeko_shop_disabled**: {str(bool(kit.get('aeko_shop_disabled'))).lower()}")
     if kit.get("generator_version"):
         lines.append(f"- **Generator**: {kit['generator_version']}")
     lines.append("")
@@ -104,6 +106,57 @@ def aeko_get_brand_kit(domain_id: str) -> str:
     """
     data = client.get(f"/api/brand-kit/{domain_id}")
     return _format_brand_kit(data)
+
+
+@mcp.tool(title="Get brand kit by id", annotations=READ_ONLY)
+def aeko_get_brand_kit_by_id(kit_id: str) -> str:
+    """Fetch a Brand Kit by its kit id, regardless of status.
+
+    Use this when Plan.md frontmatter includes ``brand_kit_id``. Unlike
+    ``aeko_get_brand_kit(domain_id)``, this does not do an active-by-domain
+    lookup, so it can retrieve the exact draft or generated kit selected in
+    the AEKO app.
+
+    Args:
+        kit_id: UUID of the brand kit.
+    """
+    data = client.get(f"/api/brand-kits/{kit_id}")
+    return _format_brand_kit(data)
+
+
+@mcp.tool(title="List brand kits", annotations=READ_ONLY)
+def aeko_list_brand_kits(
+    domain_id: Optional[str] = None,
+    status: Optional[str] = None,
+) -> str:
+    """List Brand Kits for the authenticated user.
+
+    Use this for diagnostics when an active-by-domain lookup fails. It shows
+    draft, generating, failed, and active kits so the user can tell whether
+    the app-created kit exists but is not active.
+
+    Args:
+        domain_id: Optional UUID of a domain to filter kits.
+        status: Optional status filter: ``active``, ``draft``, ``generating``,
+            or ``failed``.
+    """
+    params: dict[str, Any] = {}
+    if domain_id:
+        params["domain_id"] = domain_id
+    if status:
+        params["status"] = status
+
+    data = client.get("/api/brand-kits", params=params or None)
+    items = data.get("items", []) if isinstance(data, dict) else []
+    if not items:
+        suffix = f" for domain `{domain_id}`" if domain_id else ""
+        return f"No brand kits found{suffix}."
+
+    lines = [f"# Brand Kits ({len(items)})", ""]
+    for kit in items:
+        lines.extend(_format_brand_kit(kit).rstrip().splitlines())
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 @mcp.tool(title="Update brand kit", annotations=WRITE)

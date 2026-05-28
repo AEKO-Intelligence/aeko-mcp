@@ -137,7 +137,7 @@ aeko-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 
 ## 5. Tools exposed (22 total — v0.5.0)
 
-aeko-mcp ships 22 tools across six modules — `visibility`, `research`, `aeko_score`, `action_plan`, `brand_kit`, `store_write`. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the source of truth.
+aeko-mcp ships 31 tools across modules including `visibility`, `research`, `aeko_score`, `action_plan`, `brand_kit`, `store_write`, `crawl`, `own_content`, `media_upload`, and `content_variation`. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the source of truth.
 
 ### Domain / account (2)
 | Tool | Purpose |
@@ -168,10 +168,12 @@ aeko-mcp ships 22 tools across six modules — `visibility`, `research`, `aeko_s
 | `aeko_get_action_plan(item_id)` | Fetch one item's Plan.md (YAML frontmatter + templated prose). Same endpoint serves Action and Technical tabs. |
 | `aeko_complete_action_item(item_id, ...)` | Mark an item complete with optional `artifact_summary`, `artifact_paths`, `write_result`. |
 
-### Brand Kit (2)
+### Brand Kit (4)
 | Tool | Purpose |
 |---|---|
 | `aeko_get_brand_kit(domain_id)` | Fetch the active Brand Kit. |
+| `aeko_get_brand_kit_by_id(kit_id)` | Fetch the exact Brand Kit selected by an action item, regardless of status. |
+| `aeko_list_brand_kits(domain_id, status)` | List active/draft/generating/failed Brand Kits for diagnostics and selection. |
 | `aeko_update_brand_kit(kit_id, ...)` | Patch Brand Kit fields. Bumps `snapshot_version` only on semantic field changes. |
 
 ### Store write (Cafe24 / Shopify) (7)
@@ -204,7 +206,8 @@ aeko-mcp holds no state. Every tool maps to one or more backend HTTP calls.
 | `/api/action-items/{item_id}` | GET | `aeko_get_action_plan` |
 | `/api/action-items/{item_id}/complete` | POST | `aeko_complete_action_item` |
 | `/api/brand-kit/{domain_id}` | GET | `aeko_get_brand_kit` |
-| `/api/brand-kits/{kit_id}` | PATCH | `aeko_update_brand_kit` |
+| `/api/brand-kits` | GET | `aeko_list_brand_kits` |
+| `/api/brand-kits/{kit_id}` | GET/PATCH | `aeko_get_brand_kit_by_id`, `aeko_update_brand_kit` |
 | `/api/store-integrations` | GET | `aeko_list_store_integrations` |
 | `/api/store-integrations/{id}/products/{ext_id}/description` | GET | `aeko_get_product_description` |
 | `/api/store-integrations/{id}/products/{ext_id}` | POST | `aeko_update_product_description`, `aeko_update_product_tags`, `aeko_update_product_meta` |

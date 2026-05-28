@@ -5,7 +5,7 @@ from ._annotations import WRITE
 
 @mcp.tool(title="Request aeko.shop media upload URL", annotations=WRITE)
 def aeko_request_media_upload(
-    brand_id: str,
+    brand_kit_id: str,
     source_content_id: str,
     filename: str,
     content_type: str,
@@ -16,9 +16,9 @@ def aeko_request_media_upload(
     """Return a pre-signed PUT URL and public CDN URL for a local article image.
 
     Args:
-        brand_id: UUID of the aeko.shop brand to upload under. Required by the
-            backend's MediaPresignRequest schema; the presigned URL is scoped to
-            this brand's blob container path.
+        brand_kit_id: UUID of the AEKO Brand Kit to upload under. The backend
+            syncs this Brand Kit to the corresponding aeko.shop brand before
+            issuing the signed URL.
         source_content_id: 1..240-char identifier from the executor (typically
             the action-item id). Used in the blob path and idempotency.
         filename: Basename only — no path separators. Must match the backend's
@@ -34,7 +34,7 @@ def aeko_request_media_upload(
     return client.post(
         "/api/aeko-shop/media/presign",
         json={
-            "brand_id": brand_id,
+            "brand_kit_id": brand_kit_id,
             "source_content_id": source_content_id,
             "filename": filename,
             "content_type": content_type,
