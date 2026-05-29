@@ -1,10 +1,11 @@
 """Content Variation tools — backend-saved publishable drafts keyed by item_id.
 
-Three tools wrap the AEKO backend's ``/api/content-variations*`` routes:
+Four tools wrap the AEKO backend's ``/api/content-variations*`` routes:
 
-  - ``aeko_save_content_variation``  ← POST   /api/content-variations
-  - ``aeko_list_content_variations`` ← GET    /api/content-variations
-  - ``aeko_publish_content_variation`` ← POST /api/content-variations/{id}/publish
+  - ``aeko_save_content_variation``    ← POST  /api/content-variations
+  - ``aeko_update_content_variation``  ← PATCH /api/content-variations/{id}
+  - ``aeko_list_content_variations``   ← GET   /api/content-variations
+  - ``aeko_publish_content_variation`` ← POST  /api/content-variations/{id}/publish
 
 These replace the local-disk artifact triple as the source of truth for
 ``/aeko-publish-content``. A draft saved on machine A can now be published
@@ -26,7 +27,7 @@ already-published row returns the stored handles without creating duplicates.
 from typing import Any, Optional
 
 from ..server import mcp, client
-from ._annotations import READ_ONLY, WRITE_ONCE
+from ._annotations import READ_ONLY, WRITE, WRITE_ONCE
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────
@@ -181,6 +182,81 @@ def aeko_save_content_variation(
     return "\n".join(lines)
 
 
+@mcp.tool(title="Update content variation", annotations=WRITE)
+def aeko_update_content_variation(
+    variation_id: str,
+    title: Optional[str] = None,
+    body_html: Optional[str] = None,
+    body_markdown: Optional[str] = None,
+    metadata: Optional[dict] = None,
+) -> str:
+    """Edit a SAVED (not-yet-published) content variation in place.
+
+    The "edit a draft" path: tweak a saved draft before publishing without
+    creating a whole new variation. Only the fields you pass change; the rest
+    are kept. A previously ``failed`` variation is reset to ``saved`` on a
+    successful edit so you can retry publish cleanly.
+
+    **Published variations are immutable here** (backend returns 409). To
+    change a post that is already live on aeko.shop, re-publish the variation —
+    aeko.shop upserts by ``source_content_id`` and overwrites the post in place
+    (then re-renders + redirects on slug change). See ``/aeko-publish-content``.
+
+    For an ``aeko_shop`` variation the merged result must still satisfy the
+    contract (non-empty ``body_html``; ``metadata`` with ``og_description`` and,
+    when present, an absolute-https ``hero_image_url``) or the backend returns
+    422. ``metadata`` REPLACES the stored metadata object, so include the full
+    aeko_shop metadata (og_description, hero_image_url, featured_products, …)
+    when you pass it.
+
+    Args:
+        variation_id: Row id to edit (from ``aeko_list_content_variations``).
+        title: New title (optional).
+        body_html: Replacement HTML body (optional).
+        body_markdown: Replacement markdown body (optional).
+        metadata: Replacement destination metadata dict (optional; replaces,
+            not merges).
+    """
+    if title is None and body_html is None and body_markdown is None and metadata is None:
+        return (
+            "# Update failed\n\nProvide at least one field to change "
+            "(title, body_html, body_markdown, metadata)."
+        )
+
+    payload: dict[str, Any] = {}
+    if title is not None:
+        payload["title"] = title
+    if body_html is not None:
+        payload["body_html"] = body_html
+    if body_markdown is not None:
+        payload["body_markdown"] = body_markdown
+    if metadata is not None:
+        payload["metadata"] = metadata
+
+    result, err = _safe(
+        client.patch, f"/api/content-variations/{variation_id}", json=payload
+    )
+    if err:
+        return f"# Update failed\n\n```\n{err}\n```"
+    if not result:
+        return "# Update failed\n\n(no response body)"
+
+    lines = [
+        "# Variation updated",
+        "",
+        f"- **variation_id**: `{result.get('id', variation_id)}`",
+        f"- **item_id**: `{result.get('item_id', '?')}`",
+        f"- **destination**: {result.get('destination', '?')}",
+        f"- **status**: {result.get('status', 'saved')}",
+        f"- **updated_at**: {result.get('updated_at', '?')}",
+        "",
+        "Publish with "
+        f"`aeko_publish_content_variation(item_id='{result.get('item_id', '?')}', "
+        f"variation_id='{result.get('id', variation_id)}')`.",
+    ]
+    return "\n".join(lines)
+
+
 @mcp.tool(title="List content variations", annotations=READ_ONLY)
 def aeko_list_content_variations(
     item_id: str,
@@ -295,6 +371,16 @@ def aeko_publish_content_variation(item_id: str, variation_id: str) -> str:
     if destination == "aeko_shop":
         if result.get("aeko_shop_url"):
             lines.append(f"- **URL**: {result['aeko_shop_url']}")
+        else:
+            # Published to aeko.shop but no canonical URL came back. Don't claim
+            # a clickable link the user doesn't have — surface the gap so they
+            # can check the deployment (AEKO_SHOP_PUBLIC_URL) / backend logs.
+            lines.append(
+                "- **URL**: ⚠️ could not be generated — the post published but no "
+                "canonical aeko.shop URL was returned. Check that the backend's "
+                "`AEKO_SHOP_PUBLIC_URL` is configured, then re-run publish "
+                "(idempotent — it won't duplicate the post)."
+            )
         if result.get("post_id"):
             lines.append(f"- **post_id**: `{result['post_id']}`")
     elif destination == "own_store_blog":

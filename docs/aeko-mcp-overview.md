@@ -135,9 +135,9 @@ aeko-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 
 ---
 
-## 5. Tools exposed (22 total — v0.5.0)
+## 5. Tools exposed (32 total)
 
-aeko-mcp ships 31 tools across modules including `visibility`, `research`, `aeko_score`, `action_plan`, `brand_kit`, `store_write`, `crawl`, `own_content`, `media_upload`, and `content_variation`. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the source of truth.
+aeko-mcp ships 32 tools across modules including `visibility`, `research`, `aeko_score`, `action_plan`, `brand_kit`, `store_write`, `crawl`, `own_content`, `media_upload`, and `content_variation`. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the source of truth.
 
 ### Domain / account (2)
 | Tool | Purpose |
