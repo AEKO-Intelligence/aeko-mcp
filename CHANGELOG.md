@@ -10,6 +10,10 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 
 - `aeko_get_brand_kit_by_id(kit_id)` and `aeko_list_brand_kits(domain_id=None, status=None)` so executor skills can resolve the exact Brand Kit selected in the AEKO app instead of relying only on active-by-domain lookup.
 
+### Changed
+
+- `aeko_request_media_upload` no longer requires `brand_kit_id` — a Brand Kit is **optional** for publishing to aeko.shop. When the brand has no kit, pass `item_id` (preferred — the action-item id, resolves the verified-domain identity) or `domain_id`. `brand_kit_id` is now an optional keyword; the required hashing/file fields move ahead of the identity inputs in the signature. The backend resolves a kit- or domain-derived brand and 400s if no identity input is usable.
+
 ### Fixed
 
 - `aeko_request_media_upload` now sends `brand_kit_id` to `/api/aeko-shop/media/presign`; the previous `brand_id` field was ignored by the backend schema and forced an active-kit fallback.
