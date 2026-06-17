@@ -4,6 +4,17 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.11.0] — 2026-06-17
+
+### Added
+
+- `aeko_list_contexts(domain_id, scope=None, kind=None)` — read-only access to curated AEKO Context memories saved in Brand Settings. The tool renders flexible memory facets (`고객 상태`, `최근 고민`, `제품 경험`, `느낀 효과`) with legacy problem/solution/outcome fallback for pre-migration rows.
+
+### Changed
+
+- `aeko_get_product_reviews` now renders review-context facets instead of the old problem/solution/outcome presentation: `문제`, `고객 상태`, `최근 고민`, `제품 경험`, and `느낀 효과` (falling back to legacy outcome/solution for felt effect).
+- `aeko_save_content_variation` documents the new `featured_product_reviews[]` contract: `{review_id, product_source_id, context_score, customer_state, recent_concern, product_experience, felt_effect, excerpt}`.
+
 ## [0.10.0] — 2026-06-17
 
 ### Removed

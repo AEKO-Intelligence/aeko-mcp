@@ -120,9 +120,10 @@ def aeko_save_content_variation(
     also record them in ``metadata`` under the OPTIONAL ``featured_product_reviews``
     array — a provenance trail of which real customer narratives grounded the
     copy, parallel to ``featured_products``. Each entry is
-    ``{review_id, product_source_id, context_score, problem, solution, outcome,
-    excerpt}``. Metadata is free-form JSONB passed straight through to the
-    backend (no server-side validation of this key), so it's safe to attach.
+    ``{review_id, product_source_id, context_score, customer_state,
+    recent_concern, product_experience, felt_effect, excerpt}``. Metadata is
+    free-form JSONB passed straight through to the backend (no server-side
+    validation of this key), so it's safe to attach.
 
     Args:
         item_id: Action-item id this variation belongs to. Tenancy is
@@ -144,8 +145,9 @@ def aeko_save_content_variation(
             when the product may not already exist in aeko.shop.
             ``featured_product_reviews[]`` is OPTIONAL — when the draft quoted
             Context Reviews, list the ones used, each
-            ``{review_id, product_source_id, context_score, problem, solution,
-            outcome, excerpt}``. Free-form JSONB, passed through as-is.
+            ``{review_id, product_source_id, context_score, customer_state,
+            recent_concern, product_experience, felt_effect, excerpt}``.
+            Free-form JSONB, passed through as-is.
             For ``own_store_blog``: optional ``{og_description, tags, locale,
             featured_product_reviews}``.
         artifact_paths: Optional list of local-disk paths to the artifact

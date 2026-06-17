@@ -2,14 +2,13 @@
 
 Wraps the AEKO backend's /api/review-integrations* read endpoints so the
 content-creation skills can ground a draft in REAL customer narratives —
-the problem the buyer had, the solution the product gave them, and the
-outcome — instead of inventing copy.
+the shopper context, product experience, and felt effect — instead of
+inventing copy.
 
 A review is "contextual" when its ``context_score`` is >= 60. The backend's
-review classifier extracts a ``problem -> solution -> outcome`` triple from
-each review and scores how rich that context is; unclassified / pending
-rows have no score yet and are excluded once a ``min_context_score`` filter
-is applied.
+review classifier extracts flexible facets from each review and scores how
+rich that context is; unclassified / pending rows have no score yet and are
+excluded once a ``min_context_score`` filter is applied.
 
 Three tools total — all read-only, all Pro+ gated server-side:
   - aeko_list_review_integrations  ← discovery (resolve integration_id for a domain)
@@ -20,8 +19,9 @@ The create-content use case (e.g. /aeko-create-content, aeko-update-pdp):
   1. resolve the domain's review integration with ``aeko_list_review_integrations``
   2. see which products have contextual reviews with ``aeko_list_review_products``
   3. for the product being written, pull its TOP contextual reviews with
-     ``aeko_get_product_reviews`` and weave the real problem→solution→outcome
-     narratives into the draft (recording which reviews were used in the
+     ``aeko_get_product_reviews`` and weave the real customer-state /
+     concern / product-experience details into the draft (recording which
+     reviews were used in the
      content variation's ``featured_product_reviews`` metadata).
 
 These are read-only — they never mutate review platform data. Pro+ is
@@ -132,7 +132,7 @@ def aeko_list_review_products(integration_id: str) -> str:
     Call this after ``aeko_list_review_integrations`` to see WHICH products
     actually have contextual reviews worth weaving into a draft. The
     ``contextual`` column is the count of reviews scoring >= 60 (rich
-    problem→solution→outcome narratives); ``reviews`` is the raw total. A
+    source-backed customer context); ``reviews`` is the raw total. A
     product with ``contextual = 0`` has reviews but none classified as
     context-rich yet (or the classifier is still running).
 
@@ -197,7 +197,7 @@ def aeko_list_review_products(integration_id: str) -> str:
         lines.append(
             "For a product with a non-zero **contextual** count, call "
             "`aeko_get_product_reviews(integration_id=..., external_product_ref=...)` "
-            "to pull its strongest problem→solution→outcome narratives for a draft."
+            "to pull its strongest source-backed customer contexts for a draft."
         )
     return "\n".join(lines)
 
@@ -209,7 +209,7 @@ def aeko_get_product_reviews(
     min_context_score: int = CONTEXTUAL_THRESHOLD,
     limit: int = 10,
 ) -> str:
-    """Fetch a product's TOP contextual reviews — real problem→solution→outcome stories.
+    """Fetch a product's TOP contextual reviews — source-backed customer memories.
 
     This is the tool the create-content skills call to ground a draft in
     genuine customer narratives. It returns ONLY contextual reviews — those
@@ -218,12 +218,13 @@ def aeko_get_product_reviews(
     have no score and are excluded once a ``min_context_score`` is applied, so
     everything returned here is a vetted, context-rich story.
 
-    For each review you get: the ``context_score``, the extracted
-    **problem → solution → outcome** (each shown in the review's original
-    language when the classifier captured it), the star rating, author, date,
-    and a quotable excerpt of the body. Weave these into the draft as concrete
-    "here's the real situation a customer was in and how the product solved it"
-    evidence, and record which reviews you used in the content variation's
+    For each review you get: the ``context_score``, extracted ``문제``
+    (legacy grounding), ``고객 상태``, ``최근 고민``, ``제품 경험``, and
+    ``느낀 효과`` (falling back to legacy outcome/solution when needed), the
+    star rating, author, date, and a quotable excerpt of the body. Weave these
+    into the draft as concrete "who this customer was, what they were dealing
+    with, what the product felt like, and what improved" evidence, and record
+    which reviews you used in the content variation's
     ``featured_product_reviews`` metadata.
 
     Read-only. Pro+ enforced server-side (403 if under-tier).
@@ -296,17 +297,27 @@ def aeko_get_product_reviews(
             lines.append(f"**{title}**")
         lines.append("")
 
-        # Problem → Solution → Outcome triple, original-language, only when present.
+        # Flexible review-memory facets, original-language, only when present.
         problem = review.get("extracted_problem")
-        solution = review.get("extracted_solution")
-        outcome = review.get("extracted_outcome")
+        customer_state = review.get("customer_state")
+        recent_concern = review.get("recent_concern")
+        product_experience = review.get("product_experience")
+        felt_effect = (
+            review.get("felt_effect")
+            or review.get("extracted_outcome")
+            or review.get("extracted_solution")
+        )
         if problem:
-            lines.append(f"- **Problem**: {problem}")
-        if solution:
-            lines.append(f"- **Solution**: {solution}")
-        if outcome:
-            lines.append(f"- **Outcome**: {outcome}")
-        if problem or solution or outcome:
+            lines.append(f"- **문제**: {problem}")
+        if customer_state:
+            lines.append(f"- **고객 상태**: {customer_state}")
+        if recent_concern:
+            lines.append(f"- **최근 고민**: {recent_concern}")
+        if product_experience:
+            lines.append(f"- **제품 경험**: {product_experience}")
+        if felt_effect:
+            lines.append(f"- **느낀 효과**: {felt_effect}")
+        if problem or customer_state or recent_concern or product_experience or felt_effect:
             lines.append("")
 
         excerpt = _excerpt(review.get("body"))
@@ -318,9 +329,9 @@ def aeko_get_product_reviews(
         lines.append("")
 
     lines.append(
-        "Weave these real problem→solution→outcome stories into the draft, and "
+        "Weave these source-backed customer contexts into the draft, and "
         "record the ones you used under the content variation's "
         "`featured_product_reviews` metadata (review_id, context_score, "
-        "problem/solution/outcome, excerpt)."
+        "customer_state, recent_concern, product_experience, felt_effect, excerpt)."
     )
     return "\n".join(lines)

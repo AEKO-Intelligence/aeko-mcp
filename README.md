@@ -74,17 +74,21 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP exposes 31 tools covering visibility metrics, research prompts, AI-readiness scoring, content variations, media uploads, customer reviews, and store-write actions.
+AEKO MCP exposes 32 tools covering visibility metrics, research prompts, AI-readiness scoring, content variations, media uploads, customer review contexts, saved memories, and store-write actions.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
-Current groups: `visibility`, `research`, `aeko_score`, `store_write`, `action_plan`, `crawl`, `own_content`, `media_upload`, `content_variation`, and `reviews`.
+Current groups: `visibility`, `research`, `aeko_score`, `store_write`, `action_plan`, `crawl`, `own_content`, `media_upload`, `content_variation`, `reviews`, and `contexts`.
 
-The `reviews` group surfaces **Context Reviews** — classified customer reviews from connected Crema / Judge.me platforms — so content drafts can be grounded in real problem→solution→outcome narratives instead of invented copy (Pro+):
+The `reviews` group surfaces **Context Reviews** — classified customer reviews from connected Crema / Judge.me platforms — so content drafts can be grounded in real customer-state, concern, product-experience, and felt-effect details instead of invented copy (Pro+):
 
 - `aeko_list_review_integrations(domain_id)` — list a domain's connected review platforms (resolve the `integration_id`).
 - `aeko_list_review_products(integration_id)` — products under an integration with their contextual-review counts (which products have stories to draw on).
-- `aeko_get_product_reviews(integration_id, external_product_ref, min_context_score=60, limit=10)` — a product's TOP contextual reviews (score ≥ 60, strongest first) with extracted problem / solution / outcome; this is what the create-content flow calls to ground a draft.
+- `aeko_get_product_reviews(integration_id, external_product_ref, min_context_score=60, limit=10)` — a product's TOP contextual reviews (score ≥ 60, strongest first) with extracted `문제`, `고객 상태`, `최근 고민`, `제품 경험`, and `느낀 효과`; this is what the create-content flow calls to ground a draft.
+
+The `contexts` group surfaces curated **AEKO Context memories** saved in Brand Settings:
+
+- `aeko_list_contexts(domain_id, scope=None, kind=None)` — list saved curated context memories for a domain, optionally filtered by scope (`brand`, `product`, `category`) or kind (`customer_segment`, `skin_concern`, `product_experience`, `claim`, `content_angle`).
 
 All tools carry MCP `ToolAnnotations` (`readOnlyHint`, `destructiveHint`, `openWorldHint`) so clients can offer per-tool approval policy (e.g. "always allow" for read-only GETs, approval-per-call for writes).
 
