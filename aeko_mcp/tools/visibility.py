@@ -261,7 +261,7 @@ def _format_domain_list(domains: list[dict]) -> str:
     lines.append("")
     lines.append(
         "Pass the UUID (the backtick-quoted value) to any domain-scoped tool "
-        "or skill, e.g. `aeko_get_brand_kit(domain_id=...)`."
+        "or skill, e.g. `aeko_list_own_content(domain_id=...)`."
     )
     return "\n".join(lines)
 

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.aeko-intelligence/aeko-mcp",
+  "title": "AEKO",
+  "description": "AI Engine Optimization for ecommerce — monitor how ChatGPT, Claude, Gemini, and Perplexity recommend your products, audit domains for AI-readiness (llms.txt, robots.txt, JSON-LD), track audience prompts, generate AEO-optimized content, and execute AEKO action items.",
+  "repository": {
+    "url": "https://github.com/AEKO-Intelligence/aeko-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://aeko-intelligence.com",
+  "version": "0.10.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://aeko-intelligence.com/mcp"
+    }
+  ]
+}
