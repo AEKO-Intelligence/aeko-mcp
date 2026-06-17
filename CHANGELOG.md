@@ -4,11 +4,15 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
-## [Unreleased]
+## [0.10.0] — 2026-06-17
+
+### Removed
+
+- Brand kit MCP tools (`aeko_get_brand_kit`, `aeko_get_brand_kit_by_id`, `aeko_list_brand_kits`, `aeko_update_brand_kit`); `aeko_request_media_upload` + store-write image upload now key by `domain_id` instead of `brand_kit_id`.
 
 ### Added
 
-- `aeko_get_brand_kit_by_id(kit_id)` and `aeko_list_brand_kits(domain_id=None, status=None)` so executor skills can resolve the exact Brand Kit selected in the AEKO app instead of relying only on active-by-domain lookup.
+- `aeko_get_brand_kit_by_id(kit_id)` and `aeko_list_brand_kits(domain_id=None, status=None)` so executor skills can resolve the exact Brand Kit selected in the AEKO app instead of relying only on active-by-domain lookup. *(Superseded by the brand-kit removal above — these tools no longer ship.)*
 
 ### Changed
 

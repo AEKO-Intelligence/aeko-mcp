@@ -1,17 +1,25 @@
 # AEKO MCP Consolidation Contract — Schemas + New Tool Signatures
 
-Source of truth for the post-consolidation AEKO MCP surface (Action, Technical, Brand Kit).
+Source of truth for the post-consolidation AEKO MCP surface (Action, Technical).
 All new skills and MCP tools MUST reference this document.
 
+> **Brand kit retired (aeko-mcp v0.10.0, contract `2026-04-17.action.v1.6`).** The four brand-kit MCP tools (`aeko_get_brand_kit`, `aeko_get_brand_kit_by_id`, `aeko_list_brand_kits`, `aeko_update_brand_kit`) were removed. The executor no longer resolves a brand kit at run time: content is drafted in a neutral, product-led voice grounded in the verified domain identity rather than a per-brand voice/tone document. The `requires_brand_kit`, `brand_kit_id`, and `brand_kit_snapshot_version` frontmatter fields are dropped, and `aeko_request_media_upload` + the store-write image-upload path now key by `domain_id` instead of `brand_kit_id`.
+
 Contract version pinning (semver inside date):
-- Action plan: `2026-04-17.action.v1.5` (current — backend-saved content variations + selected `brand_kit_id` frontmatter)
+- Action plan: `2026-04-17.action.v1.6` (current — brand kit retired; content uses neutral/product-led voice + verified domain identity)
 - Technical guide: `2026-04-17.technical.v1.1`
 
 Version format: `<YYYY-MM-DD>.<tab>.v<major>.<minor>`. Additive changes (new optional keys, new optional frontmatter fields, new enum values added to existing optional fields) bump `minor` and do not break skills pinned on `major`. Breaking changes (renamed / removed / type-changed keys) bump `major` and require matching skill updates. Skills MUST gate only on `<YYYY-MM-DD>.<tab>.v<major>.` (trailing dot) — never on the full minor string.
 
 ### Changelog
 
-**v1.5 (current)** — backend-saved content variations + selected Brand Kit identity:
+**v1.6 (current)** — brand kit retired:
+
+- Removed the four brand-kit MCP tools: `aeko_get_brand_kit`, `aeko_get_brand_kit_by_id`, `aeko_list_brand_kits`, `aeko_update_brand_kit`. Executor skills no longer load a brand kit; they draft in a neutral, product-led voice anchored on the verified domain identity and the Plan.md machine contract (`must_include`, `forbidden`, `sections_required`).
+- Dropped frontmatter fields `requires_brand_kit`, `brand_kit_id`, and `brand_kit_snapshot_version` from both the Action (§3.2) and Technical (§4.2) frontmatter schemas.
+- `aeko_request_media_upload` and the store-write image-upload path now key by `domain_id` instead of `brand_kit_id`.
+
+**v1.5** — backend-saved content variations + selected Brand Kit identity:
 
 - Plan.md frontmatter now includes optional `brand_kit_id`, allowing executor skills to load the exact kit selected in the AEKO app instead of relying on active-by-domain lookup. This also gives aeko.shop media presign the correct Brand Kit id.
 - New MCP helpers: `aeko_get_brand_kit_by_id` and `aeko_list_brand_kits`. `aeko_request_media_upload` sends `brand_kit_id`.
@@ -156,7 +164,7 @@ interface AekoItemSummary {
 ### 3.1 Authoring split (revised under v1.2 prose-templating pivot)
 
 - **Backend app layer** stamps the YAML frontmatter AND a thin templated prose body at item-create time. Both are deterministic functions of the `ActionItems` row; no AI model is invoked during plan generation. Source: `api/services/plan_md.py::build_plan_md` + `render_plan_prose`.
-- **Local Claude in the executor skill** (`/aeko-update-pdp`, `/aeko-create-content`, or `/aeko-fix-technical` per `execution_class`) does the creative synthesis at run time: calls `aeko_get_brand_kit`, `aeko_get_tracked_prompts` / `aeko_search_research_prompts` / `aeko_get_tracked_prompt`, plus `aeko_get_product_description` (raw editable HTML) and/or `WebFetch` (live page + crawled source URLs) to pull live context, then composes the actual artifact against the frontmatter's machine contract. The templated prose points Claude at exactly these tools — it is execution scaffolding, not narrative guidance.
+- **Local Claude in the executor skill** (`/aeko-update-pdp`, `/aeko-create-content`, or `/aeko-fix-technical` per `execution_class`) does the creative synthesis at run time: calls `aeko_get_tracked_prompts` / `aeko_search_research_prompts` / `aeko_get_tracked_prompt`, plus `aeko_get_product_description` (raw editable HTML) and/or `WebFetch` (live page + crawled source URLs) to pull live context, then composes the actual artifact in a neutral, product-led voice against the frontmatter's machine contract and the verified domain identity. The templated prose points Claude at exactly these tools — it is execution scaffolding, not narrative guidance.
 
 The skill parses frontmatter for dispatch (all machine values) and reads the templated prose for execution steps (tool list, citability rules, JSON-LD rules, ad-law guardrails, acceptance-criteria echo). Frontmatter remains the sole source of machine truth; prose never re-declares a frontmatter value.
 
@@ -188,10 +196,7 @@ The skill parses frontmatter for dispatch (all machine values) and reads the tem
 | `products` | ProductRef[] (optional, **proposed v1.4 — not yet landed**) | When the v1.4 backend wiring ships, this field will be populated for action items created from the dashboard's 상품 선택 mode. Drives `aeko_shop`-channel product callout rendering (`<figure role="callout" data-variant="product" data-product-source-id="<source_id>">`) in body HTML and the sibling `<slug>.meta.json` sidecar's `featured_products[].product_source_id` consumed at publish. **No in-body JSON-LD** — the aeko.shop frontend regenerates Article + Product structured data from `PostUpsert` fields at render time. See §3.2.1 for the field shape. Until v1.4 lands, all live Plan.md continues to be stamped at v1.3 with no `products[]` field; executor skills tolerate the absence. See changelog for the four prerequisite tasks. |
 | `persona_label` | string (optional) | |
 | `requires_ocr_ingest` | boolean | |
-| `requires_brand_kit` | boolean | |
-| `brand_kit_id` | string (optional) | Selected Brand Kit UUID when the action item was created. Executor skills should prefer this exact kit over active-by-domain lookup. |
 | `responsive_html_required` | boolean | |
-| `brand_kit_snapshot_version` | string (optional) | present if `requires_brand_kit`; ISO-8601 |
 | `pdp_ocr_cache_key` | string (optional) | present for PDP items with a prior OCR run |
 | `output_artifact_format` | `"html"` \| `"markdown"` \| `"json"` \| `"txt"` | |
 | `sections_required` | string[] | empty array allowed, never omitted |
@@ -278,7 +283,7 @@ The prose body is concatenated after the closing `---` of the frontmatter with a
 
 1. `# Plan: <item.title>`
 2. `## Why this plan matters` — 1-2 sentence stub keyed on `artifact_type`. No invented competitive context or fake prompt IDs.
-3. `## Execution` — an explicit tool list for the executor to run, composed from the v0.5.0 surface: `aeko_get_brand_kit(...)`, `aeko_get_tracked_prompts(...)` / `aeko_search_research_prompts(...)` / `aeko_get_tracked_prompt(...)` for live context, `aeko_get_product_description(...)` for `store_write_artifact` items that need the editable HTML, and `WebFetch` for target URLs / crawled source pages (replacing the retired `aeko_inspect_product_page` and `aeko_fetch_source_content`). Honors curated inputs: if `prompts_to_rank_on` is populated, that is the ground-truth set and discovery is skipped. When `prompts_to_rank_on`, `keywords`, and brand-kit are all empty, a visible thin-input advisory is emitted. Closes with a reminder to call `aeko_complete_action_item(item_id=..., artifact_summary=..., artifact_paths=[...])` on success.
+3. `## Execution` — an explicit tool list for the executor to run, composed from the current surface: `aeko_get_tracked_prompts(...)` / `aeko_search_research_prompts(...)` / `aeko_get_tracked_prompt(...)` for live context, `aeko_get_product_description(...)` for `store_write_artifact` items that need the editable HTML, and `WebFetch` for target URLs / crawled source pages (replacing the retired `aeko_inspect_product_page` and `aeko_fetch_source_content`). Honors curated inputs: if `prompts_to_rank_on` is populated, that is the ground-truth set and discovery is skipped. When both `prompts_to_rank_on` and `keywords` are empty, a visible thin-input advisory is emitted. Closes with a reminder to call `aeko_complete_action_item(item_id=..., artifact_summary=..., artifact_paths=[...])` on success.
 4. `## Content citability rules` — static passage-structure rules (80-167 words, name the subject explicitly, definition patterns, no fabricated facts — emit `[VERIFY: <field>]`).
 5. `## JSON-LD rules` — emitted only when `artifact_type == pdp_html` AND `pdp_responsive_contract.json_ld_required`. Covers Product schema required vs conditional fields, `[VERIFY]` never inside JSON-LD, `type="application/ld+json"` exactness. FAQPage sub-section emitted only when `faq_jsonld_required`.
 6. `## Ad-law guardrails` — country-specific (KR populated today). Always emits a visible section; markets without curated rules get an explicit "no guardrails curated yet — apply good-faith judgment" stub so the executor knows compliance was considered.
@@ -288,7 +293,7 @@ Prose body invariants:
 - Byte-stable and pure on the row. Anything per-item dynamic arrives via the frontmatter, not the prose.
 - No YAML, no `---` fences, no re-declarations of frontmatter values.
 - References fields by their backtick-quoted English name (e.g. "every listed string in `must_include`") so the executor can pattern-match.
-- Never inlines Brand Kit or product-data values — those are fetched at execution time via the tools listed in §3 `## Execution`.
+- Never inlines product-data values — those are fetched at execution time via the tools listed in §3 `## Execution`.
 
 ### 3.4 Citability + [VERIFY] baseline (executor-enforced)
 
@@ -314,7 +319,7 @@ Every `pdp_html` and `own_store_markdown` artifact MUST apply these citability p
 - Comparative claims MUST carry a number ("30% lighter than X") or be dropped.
 
 **`[VERIFY: <field>]` marker convention:**
-When the executor needs a factual value (price, SKU, dimension, review count, etc.) and it's absent from the OCR payload, StoreProducts row, Brand Kit, and prose, the executor MUST NOT fabricate. Instead, emit `[VERIFY: <field>]` inline. Examples:
+When the executor needs a factual value (price, SKU, dimension, review count, etc.) and it's absent from the OCR payload, StoreProducts row, and prose, the executor MUST NOT fabricate. Instead, emit `[VERIFY: <field>]` inline. Examples:
 - Visible HTML: `무게는 [VERIFY: weight_grams]g입니다.`
 - JSON-LD: omit the missing key entirely (do not emit `"sku": "[VERIFY: sku]"` — schema validators reject non-scalar strings for known property types).
 
@@ -360,8 +365,6 @@ Identical rule to §3.1: backend app layer stamps frontmatter from DB columns an
 | `domain_id` | string | |
 | `target_url` | string (optional) | |
 | `site_base_url` | string (optional) | required for `robots_txt_patch` |
-| `requires_brand_kit` | boolean | |
-| `brand_kit_snapshot_version` | string (optional) | present when `requires_brand_kit` |
 | `output_artifact_format` | `"txt"` \| `"json"` \| `"markdown"` | |
 | `sections_required` | string[] | empty array allowed, never omitted |
 | `must_include` | string[] | empty array allowed, never omitted |
@@ -385,63 +388,9 @@ Recommended sections:
 
 Prose body rules identical to §3.3: narrative sections may paraphrase; a terminal acceptance-criteria section (if present) references fields by their backtick-quoted English name.
 
-## 5. Brand Kit
+## 5. Brand Kit — retired (v1.6)
 
-Aligned with live backend: `api/schemas/brand_kits.py::BrandKitResponse` / `BrandKitUpdate`.
-
-```ts
-interface AekoBrandKit {
-  id: string;                             // kit UUID — required for PATCH
-  user_id: string;
-  domain_id?: string;
-  name: string;
-  status: "active" | "draft" | "generating" | "failed";
-  brand_name: string;
-
-  tagline?: string;
-  tone_of_voice?: string;                 // voice descriptor, max 500 chars
-  brand_voice_summary?: string;           // how the brand talks, max 4000 chars
-  target_audience?: string;               // who the brand talks to, max 4000 chars
-  primary_color?: string;                 // hex, #rgb or #rrggbb
-  logo_url?: string;                      // absolute URL
-
-  sample_urls: string[];                  // reference pages for voice grounding
-  must_include: string[];                 // hard-include phrases (≤30 items, ≤200 chars each)
-  forbidden: string[];                    // hard-exclude phrases (≤30 items, ≤200 chars each)
-
-  source_signals?: Record<string, unknown>;
-  generator_version?: string;
-  generated_at?: string;
-  snapshot_version: string;               // bumps only on SEMANTIC field change (see below)
-  last_error?: string;
-  created_at: string;
-  updated_at: string;
-
-  metadata?: {
-    account_tier: SubscriptionTier;       // Read from the authenticated user row at serialize time. Used by executor skills for tier_required gating. See §1.
-    billing_url?: string;                 // Env-configured (AEKO_BILLING_URL); consumed by tier-gate upgrade copy.
-  };
-}
-
-interface AekoBrandKitUpdate {
-  name?: string;
-  status?: "active" | "draft";            // client may only set these two; "generating" / "failed" are system-controlled
-  brand_name?: string;
-  tagline?: string;
-  tone_of_voice?: string;
-  brand_voice_summary?: string;
-  target_audience?: string;
-  primary_color?: string;
-  logo_url?: string;
-  sample_urls?: string[];
-  must_include?: string[];
-  forbidden?: string[];
-}
-```
-
-Patch semantics: omitted fields remain unchanged. `snapshot_version` bumps ONLY when one of the SEMANTIC fields changes — `brand_voice_summary`, `tone_of_voice`, `target_audience`, `must_include`, `forbidden`. Cosmetic edits (`name`, `brand_name`, `tagline`, `logo_url`, `primary_color`, `sample_urls`, `status`) preserve the snapshot so downstream action_items that reference the old snapshot are not falsely invalidated.
-
-> Not shipped: `persona`, `competitors`, `viewpoint`, `writing_style`, `tone` (bare), `writing_guidelines`, `cta_text`, `cta_link`, `sample_headlines`, `sample_bodies`. These were in the v1.1 contract draft but never landed in the backend schema. Do not reference them from skills.
+Brand kit was retired in `2026-04-17.action.v1.6` (aeko-mcp v0.10.0). There is no `AekoBrandKit` schema, no brand-kit MCP tools, and no brand-kit frontmatter. Executors draft in a neutral, product-led voice anchored on the verified domain identity and the Plan.md machine contract (`must_include`, `forbidden`, `sections_required`). See the changelog at the top of this document.
 
 ## 6. Item Completion
 
@@ -600,46 +549,7 @@ def aeko_get_action_plan(item_id: str) -> str:
 def aeko_get_domain_info(domain_id: str) -> str:
     """Domain details + AI-readiness infrastructure status (llms.txt, robots.txt AI blockers, JSON-LD, sitemap)."""
     # Backend: GET /api/domains/{domain_id}
-    # Used by: aeko-action-center (domain confirmation), aeko-brand-kit (domain lookup).
-
-@mcp.tool()
-def aeko_get_brand_kit(domain_id: str) -> str:
-    """Fetch the live Brand Kit for a domain."""
-    # Backend: GET /api/brand-kit/{domain_id} -> AekoBrandKit
-
-@mcp.tool()
-def aeko_get_brand_kit_by_id(kit_id: str) -> str:
-    """Fetch a Brand Kit by kit id, regardless of status."""
-    # Backend: GET /api/brand-kits/{kit_id} -> AekoBrandKit
-
-@mcp.tool()
-def aeko_list_brand_kits(
-    domain_id: str | None = None,
-    status: str | None = None,
-) -> str:
-    """List Brand Kits, optionally filtered by domain and status."""
-    # Backend: GET /api/brand-kits?domain_id=<uuid>&status=...
-
-@mcp.tool()
-def aeko_update_brand_kit(
-    kit_id: str,
-    name: str | None = None,
-    status: str | None = None,          # "active" | "draft" only
-    brand_name: str | None = None,
-    tagline: str | None = None,
-    tone_of_voice: str | None = None,
-    brand_voice_summary: str | None = None,
-    target_audience: str | None = None,
-    primary_color: str | None = None,
-    logo_url: str | None = None,
-    sample_urls: list[str] | None = None,
-    must_include: list[str] | None = None,
-    forbidden: list[str] | None = None,
-) -> str:
-    """Patch Brand Kit fields by kit id."""
-    # Backend: PATCH /api/brand-kits/{kit_id} body: BrandKitUpdate -> BrandKitResponse
-    # Note: no PATCH-by-domain alias exists — skills must capture the kit's `id`
-    # from the aeko_get_brand_kit response and pass it here.
+    # Used by: aeko-action-center (domain confirmation).
 
 @mcp.tool()
 def aeko_complete_action_item(
@@ -711,8 +621,8 @@ def aeko_save_content_variation(
     artifact_paths: list[str] | None = None,
 ) -> str:
     """Save a publishable variation to the backend. Called by /aeko-create-content
-    Step 7.5 after local-artifact validation. Backend derives brand_kit_id from
-    action_items.brand_kit_id (the tool does NOT carry brand_id).
+    Step 7.5 after local-artifact validation. Backend resolves the publishing brand
+    from the action item's domain_id (the tool does NOT carry brand_id).
     """
     # Backend: POST /api/content-variations  body: ContentVariationCreate
     # Auth: require_dual_auth_with_rate_limit + require_scope("mcp:write")
@@ -761,12 +671,9 @@ All MCP tools return markdown strings for human-facing output.
 
 - `aeko_get_action_plan` returns ONE Plan.md / guide.md string assembled from one DB row (shared across Action and Technical tabs — see §4). MCP never reconstructs plan state from multiple endpoints.
 - Plan.md / guide.md are dual-format: YAML frontmatter + prose body. Both are deterministic backend outputs of the row (v1.2 pivot — prose is templated, no AI author). Prose MUST reference fields by name, never by value.
-- `aeko_update_brand_kit` is patch semantics keyed on `kit_id`. Omitted fields unchanged. `snapshot_version` bumps only on SEMANTIC field changes (`brand_voice_summary`, `tone_of_voice`, `target_audience`, `must_include`, `forbidden`). See §5.
 - `aeko_complete_action_item` always posts `completed_via="mcp"`, `status="completed"`.
 - `write_mode` lives on the item contract (frontmatter), not as a runtime flag to the skill.
 - `execution_class` is the only dispatch key the executor relies on.
-- `brand_kit_id` should be present in frontmatter whenever the action item was created with a selected Brand Kit. Executors prefer this exact kit over active-by-domain lookup.
-- `brand_kit_snapshot_version` is mandatory in frontmatter whenever `requires_brand_kit: true`, so plans can prove freshness.
 
 ## 10. Contract Tests
 
@@ -776,14 +683,13 @@ All MCP tools return markdown strings for human-facing output.
 - `aeko_get_action_plan` for a non-PDP content item → frontmatter has `execution_class: local_content_artifact` and NO `pdp_responsive_contract.*` keys.
 - `aeko_get_action_plan` on a technical-tab item → frontmatter has `execution_class: technical_artifact`; `validation_hints` present when applicable; every required §4.2 key present.
 - Frontmatter / prose drift test: for any Plan.md, no line in the prose body equals `---` (no stray closing fence); no bullet *line* in the prose body equals, verbatim (after stripping leading bullet markers and whitespace), any string listed in `must_include` or `forbidden`. Whole-line equality only — legitimate narrative references to those values within a sentence are permitted.
-- `aeko_get_brand_kit` → `aeko_update_brand_kit` round-trip does not drop unspecified fields.
 - `aeko_complete_action_item` accepts both store-write and non-store-write completions.
 - `aeko_create_shadow_product` response has `created_product_id`, `admin_url`, `selling=false`, `audit_id`; missing any → contract breach.
 
 ## 11. Assumptions
 
 - MCP tools return markdown for human-facing output (repo convention). Plan.md / guide.md are dual-format markdown (YAML frontmatter + prose body).
-- List endpoints, Brand Kit, completion, store-write, shadow-product and OCR-cache endpoints return structured JSON in the shapes above; MCP renders, does not invent state.
+- List endpoints, completion, store-write, shadow-product and OCR-cache endpoints return structured JSON in the shapes above; MCP renders, does not invent state.
 - `item_id` is the canonical identifier for both Action and Technical flows. Legacy `suggestion_key` / campaign IDs are NOT reused.
 
 ### 11.1 Frontmatter parsing rules
@@ -801,7 +707,6 @@ Skills reference these tools; Stage-1 backend work must land them (or skills mus
 
 - `aeko_get_action_plan` — MUST assemble frontmatter from DB columns + templated prose body and return a single markdown string. Serves both Action and Technical items via the shared `GET /api/action-items/{item_id}` endpoint.
 - `aeko_list_action_items` / `aeko_list_technical_items` — MUST return tab-scoped summaries.
-- `aeko_get_brand_kit` / `aeko_get_brand_kit_by_id` / `aeko_list_brand_kits` / `aeko_update_brand_kit` — MUST exist for Brand Kit checks to work. `metadata.account_tier` and `metadata.billing_url` MUST be populated for the `tier_required` gate + upgrade copy to resolve correctly; if absent, skills fall through to the backend as the authoritative gate (see §3.2).
 - `aeko_complete_action_item` — MUST accept both store-write and non-store-write completions.
 - `aeko_create_shadow_product` — MUST return `AekoShadowProductResponse` with all six provenance fields.
 - `aeko_get_product_description` — required for `append_below_existing` write mode; until wired, `/aeko-update-pdp` aborts that mode with a clear user message. Shipped in aeko-mcp v0.5.0.

@@ -2,7 +2,7 @@
 
 MCP server for [AEKO](https://aeko-intelligence.com) — monitor and optimize how AI engines (ChatGPT, Claude, Gemini, Perplexity) recommend your products in international markets.
 
-This repo ships the **Python MCP server** only. For the guided workflows (skills / slash commands like `/aeko-run-action`, `/aeko-brand-kit`) see **[`aeko-plugin`](https://github.com/AEKO-Intelligence/aeko-plugin)** — install both for the full experience.
+This repo ships the **Python MCP server** only. For the guided workflows (skills / slash commands like `/aeko-run-action`) see **[`aeko-plugin`](https://github.com/AEKO-Intelligence/aeko-plugin)** — install both for the full experience.
 
 ## Connecting
 
@@ -74,11 +74,17 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP exposes tools covering visibility metrics, suggestions, content generation, local file operations, and store-write actions.
+AEKO MCP exposes 31 tools covering visibility metrics, research prompts, AI-readiness scoring, content variations, media uploads, customer reviews, and store-write actions.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
-Current groups include: `visibility`, `content`, `product`, `suggestions` (+ `suggestions_v2` for the categorized brief format), `research`, `generate`, `report`, `citability`, `aeko_score`, `sources`, `store_write`, `pdp`, `action_plan`, and `brand_kit`.
+Current groups: `visibility`, `research`, `aeko_score`, `store_write`, `action_plan`, `crawl`, `own_content`, `media_upload`, `content_variation`, and `reviews`.
+
+The `reviews` group surfaces **Context Reviews** — classified customer reviews from connected Crema / Judge.me platforms — so content drafts can be grounded in real problem→solution→outcome narratives instead of invented copy (Pro+):
+
+- `aeko_list_review_integrations(domain_id)` — list a domain's connected review platforms (resolve the `integration_id`).
+- `aeko_list_review_products(integration_id)` — products under an integration with their contextual-review counts (which products have stories to draw on).
+- `aeko_get_product_reviews(integration_id, external_product_ref, min_context_score=60, limit=10)` — a product's TOP contextual reviews (score ≥ 60, strongest first) with extracted problem / solution / outcome; this is what the create-content flow calls to ground a draft.
 
 All tools carry MCP `ToolAnnotations` (`readOnlyHint`, `destructiveHint`, `openWorldHint`) so clients can offer per-tool approval policy (e.g. "always allow" for read-only GETs, approval-per-call for writes).
 
