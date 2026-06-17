@@ -107,8 +107,7 @@ def aeko_save_content_variation(
     ``/aeko-publish-content`` from any machine (the publish source-of-truth
     is the backend row, not the local files).
 
-    Backend derives ``brand_kit_id`` from the parent action item, so this
-    tool does NOT carry ``brand_id``. For ``destination='aeko_shop'``,
+    This tool does NOT carry ``brand_id``. For ``destination='aeko_shop'``,
     ``metadata`` must include ``og_description`` and
     ``featured_product_source_ids``. When Plan.md includes products, also pass
     ``featured_products`` snapshots (source_id/product_source_id, name, slug,
@@ -116,6 +115,14 @@ def aeko_save_content_variation(
     snapshots to upsert missing aeko.shop products before creating the post's
     post_products mappings. ``hero_image_url`` is optional; text-only aeko.shop
     posts are valid.
+
+    When the draft quotes Context Reviews (from ``aeko_get_product_reviews``),
+    also record them in ``metadata`` under the OPTIONAL ``featured_product_reviews``
+    array — a provenance trail of which real customer narratives grounded the
+    copy, parallel to ``featured_products``. Each entry is
+    ``{review_id, product_source_id, context_score, problem, solution, outcome,
+    excerpt}``. Metadata is free-form JSONB passed straight through to the
+    backend (no server-side validation of this key), so it's safe to attach.
 
     Args:
         item_id: Action-item id this variation belongs to. Tenancy is
@@ -130,11 +137,17 @@ def aeko_save_content_variation(
             ``body_html``/``body_markdown`` must be non-empty.
         metadata: Destination-specific metadata dict. For ``aeko_shop``:
             ``{og_description, featured_product_source_ids[, hero_image_url,
-            locale, content_format_version, featured_products]}``.
+            locale, content_format_version, featured_products,
+            featured_product_reviews]}``.
             ``featured_products[]`` entries should mirror Plan.md product refs
             and should include ``source_id``/``product_source_id`` + ``name``
             when the product may not already exist in aeko.shop.
-            For ``own_store_blog``: optional ``{og_description, tags, locale}``.
+            ``featured_product_reviews[]`` is OPTIONAL — when the draft quoted
+            Context Reviews, list the ones used, each
+            ``{review_id, product_source_id, context_score, problem, solution,
+            outcome, excerpt}``. Free-form JSONB, passed through as-is.
+            For ``own_store_blog``: optional ``{og_description, tags, locale,
+            featured_product_reviews}``.
         artifact_paths: Optional list of local-disk paths to the artifact
             triple (audit trail; not used by publish).
     """

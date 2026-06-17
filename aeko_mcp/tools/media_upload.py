@@ -11,17 +11,15 @@ def aeko_request_media_upload(
     content_sha256: str,
     content_md5: str,
     byte_length: int,
-    brand_kit_id: str | None = None,
     item_id: str | None = None,
     domain_id: str | None = None,
 ) -> dict:
     """Return a pre-signed PUT URL and public CDN URL for a local article image.
 
-    **A Brand Kit is OPTIONAL.** Supply ONE publish-identity input: a
-    ``brand_kit_id`` when the brand has a kit, otherwise ``item_id`` (preferred —
-    the action-item id; ties the upload to the item's verified domain) or
-    ``domain_id``. The backend resolves the brand (kit- or domain-derived) and
-    syncs it to aeko.shop before issuing the signed URL.
+    Supply ONE publish-identity input: ``item_id`` (preferred — the action-item
+    id; ties the upload to the item's verified domain) or ``domain_id``. The
+    backend resolves the domain-derived identity and syncs it to aeko.shop
+    before issuing the signed URL.
 
     Args:
         source_content_id: 1..240-char identifier from the executor (typically
@@ -35,10 +33,9 @@ def aeko_request_media_upload(
             is ``min_length=24, max_length=24``. Compute as
             ``base64.b64encode(hashlib.md5(data).digest()).decode()``.
         byte_length: File size in bytes. Backend caps at 10 MiB.
-        brand_kit_id: Optional UUID of the AEKO Brand Kit to upload under.
-        item_id: Optional action-item id — resolves the verified-domain identity
-            when the brand has no kit. Preferred for kit-less uploads.
-        domain_id: Optional domain UUID — alternative kit-less identity input.
+        item_id: Optional action-item id — resolves the verified-domain identity.
+            Preferred publish-identity input.
+        domain_id: Optional domain UUID — alternative identity input.
     """
     payload: dict = {
         "source_content_id": source_content_id,
@@ -49,9 +46,7 @@ def aeko_request_media_upload(
         "byte_length": byte_length,
     }
     # Forward only the identity input(s) the caller supplied; the backend resolves
-    # a kit- or domain-derived brand and 400s if none is usable.
-    if brand_kit_id:
-        payload["brand_kit_id"] = brand_kit_id
+    # the domain-derived identity and 400s if none is usable.
     if item_id:
         payload["item_id"] = item_id
     if domain_id:

@@ -76,15 +76,15 @@ def _update_product(
 def _upload_local_images_for_aeko_shop(
     source_content_id: str,
     html: str,
-    aeko_shop_brand_id: str | None = None,
+    domain_id: str | None = None,
 ) -> str:
     pattern = re.compile(r'(<img\b[^>]*\bsrc=["\'])(file://[^"\']+|\./[^"\']+|\.\./[^"\']+)(["\'])', re.IGNORECASE)
 
     def repl(match: re.Match[str]) -> str:
-        if not aeko_shop_brand_id:
+        if not domain_id:
             raise RuntimeError(
-                "Local <img src> requires aeko_shop_brand_id (the AEKO Brand Kit UUID for media presign). "
-                "Either pass aeko_shop_brand_id to aeko_update_product_description, or set skip_aeko_shop=True "
+                "Local <img src> requires domain_id (the AEKO domain UUID for media presign). "
+                "Either pass domain_id to aeko_update_product_description, or set skip_aeko_shop=True "
                 "to leave local image references untouched."
             )
         prefix, src, suffix = match.groups()
@@ -96,7 +96,7 @@ def _upload_local_images_for_aeko_shop(
         presign = client.post(
             "/api/aeko-shop/media/presign",
             json={
-                "brand_kit_id": aeko_shop_brand_id,
+                "domain_id": domain_id,
                 "source_content_id": source_content_id,
                 "filename": path.name,
                 "content_type": content_type,
@@ -232,7 +232,7 @@ def aeko_update_product_description(
     external_product_id: str,
     description_html: str,
     skip_aeko_shop: bool = False,
-    aeko_shop_brand_id: str | None = None,
+    domain_id: str | None = None,
 ) -> str:
     """Replace the full description HTML for a product on a connected store.
 
@@ -248,19 +248,19 @@ def aeko_update_product_description(
             replaced.
         skip_aeko_shop: When True, leave local ``<img src>`` references
             untouched (no upload to aeko.shop CDN). Use this for stores
-            whose brand doesn't have an aeko.shop tenant.
-        aeko_shop_brand_id: AEKO Brand Kit UUID — required when
+            whose domain doesn't have an aeko.shop tenant.
+        domain_id: AEKO domain UUID — required when
             ``skip_aeko_shop=False`` AND the description contains local
             image references (file://, ./, ../). Maps to backend
-            ``MediaPresignRequest.brand_kit_id``. Pass the selected Brand Kit
-            UUID, NOT the domain_id or store integration_id.
-            Pass-through to ``_upload_local_images_for_aeko_shop``.
+            ``MediaPresignRequest.domain_id``. Pass the domain UUID, NOT the
+            store integration_id. Pass-through to
+            ``_upload_local_images_for_aeko_shop``.
     """
     source_content_id = f"store-product:{integration_id}:{external_product_id}"
     clean_html = (
         description_html
         if skip_aeko_shop
-        else _upload_local_images_for_aeko_shop(source_content_id, description_html, aeko_shop_brand_id)
+        else _upload_local_images_for_aeko_shop(source_content_id, description_html, domain_id)
     )
     return _update_product(
         integration_id,

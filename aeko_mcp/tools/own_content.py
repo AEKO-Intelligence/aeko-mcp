@@ -4,7 +4,7 @@ Surfaces a list of pages on the user's *own* domain — blog posts, PDPs,
 journal/magazine entries, etc. — so a content skill can:
 
 1. build a tone signature from existing in-house content (mimic the brand
-   voice that already exists on-site, not just the brand kit's stated voice);
+   voice that already exists on-site);
 2. flag duplication before drafting (don't write a fifth "summer cooling
    bedding guide" if four already live on the site);
 3. anchor cross-channel narratives in the brand's own canon.
