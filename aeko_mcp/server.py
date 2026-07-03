@@ -54,7 +54,7 @@ client = AekoClient()
 atexit.register(client.close)
 
 # Import tool modules to register all tools with the mcp instance
-from .tools import visibility, research, aeko_score, store_write, action_plan, crawl, own_content, media_upload, content_variation, reviews, contexts, marketing  # noqa: E402, F401
+from .tools import visibility, research, aeko_score, store_write, action_plan, own_content, media_upload, content_variation, reviews, contexts, marketing  # noqa: E402, F401
 
 
 @contextlib.asynccontextmanager

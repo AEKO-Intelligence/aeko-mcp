@@ -32,6 +32,12 @@ from ._annotations import READ_ONLY, WRITE, WRITE_ONCE
 
 # Backend enforces this floor on campaign budgets (schemas/marketing.py MarketingBudget).
 MIN_BUDGET_MICROS = 1_000_000
+# Backend caps one inject request at 200 reviews (schemas/review.py ReviewInjectRequest).
+INJECT_REVIEWS_BATCH_SIZE = 200
+# Backend caps ads per ad group at 100 (schemas/marketing.py MarketingAdGroupFromContextRequest).
+MAX_ADS_PER_AD_GROUP = 100
+# Backend requires >= 3 chars for new campaign / ad-group names (schemas/marketing.py).
+MIN_NAME_LENGTH = 3
 
 
 def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
@@ -103,17 +109,63 @@ def aeko_inject_reviews(domain_id: str, reviews: list[dict]) -> str:
     ``source_method`` ('web_gather' | 'merchant_paste'). Reviews bind to a currently-SELLING product
     by ``external_product_ref``; unmatched refs are skipped and reported back. Requires a connected
     store (Cafe24/Shopify). Classification (facets + ad creative) runs automatically after insert.
+    The backend caps one request at 200 reviews — larger lists are chunked into <=200 batches here
+    and the results aggregated into a single summary.
     """
     if not reviews:
         return "# No reviews to inject — pass a non-empty `reviews` list."
-    result, err = _safe(
-        client.post,
-        "/api/review-integrations/inject",
-        json={"domain_id": domain_id, "reviews": reviews},
-    )
-    if err:
-        return f"# Failed to inject reviews\n\n```\n{err}\n```"
-    return _json_block("Reviews injected", result)
+    if len(reviews) <= INJECT_REVIEWS_BATCH_SIZE:
+        result, err = _safe(
+            client.post,
+            "/api/review-integrations/inject",
+            json={"domain_id": domain_id, "reviews": reviews},
+        )
+        if err:
+            return f"# Failed to inject reviews\n\n```\n{err}\n```"
+        return _json_block("Reviews injected", result)
+    # Over the backend's per-request cap — chunk, call per batch, and aggregate the counts.
+    batches = [
+        reviews[i : i + INJECT_REVIEWS_BATCH_SIZE]
+        for i in range(0, len(reviews), INJECT_REVIEWS_BATCH_SIZE)
+    ]
+    combined: dict[str, Any] = {
+        "requested": len(reviews),
+        "batches": len(batches),
+        "batches_completed": 0,
+        "inserted": 0,
+        "updated": 0,
+        "skipped_unmatched": 0,
+        "unmatched_refs": [],
+        "classification_enqueued": False,
+    }
+    seen_refs: set[str] = set()
+    for batch_no, batch in enumerate(batches, start=1):
+        result, err = _safe(
+            client.post,
+            "/api/review-integrations/inject",
+            json={"domain_id": domain_id, "reviews": batch},
+        )
+        if err:
+            return (
+                f"# Failed to inject reviews (batch {batch_no}/{len(batches)} — "
+                f"earlier batches were already applied)\n\n```\n{err}\n```\n\n"
+                + _json_block("Partial progress before the failure", combined)
+            )
+        data = result if isinstance(result, dict) else {}
+        combined["batches_completed"] = batch_no
+        combined["inserted"] += int(data.get("inserted") or 0)
+        combined["updated"] += int(data.get("updated") or 0)
+        combined["skipped_unmatched"] += int(data.get("skipped_unmatched") or 0)
+        for ref in data.get("unmatched_refs") or []:
+            if ref not in seen_refs:
+                seen_refs.add(ref)
+                combined["unmatched_refs"].append(ref)
+        combined["classification_enqueued"] = combined["classification_enqueued"] or bool(
+            data.get("classification_enqueued")
+        )
+        if data.get("integration_id") is not None:
+            combined["integration_id"] = data.get("integration_id")
+    return _json_block(f"Reviews injected ({len(batches)} batches)", combined)
 
 
 # --- Campaign / ad group / ad reads -----------------------------------------------
@@ -205,17 +257,33 @@ def aeko_create_ad_group_from_context(
     ['민감성 피부에 좋은 제품'] with one ad per product.
 
     Placement: pass EITHER ``campaign_id`` (existing) OR both ``new_campaign_name`` +
-    ``new_campaign_budget_micros`` (>= 1_000_000). ``ads`` = list of dicts, each:
+    ``new_campaign_budget_micros`` (>= 1_000_000). ``ads`` = list of dicts (max 100 per ad group —
+    OpenAI Ads cap; split a larger cluster into multiple ad groups), each:
     ``store_product_id`` (required), and optional ``source_review_id``, ``title``, ``body``,
     ``target_language`` (if title/body omitted, the backend composes clean creative from the review).
     ``idempotency_key`` MUST be stable for this logical action (reuse on retry).
     """
+    if len(ads or []) > MAX_ADS_PER_AD_GROUP:
+        return (
+            f"# OpenAI Ads allows at most {MAX_ADS_PER_AD_GROUP} ads per ad group; split the "
+            f"cluster into multiple ad groups (got {len(ads)})."
+        )
+    if len((ad_group_name or "").strip()) < MIN_NAME_LENGTH:
+        return (
+            f"# `ad_group_name` must be at least {MIN_NAME_LENGTH} characters "
+            "(after trimming whitespace)."
+        )
     if bool(campaign_id) == bool(new_campaign_name):
         return (
             "# Provide exactly one placement — either `campaign_id` (existing) OR "
             "`new_campaign_name` + `new_campaign_budget_micros` (new)."
         )
     if new_campaign_name:
+        if len(new_campaign_name.strip()) < MIN_NAME_LENGTH:
+            return (
+                f"# `new_campaign_name` must be at least {MIN_NAME_LENGTH} characters "
+                "(after trimming whitespace)."
+            )
         if not new_campaign_budget_micros or new_campaign_budget_micros < MIN_BUDGET_MICROS:
             return f"# `new_campaign_budget_micros` is required and must be >= {MIN_BUDGET_MICROS}."
         placement = {
