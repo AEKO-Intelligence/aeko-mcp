@@ -20,11 +20,11 @@ def _format_visibility(data: dict) -> str:
 
     lines = [f"# Visibility Summary for \"{brand_keyword}\"", ""]
 
-    # Metrics overview
-    lines.append("## Key Metrics (Last 30 Days)")
+    # Metrics overview — totals are all-time; diffs are 7-day week-over-week.
+    lines.append("## Key Metrics (All-Time Totals, 7-Day WoW Change)")
     lines.append("")
-    lines.append(f"| Metric | Value | vs Previous Period |")
-    lines.append(f"|--------|-------|--------------------|")
+    lines.append(f"| Metric | Value (all-time) | vs Previous 7 Days |")
+    lines.append(f"|--------|------------------|--------------------|")
     lines.append(
         f"| Mentions | {metrics.get('total_mentions', 0)} "
         f"| {_format_diff(metrics.get('mentions_diff'))} |"
@@ -43,17 +43,18 @@ def _format_visibility(data: dict) -> str:
     )
     lines.append("")
 
-    # Trend
+    # Trend — backend returns ~13 weekly buckets (TrendItem: label, period_start, ...)
     if trend:
-        lines.append("## Monthly Trend")
+        lines.append("## Weekly Trend")
         lines.append("")
-        lines.append("| Month | Mentions | Citations | Sources | Sentiment |")
-        lines.append("|-------|----------|-----------|---------|-----------|")
+        lines.append("| Week | Mentions | Citations | Sources | Sentiment |")
+        lines.append("|------|----------|-----------|---------|-----------|")
         for t in trend:
+            week = t.get("label") or t.get("period_start") or "(unknown)"
             lines.append(
-                f"| {t['month']} {t['year']} | {t['mentions']} "
-                f"| {t['citations']} | {t['sources']} "
-                f"| {t['sentiment']:.1f}% |"
+                f"| {week} | {t.get('mentions', 0)} "
+                f"| {t.get('citations', 0)} | {t.get('sources', 0)} "
+                f"| {t.get('sentiment', 0.0):.1f}% |"
             )
         lines.append("")
 
@@ -124,11 +125,13 @@ def _format_cited_pages(cited_pages: list) -> str:
     lines.append("| Page | Citations | AI Engines | Top Prompt |")
     lines.append("|------|-----------|------------|------------|")
     for p in cited_pages[:20]:
-        url = p.get("url") or p.get("page_url") or "(unknown)"
-        citation_count = p.get("citation_count") or p.get("count") or 0
-        engines_list = p.get("ai_platforms") or p.get("engines") or []
-        engines = ", ".join(engines_list) if isinstance(engines_list, list) else str(engines_list)
-        top_prompt = p.get("top_prompt") or p.get("prompt") or ""
+        # CitedPageItem: url, full_url, count, title, prompts (BrandMentionItem list)
+        url = p.get("url") or "(unknown)"
+        citation_count = p.get("count", 0)
+        prompts = p.get("prompts") or []
+        engines_list = sorted({pr.get("ai_model") for pr in prompts if pr.get("ai_model")})
+        engines = ", ".join(engines_list)
+        top_prompt = (prompts[0].get("prompt_en") or prompts[0].get("text") or "") if prompts else ""
         if len(top_prompt) > 60:
             top_prompt = top_prompt[:57] + "..."
         lines.append(f"| {url} | {citation_count} | {engines} | {top_prompt} |")
@@ -192,9 +195,9 @@ def aeko_get_visibility_summary(
     Args:
         domain_id: UUID of the domain.
         scope:
-          - `overview` (default) — mention / citation / source counts, 30-day
-            trend, recent brand mentions across ChatGPT / Claude / Gemini /
-            Perplexity.
+          - `overview` (default) — all-time mention / citation / source counts
+            with 7-day week-over-week diffs, a 13-week weekly trend, and recent
+            brand mentions across ChatGPT / Claude / Gemini / Perplexity.
           - `cited_sources` — the subset of your pages AI engines cited,
             with per-page citation counts + triggering prompts.
           - `tracked_prompt_metrics` — 7-day performance across tracked

@@ -90,10 +90,42 @@ def test_budget_rejects_over_delta(monkeypatch):
 
 def test_create_ad_group_requires_exactly_one_placement():
     out = marketing.aeko_create_ad_group_from_context(
-        "d1", "AG", ["hint"], [{"store_product_id": "p1"}], "idem",
-        campaign_id="c1", new_campaign_name="X",  # both -> invalid
+        "d1", "Ad Group A", ["hint"], [{"store_product_id": "p1"}], "idem",
+        campaign_id="c1", new_campaign_name="Xyz",  # both -> invalid
     )
     assert "exactly one placement" in out
+
+
+def test_create_ad_group_rejects_short_name():
+    out = marketing.aeko_create_ad_group_from_context(
+        "d1", "AG", ["hint"], [{"store_product_id": "p1"}], "idem", campaign_id="c1",
+    )
+    assert "at least 3 characters" in out
+
+
+def test_create_ad_group_rejects_too_many_ads():
+    ads = [{"store_product_id": f"p{i}"} for i in range(101)]
+    out = marketing.aeko_create_ad_group_from_context(
+        "d1", "Ad Group A", ["hint"], ads, "idem", campaign_id="c1",
+    )
+    assert "at most 100 ads" in out
+
+
+def test_inject_reviews_chunks_over_200(monkeypatch):
+    calls = {"n": 0, "sizes": []}
+
+    def fake_post(path, json=None, headers=None):
+        n = len(json["reviews"])
+        calls["n"] += 1
+        calls["sizes"].append(n)
+        return {"integration_id": "i1", "requested": n, "inserted": n, "updated": 0,
+                "skipped_unmatched": 0, "unmatched_refs": [], "classification_enqueued": True}
+
+    monkeypatch.setattr(marketing.client, "post", fake_post)
+    reviews = [{"external_review_id": f"r{i}", "external_product_ref": "sku-1", "body": "x"} for i in range(450)]
+    out = marketing.aeko_inject_reviews("d1", reviews)
+    assert calls["n"] == 3 and calls["sizes"] == [200, 200, 50]
+    assert '"inserted": 450' in out  # aggregated across batches
 
 
 def test_set_state_pause_only():

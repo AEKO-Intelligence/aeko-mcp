@@ -360,65 +360,89 @@ def aeko_track_prompt(
     raw_prompt: str,
     ai_platform: str,
     prompt_en: Optional[str] = None,
+    country: Optional[str] = None,
+    # Search-row metadata accepted for convenience (so a caller can pass a whole
+    # aeko_search_research_prompts row unchanged) but NOT persisted — the backend derives
+    # classification server-side. Kept in the signature so existing callers don't error.
     prompt_ko: Optional[str] = None,
     model: Optional[str] = None,
     language: Optional[str] = None,
-    country: Optional[str] = None,
     industry: Optional[str] = None,
     vertical: Optional[str] = None,
     persona: Optional[str] = None,
-    tags: Optional[list[str]] = None,
+    icp: Optional[str] = None,
+    context: Optional[Any] = None,
+    tags: Optional[Any] = None,
 ) -> str:
     """Start tracking a prompt so AEKO re-queries it across AI engines.
 
     Use after `aeko_search_research_prompts` to pick a research prompt to
-    track — pass the same `raw_prompt` / `ai_platform` / `country` / etc.
-    that the search surfaced. Creates a user-owned tracked-prompt row that
-    AEKO's pipeline will re-query on cadence so you can watch how AI
-    responses shift over time.
+    track — pass the same `raw_prompt` / `ai_platform` / `country` that the
+    search surfaced. Creates a user-owned tracked-prompt row that AEKO's
+    pipeline will re-query on cadence so you can watch how AI responses
+    shift over time. Only `raw_prompt`/`ai_platform`/`prompt_en`/`country` are
+    persisted; extra search-row metadata (prompt_ko, model, industry, persona,
+    tags, …) is accepted for convenience but IGNORED — the backend derives
+    classification server-side.
 
-    Idempotent: tracking a prompt you already track returns a 409; tracking
-    one you previously untracked reactivates it. Package limits (max tracked
-    prompts, max markets) apply.
+    Idempotent: tracking a prompt you already track returns HTTP 201 with
+    a per-result status of `already_tracked` (NOT a 409); tracking one you
+    previously untracked reactivates it (`reactivated`). Package limits
+    (max tracked prompts, max markets) apply and surface as a `failed`
+    result with a reason.
 
     Args:
         raw_prompt: The prompt text to track (required).
         ai_platform: Target AI engine — `openai`, `anthropic`, `google`, or
             `perplexity` (required).
-        prompt_en / prompt_ko: Optional pre-translated forms.
-        model: Specific model name (e.g. `claude-sonnet-4-5`).
-        language: Language code (`en`, `ko`, etc.). Derived from `country`
-            if omitted.
+        prompt_en: Optional pre-translated English form.
         country: ISO-3166 country code (must be in your account's
-            selected_markets).
-        industry / vertical: Classification fields matching the research
-            prompt's shape — pass through from the search result.
-        persona: Optional persona label (max 500 chars).
-        tags: Optional list of free-form tags.
+            selected_markets). Defaults to your first selected market.
     """
     body: dict[str, Any] = {
         "raw_prompt": raw_prompt,
         "ai_platform": ai_platform,
     }
-    for key, val in (
-        ("prompt_en", prompt_en),
-        ("prompt_ko", prompt_ko),
-        ("model", model),
-        ("language", language),
-        ("country", country),
-        ("industry", industry),
-        ("vertical", vertical),
-        ("persona", persona),
-        ("tags", tags),
-    ):
-        if val is not None:
-            body[key] = val
+    if prompt_en is not None:
+        body["prompt_en"] = prompt_en
+    if country is not None:
+        body["country"] = country
 
+    # POST /api/tracked-prompts returns 201 with a BulkTrackResponse:
+    # {results: [{seed_index, item_id, ai_platform, country, status,
+    #             tracked_prompt_id, reason}], summary: {...}}.
+    # A single-prompt call yields exactly one result row.
     resp = client.post("/api/tracked-prompts", json=body)
-    prompt_id = resp.get("id", "?")
-    status_val = resp.get("status", "tracked")
-    display = resp.get("prompt_en") or resp.get("raw_prompt") or raw_prompt
-    return f"Tracked prompt `{prompt_id}` ({status_val}): {display[:120]}"
+    results = resp.get("results") or []
+    summary = resp.get("summary") or {}
+
+    if not results:
+        return (
+            "Track request returned no results — backend accepted the call "
+            f"but reported nothing for this prompt. Summary: {summary or 'N/A'}"
+        )
+
+    result = results[0]
+    status_val = result.get("status", "unknown")
+    prompt_id = result.get("tracked_prompt_id") or "?"
+    display = (prompt_en or raw_prompt)[:120]
+
+    summary_bits = []
+    for key in ("tracked", "reactivated", "associated", "already_tracked"):
+        count = summary.get(key)
+        if count:
+            summary_bits.append(f"{key}={count}")
+    summary_str = f" [{', '.join(summary_bits)}]" if summary_bits else ""
+
+    if status_val in ("tracked", "reactivated", "associated"):
+        return f"Tracked prompt `{prompt_id}` ({status_val}): {display}{summary_str}"
+    if status_val == "already_tracked":
+        return (
+            f"Prompt already tracked as `{prompt_id}` — no new row created: "
+            f"{display}{summary_str}"
+        )
+    reason = result.get("reason") or "no reason given"
+    return f"Tracking failed ({status_val}): {reason} — prompt: {display}{summary_str}"
 
 
 @mcp.tool(title="Untrack a prompt", annotations=WRITE)
@@ -486,17 +510,17 @@ def _format_tracked_prompt_detail(data: dict) -> str:
             header_bits.append(f"sentiment={sentiment}")
         lines.append(f"- {' · '.join(header_bits)}")
 
-        # Prefer the full response body (post backend rollout) over the
-        # legacy snippet; fall back to the snippet so we degrade gracefully
-        # when the backend hasn't shipped the full body yet. The skill's
-        # structural mimicry needs the surrounding text where citations
-        # appear, not just a 300-char teaser.
+        # Prefer the full response body over the snippet; fall back to the
+        # snippet so we degrade gracefully when the full body is absent.
+        # The skill's structural mimicry needs the surrounding text where
+        # citations appear, not just a 300-char teaser.
         #
-        # Canonical field name aligned with the rest of the payload: the
-        # backend already uses `response_snippet_en` so the matching
-        # full-body field is `response_body_en`. Legacy fallback to the
-        # snippet only — six aliases would mask a real backend rename.
-        body = resp.get("response_body_en")
+        # Canonical backend field is `full_response` (see
+        # TrackedPromptResponseItem in aeko_backend api/routes/main.py),
+        # alongside `response_snippet` / `response_snippet_en`.
+        # `response_body_en` is kept only as a secondary alias for any
+        # transitional payloads.
+        body = resp.get("full_response") or resp.get("response_body_en")
         snippet = resp.get("response_snippet_en") or resp.get("response_snippet")
         display = body or snippet
         if display:
@@ -579,8 +603,8 @@ def aeko_get_tracked_prompt(
     """Full citation-forensics payload for one tracked prompt.
 
     Returns the prompt's responses per AI platform — each response renders the
-    full body (or a 300-char snippet fallback if the backend hasn't shipped
-    `response_body_en` yet) plus its citations: source URL + domain + position
+    full body (backend field `full_response`; falls back to the 300-char
+    snippet when absent) plus its citations: source URL + domain + position
     + context snippet, and crawled source metadata (JSON-LD `@type` list,
     extracted body text, source-analysis citability score). This is AEKO's
     "which competitors win this prompt and which sources AI engines cite"
