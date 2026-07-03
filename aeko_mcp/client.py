@@ -112,9 +112,17 @@ class AekoClient:
         except httpx.ConnectError:
             raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
 
-    def patch(self, path: str, json: dict | None = None) -> dict:
+    def _merged_headers(self, extra: dict | None) -> dict[str, str]:
+        """Auth headers plus any per-call extras (e.g. an Idempotency-Key for
+        redelivery-safe OpenAI Ads writes). Extras win on key collision."""
+        headers = self._headers()
+        if extra:
+            headers.update({k: str(v) for k, v in extra.items() if v is not None})
+        return headers
+
+    def patch(self, path: str, json: dict | None = None, headers: dict | None = None) -> dict:
         try:
-            resp = self._client.patch(path, json=json, headers=self._headers())
+            resp = self._client.patch(path, json=json, headers=self._merged_headers(headers))
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         except httpx.HTTPStatusError as e:
@@ -122,9 +130,9 @@ class AekoClient:
         except httpx.ConnectError:
             raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
 
-    def post(self, path: str, json: dict | None = None) -> dict:
+    def post(self, path: str, json: dict | None = None, headers: dict | None = None) -> dict:
         try:
-            resp = self._client.post(path, json=json, headers=self._headers())
+            resp = self._client.post(path, json=json, headers=self._merged_headers(headers))
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         except httpx.HTTPStatusError as e:
@@ -132,9 +140,9 @@ class AekoClient:
         except httpx.ConnectError:
             raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
 
-    def put(self, path: str, json: dict | None = None) -> dict:
+    def put(self, path: str, json: dict | None = None, headers: dict | None = None) -> dict:
         try:
-            resp = self._client.put(path, json=json, headers=self._headers())
+            resp = self._client.put(path, json=json, headers=self._merged_headers(headers))
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         except httpx.HTTPStatusError as e:
