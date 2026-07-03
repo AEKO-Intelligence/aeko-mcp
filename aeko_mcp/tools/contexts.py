@@ -50,8 +50,8 @@ def aeko_list_contexts(
     Args:
         domain_id: UUID of the AEKO domain whose saved contexts you want.
         scope: Optional filter: ``brand``, ``product``, or ``category``.
-        kind: Optional filter: ``customer_segment``, ``skin_concern``,
-            ``product_experience``, ``claim``, or ``content_angle``.
+        kind: Optional free-text memory-type filter, e.g. ``브랜드 충성도``,
+            ``재구매``, ``피부 고민``, or ``content angle``.
     """
     params = {
         "domain_id": domain_id,
@@ -103,6 +103,8 @@ def aeko_list_contexts(
 
         customer_state = _clean(item.get("customer_state"))
         recent_concern = _clean(item.get("recent_concern"))
+        occasion = _clean(item.get("occasion"))
+        recipient = _clean(item.get("recipient"))
         product_experience = _clean(item.get("product_experience"))
         felt_effect = _clean(item.get("felt_effect"))
 
@@ -110,13 +112,17 @@ def aeko_list_contexts(
             lines.append(f"- **고객 상태**: {customer_state}")
         if recent_concern:
             lines.append(f"- **최근 고민**: {recent_concern}")
+        if occasion:
+            lines.append(f"- **상황**: {occasion}")
+        if recipient:
+            lines.append(f"- **대상**: {recipient}")
         if product_experience:
             lines.append(f"- **제품 경험**: {product_experience}")
         if felt_effect:
             lines.append(f"- **느낀 효과**: {felt_effect}")
 
         # Legacy fallback for rows created before the memory facets shipped.
-        if not any((customer_state, recent_concern, product_experience, felt_effect)):
+        if not any((customer_state, recent_concern, occasion, recipient, product_experience, felt_effect)):
             problem = _clean(item.get("problem"))
             solution = _clean(item.get("solution"))
             outcome = _clean(item.get("outcome"))

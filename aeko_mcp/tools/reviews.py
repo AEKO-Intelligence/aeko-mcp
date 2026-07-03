@@ -301,6 +301,8 @@ def aeko_get_product_reviews(
         problem = review.get("extracted_problem")
         customer_state = review.get("customer_state")
         recent_concern = review.get("recent_concern")
+        occasion = review.get("occasion")
+        recipient = review.get("recipient")
         product_experience = review.get("product_experience")
         felt_effect = (
             review.get("felt_effect")
@@ -313,11 +315,15 @@ def aeko_get_product_reviews(
             lines.append(f"- **고객 상태**: {customer_state}")
         if recent_concern:
             lines.append(f"- **최근 고민**: {recent_concern}")
+        if occasion:
+            lines.append(f"- **상황**: {occasion}")
+        if recipient:
+            lines.append(f"- **대상**: {recipient}")
         if product_experience:
             lines.append(f"- **제품 경험**: {product_experience}")
         if felt_effect:
             lines.append(f"- **느낀 효과**: {felt_effect}")
-        if problem or customer_state or recent_concern or product_experience or felt_effect:
+        if any((problem, customer_state, recent_concern, occasion, recipient, product_experience, felt_effect)):
             lines.append("")
 
         excerpt = _excerpt(review.get("body"))
