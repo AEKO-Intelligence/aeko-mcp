@@ -8,21 +8,25 @@ Python MCP (Model Context Protocol) server bridging Claude and other AI assistan
 - **Transport:** streamable-http, stateless, JSON responses by default (`aeko_mcp/server.py`)
 - **Backend (prod default):** `https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io` (override with `AEKO_API_URL`)
 
-## Registered tool groups — 32 tools across 11 modules (`aeko_mcp/tools/`)
+## Registered tool groups — 81 tools across 15 modules (`aeko_mcp/tools/`)
 
 | Module | Tools | Covers |
 |---|---|---|
-| `visibility` | 3 | Visibility summary, domain info, list domains |
-| `research` | 6 | Research prompts, tracked-prompt forensics, resolve prompts by text |
-| `aeko_score` | 1 | AI-readiness score |
-| `store_write` | 7 | Product description/meta/tags writes, integrations, audit trail, revert |
-| `action_plan` | 4 | Action items, technical items, completion |
-| `content_variation` | 4 | Save/publish/list/update content variations |
-| `crawl` | 1 | `aeko_crawl_url` |
+| `visibility` | 5 | Domain setup, visibility summary, citability, domain info, list domains |
+| `research` | 7 | Research prompts, tracked-prompt angles, quota, prompt detail, untrack |
+| `store_write` | 11 | Store connect/sync, manual product inject, product writes, audit trail, revert |
+| `action_plan` | 6 | Action items, technical items, create/dismiss/complete lifecycle |
+| `content_variation` | 5 | Save/publish/unpublish/list/update content variations |
 | `own_content` | 1 | `aeko_list_own_content` |
 | `media_upload` | 1 | `aeko_request_media_upload` |
-| `reviews` | 3 | Context Reviews (Crema/Judge.me), read-only |
-| `contexts` | 1 | Curated AEKO Context memories, read-only |
+| `reviews` | 9 | Review source connect/sync, Context Reviews, suggested prompts |
+| `contexts` | 5 | Curated AEKO Context memories, CRUD, create-from-reviews |
+| `marketing` | 14 | Contextual reviews, review injection, OpenAI Ads setup/compose/report/optimize/state |
+| `analytics` | 4 | SOV, drift, Measure, persona analytics |
+| `ga4` | 4 | GA4 status, property selection, sync |
+| `icps` | 3 | ICP list/create/suggest |
+| `views` | 3 | Prompt view list/create/add prompts |
+| `setup` | 3 | Starter prompts and market setup |
 
 ## Run locally
 
@@ -36,7 +40,7 @@ Client setup: `claude mcp add --transport http aeko https://aeko-intelligence.co
 ## Where to look
 
 - `README.md` — connection, auth, config table, embedding in another ASGI app
-- `docs/aeko-mcp-overview.md` — architecture + token flow (**stale**: written at v0.5.0/22 tools; trust this file and the code over it)
+- `docs/aeko-mcp-overview.md` — architecture + token flow; older narrative sections may lag the live 80-tool surface, so trust `aeko_mcp/tools/*.py` for tool details
 - `docs/contracts/` — cross-repo contracts (e.g. `action-item-contract.md`)
 - `CHANGELOG.md` — release history; backend pins this package by git tag
 

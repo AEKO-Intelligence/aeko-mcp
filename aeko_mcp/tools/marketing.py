@@ -20,7 +20,7 @@ Design rules (mirror the skill/tool split):
     so a re-run never double-creates or double-charges.
   - Spend is real: ``aeko_update_campaign_budget`` defaults to dry-run and enforces an absolute
     ceiling + max per-call delta at the TOOL layer (the backend only enforces a floor).
-  - v1 state changes are limited to ``pause`` (activate/archive deferred).
+  - State changes can pause, confirm-gated resume, or confirm-gated archive.
 
 All routes are Pro+ gated server-side; an under-tier account surfaces the backend 403 verbatim.
 """
@@ -28,7 +28,7 @@ import json
 from typing import Any, Optional
 
 from ..server import client, mcp
-from ._annotations import READ_ONLY, WRITE, WRITE_ONCE
+from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
 
 # Backend enforces this floor on campaign budgets (schemas/marketing.py MarketingBudget).
 MIN_BUDGET_MICROS = 1_000_000
@@ -236,6 +236,49 @@ def aeko_get_ad_insights(
     return _json_block(f"Insights ({scope}, {date_from} → {date_to})", result)
 
 
+@mcp.tool(title="Get ad account status", annotations=READ_ONLY)
+def aeko_get_ad_account_status(domain_id: str) -> str:
+    """Read OpenAI Ads account connection/feed credential status for a domain.
+
+    Pro+ gated server-side. Secrets are never returned by the backend.
+    """
+    result, err = _safe(
+        client.get,
+        "/api/marketing/ad-account",
+        params={"domain_id": domain_id},
+    )
+    if err:
+        return f"# Failed to get ad account status\n\n```\n{err}\n```"
+    return _json_block("Ad account status", result)
+
+
+@mcp.tool(title="Get feed status", annotations=READ_ONLY)
+def aeko_get_feed_status(domain_id: str) -> str:
+    """Read OpenAI Ads product-feed readiness and latest sync status."""
+    result, err = _safe(
+        client.get,
+        "/api/marketing/feed",
+        params={"domain_id": domain_id},
+    )
+    if err:
+        return f"# Failed to get feed status\n\n```\n{err}\n```"
+    return _json_block("Feed status", result)
+
+
+@mcp.tool(title="Sync product feed", annotations=WRITE)
+def aeko_sync_feed(domain_id: str, idempotency_key: str) -> str:
+    """Queue an OpenAI Ads product-feed sync for a connected ad account."""
+    result, err = _safe(
+        client.post,
+        "/api/marketing/feed/sync",
+        params={"domain_id": domain_id},
+        headers=_idem_headers(idempotency_key),
+    )
+    if err:
+        return f"# Failed to sync feed\n\n```\n{err}\n```"
+    return _json_block("Feed sync queued", result)
+
+
 # --- Writes: compose ad group, budget, pause --------------------------------------
 
 
@@ -389,34 +432,104 @@ def aeko_update_campaign_budget(
     return _json_block(f"Budget updated (Δ {delta_note or 'n/a'})", result)
 
 
-@mcp.tool(title="Pause campaign", annotations=WRITE)
-def aeko_set_campaign_state(campaign_id: str, action: str, idempotency_key: str) -> str:
-    """Change a campaign's state. v1 supports ``action='pause'`` only (activate/archive deferred).
-    Use to stop a whole under-performing campaign; reallocate its budget with
-    ``aeko_update_campaign_budget`` instead of pausing when you only want to trim spend."""
-    if action != "pause":
-        return "# Only `action='pause'` is supported in v1 (activate/archive are deferred)."
+_STATE_ENDPOINTS = {
+    "pause": ("pause", "pause"),
+    "paused": ("pause", "pause"),
+    "active": ("activate", "active"),
+    "activate": ("activate", "active"),
+    "archive": ("archive", "archive"),
+    "archived": ("archive", "archive"),
+}
+
+
+def _set_marketing_state(
+    *,
+    entity_label: str,
+    path_prefix: str,
+    entity_id: str,
+    action: str,
+    idempotency_key: str,
+    confirm_active: bool,
+    confirm_archive: bool,
+) -> str:
+    normalized = (action or "").strip().lower()
+    if normalized not in _STATE_ENDPOINTS:
+        return "# Allowed actions: `pause`, `active`, or `archive`."
+    endpoint_action, result_label = _STATE_ENDPOINTS[normalized]
+    if endpoint_action == "activate" and not confirm_active:
+        return "# Resume requires `confirm_active=True` because it can restart ad spend."
+    if endpoint_action == "archive" and not confirm_archive:
+        return "# Archive requires `confirm_archive=True` because it is harder to undo than pause."
     result, err = _safe(
         client.post,
-        f"/api/marketing/campaigns/{campaign_id}/pause",
+        f"/api/marketing/{path_prefix}/{entity_id}/{endpoint_action}",
         headers=_idem_headers(idempotency_key),
     )
     if err:
-        return f"# Failed to pause campaign\n\n```\n{err}\n```"
-    return _json_block("Campaign paused", result)
+        return f"# Failed to set {entity_label.lower()} state\n\n```\n{err}\n```"
+    return _json_block(f"{entity_label} {result_label}", result)
 
 
-@mcp.tool(title="Pause ad", annotations=WRITE)
-def aeko_set_ad_state(ad_id: str, action: str, idempotency_key: str) -> str:
-    """Change an ad's state. v1 supports ``action='pause'`` only. Use for budget hygiene — pause an
-    ad that spends with ~0 clicks / runaway CPC (identify it via ``aeko_get_ad_insights`` scope='ad')."""
-    if action != "pause":
-        return "# Only `action='pause'` is supported in v1 (activate/archive are deferred)."
-    result, err = _safe(
-        client.post,
-        f"/api/marketing/ads/{ad_id}/pause",
-        headers=_idem_headers(idempotency_key),
+@mcp.tool(title="Set campaign state", annotations=DESTRUCTIVE)
+def aeko_set_campaign_state(
+    campaign_id: str,
+    action: str,
+    idempotency_key: str,
+    confirm_active: bool = False,
+    confirm_archive: bool = False,
+) -> str:
+    """Pause, resume (`active`), or archive a campaign.
+
+    Resume requires `confirm_active=True` because it can restart spend.
+    Archive requires `confirm_archive=True`; use `pause` for reversible
+    budget hygiene unless the user explicitly wants archival.
+    """
+    return _set_marketing_state(
+        entity_label="Campaign",
+        path_prefix="campaigns",
+        entity_id=campaign_id,
+        action=action,
+        idempotency_key=idempotency_key,
+        confirm_active=confirm_active,
+        confirm_archive=confirm_archive,
     )
-    if err:
-        return f"# Failed to pause ad\n\n```\n{err}\n```"
-    return _json_block("Ad paused", result)
+
+
+@mcp.tool(title="Set ad group state", annotations=DESTRUCTIVE)
+def aeko_set_ad_group_state(
+    ad_group_id: str,
+    action: str,
+    idempotency_key: str,
+    confirm_active: bool = False,
+    confirm_archive: bool = False,
+) -> str:
+    """Pause, confirm-gated resume (`active`), or archive an ad group."""
+    return _set_marketing_state(
+        entity_label="Ad group",
+        path_prefix="ad-groups",
+        entity_id=ad_group_id,
+        action=action,
+        idempotency_key=idempotency_key,
+        confirm_active=confirm_active,
+        confirm_archive=confirm_archive,
+    )
+
+
+@mcp.tool(title="Set ad state", annotations=DESTRUCTIVE)
+def aeko_set_ad_state(
+    ad_id: str,
+    action: str,
+    idempotency_key: str,
+    confirm_active: bool = False,
+    confirm_archive: bool = False,
+) -> str:
+    """Pause, confirm-gated resume (`active`), or archive an ad."""
+    return _set_marketing_state(
+        entity_label="Ad",
+        path_prefix="ads",
+        entity_id=ad_id,
+        action=action,
+        idempotency_key=idempotency_key,
+        confirm_active=confirm_active,
+        confirm_archive=confirm_archive,
+    )

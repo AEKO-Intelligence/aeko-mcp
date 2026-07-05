@@ -130,9 +130,15 @@ class AekoClient:
         except httpx.ConnectError:
             raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
 
-    def post(self, path: str, json: dict | None = None, headers: dict | None = None) -> dict:
+    def post(
+        self,
+        path: str,
+        json: dict | None = None,
+        params: dict | None = None,
+        headers: dict | None = None,
+    ) -> dict:
         try:
-            resp = self._client.post(path, json=json, headers=self._merged_headers(headers))
+            resp = self._client.post(path, json=json, params=params, headers=self._merged_headers(headers))
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         except httpx.HTTPStatusError as e:

@@ -25,6 +25,7 @@ remains available on every tier so users can always see what's connected.
 """
 import base64
 import hashlib
+import json
 import mimetypes
 import os
 import re
@@ -34,7 +35,9 @@ from typing import Any
 import httpx
 
 from ..server import mcp, client
-from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE
+from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
+
+INJECT_PRODUCTS_BATCH_SIZE = 200
 
 
 def _safe(method, *args, **kwargs) -> tuple[dict | None, str | None]:
@@ -43,6 +46,10 @@ def _safe(method, *args, **kwargs) -> tuple[dict | None, str | None]:
         return method(*args, **kwargs), None
     except Exception as e:  # noqa: BLE001
         return None, f"{type(e).__name__}: {e}"
+
+
+def _json_block(title: str, payload: Any) -> str:
+    return f"# {title}\n\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
 
 
 def _format_result(result: dict) -> list[str]:
@@ -71,6 +78,142 @@ def _update_product(
         return "# Write failed\n\n(no response body)"
     lines = [f"# Store write: {result.get('status', '?').upper()}", ""] + _format_result(result)
     return "\n".join(lines)
+
+
+@mcp.tool(title="Connect store", annotations=WRITE_ONCE)
+def aeko_connect_store(
+    domain_id: str,
+    platform: str,
+    store_identifier: str,
+    access_token: str,
+    refresh_token: str | None = None,
+    token_expires_at: str | None = None,
+    scopes: str | None = None,
+) -> str:
+    """Connect a Cafe24 or Shopify store to a domain.
+
+    Manual/custom stores are created by `aeko_inject_products`, not this
+    OAuth/token connect route.
+    """
+    normalized_platform = platform.strip().lower()
+    if normalized_platform == "manual":
+        return (
+            "# Manual stores use product inject\n\n"
+            "Call `aeko_inject_products(domain_id=..., products=[...])`; it "
+            "creates the credential-less manual store internally."
+        )
+    if normalized_platform not in {"cafe24", "shopify"}:
+        return "Platform must be `cafe24` or `shopify`. Use `aeko_inject_products` for manual stores."
+
+    body = {
+        "domain_id": domain_id,
+        "platform": normalized_platform,
+        "store_identifier": store_identifier,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_expires_at": token_expires_at,
+        "scopes": scopes,
+    }
+    payload = {k: v for k, v in body.items() if v is not None}
+    result, err = _safe(client.post, "/api/store-integrations", json=payload)
+    if err:
+        return f"# Failed to connect store\n\n```\n{err}\n```"
+    return _json_block("Store connected", result)
+
+
+@mcp.tool(title="Sync store products", annotations=WRITE)
+def aeko_sync_store(integration_id: str) -> str:
+    """Sync products from a connected Cafe24/Shopify store.
+
+    Manual stores are push-only; update them with `aeko_inject_products`.
+    """
+    result, err = _safe(client.post, f"/api/store-integrations/{integration_id}/sync")
+    if err:
+        return f"# Failed to sync store\n\n```\n{err}\n```"
+    return _json_block("Store products synced", result)
+
+
+@mcp.tool(title="Inject manual products", annotations=WRITE_ONCE)
+def aeko_inject_products(domain_id: str, products: list[dict]) -> str:
+    """Inject products for a custom/manual store.
+
+    The backend get-or-creates a credential-less manual store for `domain_id`
+    and upserts by `external_product_id`. Each product needs stable
+    `external_product_id`, `title`, `product_url`, and `public_url`.
+    """
+    if not products:
+        return "# No products to inject — pass a non-empty `products` list."
+
+    if len(products) <= INJECT_PRODUCTS_BATCH_SIZE:
+        result, err = _safe(
+            client.post,
+            "/api/store-integrations/products/inject",
+            json={"domain_id": domain_id, "products": products},
+        )
+        if err:
+            return f"# Failed to inject products\n\n```\n{err}\n```"
+        return _json_block("Products injected", result)
+
+    batches = [
+        products[i : i + INJECT_PRODUCTS_BATCH_SIZE]
+        for i in range(0, len(products), INJECT_PRODUCTS_BATCH_SIZE)
+    ]
+    combined: dict[str, Any] = {
+        "domain_id": domain_id,
+        "requested": len(products),
+        "batches": len(batches),
+        "batches_completed": 0,
+        "synced": 0,
+        "skipped": 0,
+        "integration_id": None,
+    }
+    errors: list[str] = []
+    for batch in batches:
+        result, err = _safe(
+            client.post,
+            "/api/store-integrations/products/inject",
+            json={"domain_id": domain_id, "products": batch},
+        )
+        if err:
+            errors.append(err)
+            continue
+        combined["batches_completed"] += 1
+        if isinstance(result, dict):
+            combined["synced"] += int(result.get("synced") or 0)
+            combined["skipped"] += int(result.get("skipped") or 0)
+            combined["integration_id"] = combined["integration_id"] or result.get("integration_id")
+    if errors:
+        combined["errors"] = errors
+    return _json_block("Products injected", combined)
+
+
+@mcp.tool(title="List store products", annotations=READ_ONLY)
+def aeko_list_store_products(
+    store_integration_id: str | None = None,
+    domain_id: str | None = None,
+    include_citability: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+    sort: str = "synced_desc",
+    aeo_status: str | None = None,
+) -> str:
+    """List synced/manual store products with stable external product IDs."""
+    params: dict[str, Any] = {
+        "include_citability": include_citability,
+        "limit": max(1, min(int(limit), 500)),
+        "offset": max(0, int(offset)),
+        "sort": sort,
+    }
+    if store_integration_id:
+        params["store_integration_id"] = store_integration_id
+    if domain_id:
+        params["domain_id"] = domain_id
+    if aeo_status:
+        params["aeo_status"] = aeo_status
+    result, err = _safe(client.get, "/api/store-products", params=params)
+    if err:
+        return f"# Failed to list store products\n\n```\n{err}\n```"
+    return _json_block("Store products", result)
 
 
 def _upload_local_images_for_aeko_shop(
@@ -157,14 +300,19 @@ def aeko_list_store_integrations() -> str:
         store = item.get("store_identifier", "?")
         scopes = item.get("scopes") or ""
 
-        if platform == "cafe24":
-            write_enabled = "mall.write_product" in scopes
-        elif platform == "shopify":
-            write_enabled = "write_products" in scopes
+        if platform == "manual":
+            # A credential-less custom source has no live storefront API to push to —
+            # its catalog is maintained via aeko_inject_products, not store write-back.
+            write_badge = "📦 Manual catalog — update via `aeko_inject_products` (no live-store write-back)"
         else:
-            write_enabled = False
+            if platform == "cafe24":
+                write_enabled = "mall.write_product" in scopes
+            elif platform == "shopify":
+                write_enabled = "write_products" in scopes
+            else:
+                write_enabled = False
 
-        write_badge = "✅ Write enabled" if write_enabled else "⚠️ Read-only (reconnect in Settings to enable writes)"
+            write_badge = "✅ Write enabled" if write_enabled else "⚠️ Read-only (reconnect in Settings to enable writes)"
 
         lines.append(f"## `{integration_id}`")
         lines.append(f"- **Platform**: {platform}")

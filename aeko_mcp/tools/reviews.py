@@ -28,10 +28,11 @@ These are read-only — they never mutate review platform data. Pro+ is
 enforced server-side; an under-tier or trial-expired account surfaces the
 backend's 403 message verbatim via the AekoClient error path.
 """
+import json
 from typing import Any, Optional
 
 from ..server import mcp, client
-from ._annotations import READ_ONLY
+from ._annotations import READ_ONLY, WRITE
 
 # A review counts as "contextual" at or above this context_score. Mirrors the
 # backend threshold; also the default floor for ``aeko_get_product_reviews``.
@@ -50,6 +51,10 @@ def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
         return method(*args, **kwargs), None
     except Exception as e:  # noqa: BLE001
         return None, f"{type(e).__name__}: {e}"
+
+
+def _json_block(title: str, payload: Any) -> str:
+    return f"# {title}\n\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
 
 
 def _excerpt(text: Optional[str], limit: int = 280) -> str:
@@ -123,6 +128,13 @@ def aeko_list_review_integrations(domain_id: str) -> str:
         "`aeko_list_review_products` to see which products have contextual reviews."
     )
     return "\n".join(lines)
+
+
+# Connecting or syncing a real review platform (Crema / Judge.me / Cafe24) carries
+# third-party credentials (or the Cafe24 store OAuth token) and is DASHBOARD-ONLY — it is
+# intentionally NOT exposed as an MCP tool so secrets never traverse the agent channel.
+# The only agent-side review intake is the credential-less manual source via
+# `aeko_inject_reviews`. (Backend connect/sync routes are require_user_context.)
 
 
 @mcp.tool(title="List review products", annotations=READ_ONLY)
@@ -341,3 +353,103 @@ def aeko_get_product_reviews(
         "customer_state, recent_concern, product_experience, felt_effect, excerpt)."
     )
     return "\n".join(lines)
+
+
+@mcp.tool(title="Get suggested prompts from reviews", annotations=READ_ONLY)
+def aeko_get_suggested_prompts(
+    integration_id: str,
+    external_product_ref: str,
+    limit: int = 10,
+) -> str:
+    """List review-derived shopper prompts for one reviewed product.
+
+    These prompts are mined from contextual reviews and include a stable
+    `suggestion_id` to track plus a `suggestion_hash` to dismiss. Tracking one
+    auto-attaches its originating review Context as grounding.
+    """
+    capped_limit = max(1, min(int(limit), 50))
+    path = (
+        f"/api/review-integrations/{integration_id}/products/"
+        f"{external_product_ref}/suggested-prompts"
+    )
+    result, err = _safe(client.get, path, params={"limit": capped_limit})
+    if err:
+        return f"# Failed to list suggested prompts\n\n```\n{err}\n```"
+    return _json_block("Suggested prompts", result)
+
+
+@mcp.tool(title="Track suggested prompt", annotations=WRITE)
+def aeko_track_suggested_prompt(
+    integration_id: str,
+    suggestion_id: str,
+    ai_platforms: Optional[list[str]] = None,
+    countries: Optional[list[str]] = None,
+    icp_id: Optional[str] = None,
+    view_id: Optional[str] = None,
+) -> str:
+    """Track one review-derived suggested prompt with review Context grounding.
+
+    Optional platform/country fan-out and ICP/view angles use the same settable
+    contract as `aeko_track_prompt`.
+    """
+    body = {
+        "ai_platforms": ai_platforms,
+        "countries": countries,
+        "icp_id": icp_id,
+        "view_id": view_id,
+    }
+    payload = {k: v for k, v in body.items() if v is not None}
+    result, err = _safe(
+        client.post,
+        f"/api/review-integrations/{integration_id}/suggested-prompts/{suggestion_id}/track",
+        json=payload,
+    )
+    if err:
+        return f"# Failed to track suggested prompt\n\n```\n{err}\n```"
+    return _json_block("Suggested prompt tracked", result)
+
+
+@mcp.tool(title="Track suggested prompts batch", annotations=WRITE)
+def aeko_track_suggested_prompts(
+    integration_id: str,
+    min_context_score: int = CONTEXTUAL_THRESHOLD,
+    review_ids: Optional[list[str]] = None,
+    ai_platforms: Optional[list[str]] = None,
+    countries: Optional[list[str]] = None,
+    icp_id: Optional[str] = None,
+    view_id: Optional[str] = None,
+) -> str:
+    """Track the top review-derived prompt for each review in a filtered set."""
+    body: dict[str, Any] = {
+        "min_context_score": max(0, min(int(min_context_score), 100)),
+    }
+    optional = {
+        "review_ids": review_ids,
+        "ai_platforms": ai_platforms,
+        "countries": countries,
+        "icp_id": icp_id,
+        "view_id": view_id,
+    }
+    body.update({k: v for k, v in optional.items() if v is not None})
+    result, err = _safe(
+        client.post,
+        f"/api/review-integrations/{integration_id}/suggested-prompts/track-batch",
+        json=body,
+    )
+    if err:
+        return f"# Failed to batch-track suggested prompts\n\n```\n{err}\n```"
+    return _json_block("Suggested prompts tracked", result)
+
+
+@mcp.tool(title="Dismiss suggested prompt", annotations=WRITE)
+def aeko_dismiss_suggested_prompt(integration_id: str, suggestion_hash: str) -> str:
+    """Dismiss a review-derived suggested prompt by its suggestion hash."""
+    result, err = _safe(
+        client.post,
+        f"/api/review-integrations/{integration_id}/suggested-prompts/{suggestion_hash}/dismiss",
+    )
+    if err:
+        return f"# Failed to dismiss suggested prompt\n\n```\n{err}\n```"
+    payload = result if isinstance(result, dict) else {"status": "dismissed"}
+    payload.setdefault("suggestion_hash", suggestion_hash)
+    return _json_block("Suggested prompt dismissed", payload)

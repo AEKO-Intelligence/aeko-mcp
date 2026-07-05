@@ -1,3 +1,4 @@
+import json
 import re
 import unicodedata
 from typing import Any, Optional
@@ -29,6 +30,10 @@ PLATFORM_DISPLAY = {
     "google": "Gemini",
     "perplexity": "Perplexity",
 }
+
+
+def _json_block(title: str, payload: Any) -> str:
+    return f"# {title}\n\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
 
 
 def _format_prompts(data: dict) -> str:
@@ -202,6 +207,35 @@ def _format_tracked_prompts(data: list) -> str:
         if prompt_ko:
             ko_text = (prompt_ko[:57] + "...") if len(prompt_ko) > 60 else prompt_ko
             lines.append(f"|   |   | *{ko_text}* |   |   |   |")
+        angle_bits: list[str] = []
+        icp_id = p.get("icp_id")
+        icp_name = p.get("icp_name")
+        if icp_name or icp_id:
+            label = icp_name or "ICP"
+            suffix = f" (`{icp_id}`)" if icp_id else ""
+            angle_bits.append(f"ICP: {label}{suffix}")
+        context_id = p.get("context_id")
+        context_title = p.get("context_title")
+        if context_title or context_id:
+            label = context_title or "Context"
+            suffix = f" (`{context_id}`)" if context_id else ""
+            angle_bits.append(f"Context: {label}{suffix}")
+        persona = p.get("persona")
+        persona_types = p.get("persona_types") or []
+        persona_label = persona or ", ".join(str(x) for x in persona_types if x)
+        if persona_label:
+            angle_bits.append(f"Persona: {persona_label}")
+        funnel_stage = p.get("funnel_stage")
+        if funnel_stage:
+            angle_bits.append(f"Funnel: {funnel_stage}")
+        query_type = p.get("query_type")
+        if query_type:
+            angle_bits.append(f"Query: {query_type}")
+        tags = p.get("tags") or []
+        if tags:
+            angle_bits.append(f"Tags: {', '.join(str(x) for x in tags)}")
+        if angle_bits:
+            lines.append(f"|   |   | _Angles_: {' · '.join(angle_bits)} |   |   |   |")
 
     lines.append("")
     lines.append("Pass an `ID` from the table to `aeko_get_tracked_prompt` for full forensics (cited sources, JSON-LD `@types`, citability scores).")
@@ -358,32 +392,26 @@ def aeko_resolve_prompts_by_text(texts: list[str]) -> str:
 @mcp.tool(title="Track a prompt", annotations=WRITE)
 def aeko_track_prompt(
     raw_prompt: str,
-    ai_platform: str,
     prompt_en: Optional[str] = None,
+    ai_platforms: Optional[list[str]] = None,
+    countries: Optional[list[str]] = None,
+    icp_id: Optional[str] = None,
+    view_id: Optional[str] = None,
+    context_ids: Optional[list[str]] = None,
+    ai_platform: Optional[str] = None,
     country: Optional[str] = None,
-    # Search-row metadata accepted for convenience (so a caller can pass a whole
-    # aeko_search_research_prompts row unchanged) but NOT persisted — the backend derives
-    # classification server-side. Kept in the signature so existing callers don't error.
-    prompt_ko: Optional[str] = None,
-    model: Optional[str] = None,
-    language: Optional[str] = None,
-    industry: Optional[str] = None,
-    vertical: Optional[str] = None,
-    persona: Optional[str] = None,
-    icp: Optional[str] = None,
-    context: Optional[Any] = None,
-    tags: Optional[Any] = None,
 ) -> str:
     """Start tracking a prompt so AEKO re-queries it across AI engines.
 
     Use after `aeko_search_research_prompts` to pick a research prompt to
-    track — pass the same `raw_prompt` / `ai_platform` / `country` that the
-    search surfaced. Creates a user-owned tracked-prompt row that AEKO's
-    pipeline will re-query on cadence so you can watch how AI responses
-    shift over time. Only `raw_prompt`/`ai_platform`/`prompt_en`/`country` are
-    persisted; extra search-row metadata (prompt_ko, model, industry, persona,
-    tags, …) is accepted for convenience but IGNORED — the backend derives
-    classification server-side.
+    track, or pass your own shopper query. You can fan out across multiple
+    AI platforms and countries in one call and attach the prompt to an ICP,
+    saved view, and Context memories.
+
+    Settable angles are exactly the backend contract: `ai_platforms`,
+    `countries`, `icp_id`, `view_id`, and `context_ids`. Persona, tags,
+    query type, and funnel stage are derived server-side; pick an ICP to
+    represent a persona angle.
 
     Idempotent: tracking a prompt you already track returns HTTP 201 with
     a per-result status of `already_tracked` (NOT a 409); tracking one you
@@ -393,20 +421,35 @@ def aeko_track_prompt(
 
     Args:
         raw_prompt: The prompt text to track (required).
-        ai_platform: Target AI engine — `openai`, `anthropic`, `google`, or
-            `perplexity` (required).
         prompt_en: Optional pre-translated English form.
-        country: ISO-3166 country code (must be in your account's
-            selected_markets). Defaults to your first selected market.
+        ai_platforms: AI engines to fan out to (`openai`, `anthropic`,
+            `google`, `perplexity`). Defaults server-side when omitted.
+        countries: ISO-3166 country codes. Defaults server-side when omitted.
+        icp_id: Optional ICP id to associate with the prompt.
+        view_id: Optional saved prompt view id to add the prompt to.
+        context_ids: Optional saved Context ids to ground the prompt.
+        ai_platform: Legacy single-platform alias; prefer `ai_platforms`.
+        country: Legacy single-country alias; prefer `countries`.
     """
     body: dict[str, Any] = {
         "raw_prompt": raw_prompt,
-        "ai_platform": ai_platform,
     }
     if prompt_en is not None:
         body["prompt_en"] = prompt_en
-    if country is not None:
+    if ai_platforms is not None:
+        body["ai_platforms"] = ai_platforms
+    elif ai_platform is not None:
+        body["ai_platform"] = ai_platform
+    if countries is not None:
+        body["countries"] = countries
+    elif country is not None:
         body["country"] = country
+    if icp_id is not None:
+        body["icp_id"] = icp_id
+    if view_id is not None:
+        body["view_id"] = view_id
+    if context_ids is not None:
+        body["context_ids"] = context_ids
 
     # POST /api/tracked-prompts returns 201 with a BulkTrackResponse:
     # {results: [{seed_index, item_id, ai_platform, country, status,
@@ -443,6 +486,24 @@ def aeko_track_prompt(
         )
     reason = result.get("reason") or "no reason given"
     return f"Tracking failed ({status_val}): {reason} — prompt: {display}{summary_str}"
+
+
+@mcp.tool(title="Get tracked prompt quota", annotations=READ_ONLY)
+def aeko_get_quota() -> str:
+    """Read tracked-prompt quota and broader account limit status.
+
+    Use before batch tracking prompts so the skill can warn about plan limits
+    before sending a write call. The backend enforces the actual tier gates.
+    """
+    prompt_quota = client.get("/api/tracked-prompts/quota")
+    limit_status = client.get("/api/users/limit-status")
+    return _json_block(
+        "AEKO quota",
+        {
+            "tracked_prompt_quota": prompt_quota,
+            "limit_status": limit_status,
+        },
+    )
 
 
 @mcp.tool(title="Untrack a prompt", annotations=WRITE)
@@ -623,5 +684,3 @@ def aeko_get_tracked_prompt(
         params["window"] = window
     data = client.get(f"/api/tracked-prompts/{prompt_id}", params=params)
     return _format_tracked_prompt_detail(data)
-
-

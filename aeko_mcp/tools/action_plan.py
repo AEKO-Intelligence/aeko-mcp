@@ -7,10 +7,15 @@ is YAML frontmatter + templated prose body — the skill parses both.
 
 Contract reference: `docs/contracts/action-item-contract.md`.
 """
+import json
 from typing import Any, List, Optional
 
 from ..server import mcp, client
-from ._annotations import READ_ONLY, WRITE
+from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
+
+
+def _json_block(title: str, payload: Any) -> str:
+    return f"# {title}\n\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
 
 
 def _render_item_summary(item: dict, index: int | None = None) -> list[str]:
@@ -181,6 +186,72 @@ def aeko_get_action_plan(item_id: str) -> str:
         item_id: The `itm_<hex>` identifier.
     """
     return client.get_text(f"/api/action-items/{item_id}", accept="text/markdown")
+
+
+@mcp.tool(title="Create action item", annotations=WRITE_ONCE)
+def aeko_create_action_item(
+    domain_id: str,
+    artifact_type: str,
+    idempotency_key: str,
+    tab: Optional[str] = None,
+    product_id: Optional[str] = None,
+    target_url: Optional[str] = None,
+    prompt_ids: Optional[list[str]] = None,
+    persona_label: Optional[str] = None,
+    keywords: Optional[list[str]] = None,
+    must_include: Optional[list[str]] = None,
+    forbidden: Optional[list[str]] = None,
+    target_country: Optional[str] = None,
+    target_language: Optional[str] = None,
+    content_channel: Optional[str] = None,
+    content_topic: Optional[str] = None,
+    content_scope: Optional[str] = None,
+    selected_product_ids: Optional[list[str]] = None,
+    context_ids: Optional[list[str]] = None,
+    additional_instructions: Optional[str] = None,
+) -> str:
+    """Create a backend action item and enqueue Plan.md generation.
+
+    Pass a stable `idempotency_key` such as `domain:type:target` so agent
+    retries return the existing row instead of minting duplicate action items.
+    """
+    if not idempotency_key.strip():
+        return "`idempotency_key` is required for retry-safe action-item creation."
+
+    fields: dict[str, Any] = {
+        "domain_id": domain_id,
+        "artifact_type": artifact_type,
+        "tab": tab,
+        "product_id": product_id,
+        "target_url": target_url,
+        "prompt_ids": prompt_ids,
+        "persona_label": persona_label,
+        "keywords": keywords,
+        "must_include": must_include,
+        "forbidden": forbidden,
+        "target_country": target_country,
+        "target_language": target_language,
+        "content_channel": content_channel,
+        "content_topic": content_topic,
+        "content_scope": content_scope,
+        "selected_product_ids": selected_product_ids,
+        "context_ids": context_ids,
+        "additional_instructions": additional_instructions,
+    }
+    payload = {k: v for k, v in fields.items() if v is not None}
+    result = client.post(
+        "/api/action-items",
+        json=payload,
+        headers={"Idempotency-Key": idempotency_key},
+    )
+    return _json_block("Action item created", result)
+
+
+@mcp.tool(title="Dismiss action item", annotations=DESTRUCTIVE)
+def aeko_dismiss_action_item(item_id: str) -> str:
+    """Dismiss/archive an action or technical item by id."""
+    client.delete(f"/api/action-items/{item_id}")
+    return f"Action item `{item_id}` dismissed."
 
 
 @mcp.tool(title="Complete action item", annotations=WRITE)

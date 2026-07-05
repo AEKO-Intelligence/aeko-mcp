@@ -74,11 +74,11 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP exposes 32 tools covering visibility metrics, research prompts, AI-readiness scoring, content variations, media uploads, customer review contexts, saved memories, and store-write actions.
+AEKO MCP exposes 81 tools covering setup, visibility metrics, citability, tracked-prompt angles, ICPs, views, content variations, media uploads, customer review contexts, saved memories, analytics, GA4, OpenAI Ads operations, and store-write actions.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
-Current groups: `visibility`, `research`, `aeko_score`, `store_write`, `action_plan`, `crawl`, `own_content`, `media_upload`, `content_variation`, `reviews`, and `contexts`.
+Current groups: `visibility`, `research`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `icps`, `views`, and `setup`.
 
 The `reviews` group surfaces **Context Reviews** — classified customer reviews from connected Crema / Judge.me platforms — so content drafts can be grounded in real customer-state, concern, product-experience, and felt-effect details instead of invented copy (Pro+):
 

@@ -1,14 +1,14 @@
-"""MCP tools for reading curated AEKO Context memories.
+"""MCP tools for reading and writing curated AEKO Context memories.
 
 Contexts are source-backed memories saved in the AEKO dashboard. Unlike raw
 review rows, these are deliberately curated by the user and can be reused to
-ground tracked prompts and content plans. This module is read-only; creating or
-editing memories stays in the AEKO app.
+ground tracked prompts and content plans.
 """
+import json
 from typing import Any, Optional
 
 from ..server import mcp, client
-from ._annotations import READ_ONLY
+from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE
 
 
 def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
@@ -24,6 +24,10 @@ def _clean(value: Any) -> Optional[str]:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _json_block(title: str, payload: Any) -> str:
+    return f"# {title}\n\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
 
 
 @mcp.tool(title="List saved AEKO contexts", annotations=READ_ONLY)
@@ -148,3 +152,161 @@ def aeko_list_contexts(
         "They are curated AEKO Context rows, not raw review rows."
     )
     return "\n".join(lines)
+
+
+@mcp.tool(title="Create AEKO context", annotations=WRITE)
+def aeko_create_context(
+    domain_id: str,
+    title: str,
+    problem: Optional[str] = None,
+    solution: Optional[str] = None,
+    outcome: Optional[str] = None,
+    customer_state: Optional[str] = None,
+    recent_concern: Optional[str] = None,
+    product_experience: Optional[str] = None,
+    felt_effect: Optional[str] = None,
+    occasion: Optional[str] = None,
+    recipient: Optional[str] = None,
+    evidence: Optional[str] = None,
+    summary: Optional[str] = None,
+    kind: Optional[str] = None,
+    scope: Optional[str] = None,
+    category_ref: Optional[str] = None,
+    context_type: Optional[str] = None,
+    lang: Optional[str] = None,
+    source_review_id: Optional[str] = None,
+    source_review_snapshot: Optional[dict] = None,
+    product_external_ref: Optional[str] = None,
+) -> str:
+    """Save a curated Context memory for a domain.
+
+    Context is a Pro+ feature. This creates a user-curated memory (`curated=true`)
+    that can later be attached to prompts via `context_ids`.
+    """
+    body: dict[str, Any] = {
+        "domain_id": domain_id,
+        "title": title,
+    }
+    optional = {
+        "problem": problem,
+        "solution": solution,
+        "outcome": outcome,
+        "customer_state": customer_state,
+        "recent_concern": recent_concern,
+        "product_experience": product_experience,
+        "felt_effect": felt_effect,
+        "occasion": occasion,
+        "recipient": recipient,
+        "evidence": evidence,
+        "summary": summary,
+        "kind": kind,
+        "scope": scope,
+        "category_ref": category_ref,
+        "context_type": context_type,
+        "lang": lang,
+        "source_review_id": source_review_id,
+        "source_review_snapshot": source_review_snapshot,
+        "product_external_ref": product_external_ref,
+    }
+    body.update({k: v for k, v in optional.items() if v is not None})
+    body["source"] = "review" if source_review_id else "manual"
+    body["curated"] = True
+
+    result, err = _safe(client.post, "/api/contexts", json=body)
+    if err:
+        return f"# Failed to create context\n\n```\n{err}\n```"
+    return _json_block("Context created", result)
+
+
+@mcp.tool(title="Update AEKO context", annotations=WRITE)
+def aeko_update_context(
+    context_id: str,
+    title: Optional[str] = None,
+    problem: Optional[str] = None,
+    solution: Optional[str] = None,
+    outcome: Optional[str] = None,
+    customer_state: Optional[str] = None,
+    recent_concern: Optional[str] = None,
+    product_experience: Optional[str] = None,
+    felt_effect: Optional[str] = None,
+    occasion: Optional[str] = None,
+    recipient: Optional[str] = None,
+    evidence: Optional[str] = None,
+    summary: Optional[str] = None,
+    kind: Optional[str] = None,
+    scope: Optional[str] = None,
+    category_ref: Optional[str] = None,
+    curated: Optional[bool] = None,
+    context_type: Optional[str] = None,
+    lang: Optional[str] = None,
+    status: Optional[str] = None,
+) -> str:
+    """Update a curated Context memory. Omitted fields are left unchanged."""
+    body = {
+        "title": title,
+        "problem": problem,
+        "solution": solution,
+        "outcome": outcome,
+        "customer_state": customer_state,
+        "recent_concern": recent_concern,
+        "product_experience": product_experience,
+        "felt_effect": felt_effect,
+        "occasion": occasion,
+        "recipient": recipient,
+        "evidence": evidence,
+        "summary": summary,
+        "kind": kind,
+        "scope": scope,
+        "category_ref": category_ref,
+        "curated": curated,
+        "context_type": context_type,
+        "lang": lang,
+        "status": status,
+    }
+    payload = {k: v for k, v in body.items() if v is not None}
+    if not payload:
+        return "# No context updates provided."
+
+    result, err = _safe(client.patch, f"/api/contexts/{context_id}", json=payload)
+    if err:
+        return f"# Failed to update context\n\n```\n{err}\n```"
+    return _json_block("Context updated", result)
+
+
+@mcp.tool(title="Archive AEKO context", annotations=DESTRUCTIVE)
+def aeko_archive_context(context_id: str) -> str:
+    """Soft-archive a Context memory.
+
+    The backend keeps historical tracked-prompt references intact; this removes
+    the Context from active library listings.
+    """
+    result, err = _safe(client.delete, f"/api/contexts/{context_id}")
+    if err:
+        return f"# Failed to archive context\n\n```\n{err}\n```"
+    return _json_block("Context archived", result)
+
+
+@mcp.tool(title="Create contexts from reviews", annotations=WRITE)
+def aeko_create_contexts_from_reviews(
+    domain_id: str,
+    integration_id: str,
+    min_context_score: int = 60,
+    review_ids: Optional[list[str]] = None,
+) -> str:
+    """Save Context-tab review selections as curated Context memories.
+
+    The backend resolves the filtered review set, promotes existing grounding
+    contexts when possible, and creates one curated memory per review.
+    """
+    body: dict[str, Any] = {
+        "domain_id": domain_id,
+        "integration_id": integration_id,
+        "min_context_score": max(0, min(int(min_context_score), 100)),
+    }
+    if review_ids is not None:
+        body["review_ids"] = review_ids
+
+    result, err = _safe(client.post, "/api/contexts/from-reviews", json=body)
+    if err:
+        return f"# Failed to create contexts from reviews\n\n```\n{err}\n```"
+    return _json_block("Contexts created from reviews", result)

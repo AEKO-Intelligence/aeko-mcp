@@ -407,3 +407,41 @@ def aeko_publish_content_variation(item_id: str, variation_id: str) -> str:
             "store via the dashboard or future connector."
         )
     return "\n".join(lines)
+
+
+@mcp.tool(title="Unpublish aeko.shop content", annotations=WRITE)
+def aeko_unpublish_content(
+    source_content_id: str,
+    item_id: Optional[str] = None,
+    domain_id: Optional[str] = None,
+) -> str:
+    """Unpublish a post from aeko.shop by source content id.
+
+    Supply `item_id` when the post came from an AEKO action item. Use
+    `domain_id` only for kitless posts where no item exists.
+    """
+    body = {
+        "item_id": item_id,
+        "domain_id": domain_id,
+    }
+    payload = {k: v for k, v in body.items() if v is not None}
+    result, err = _safe(
+        client.post,
+        f"/api/aeko-shop/posts/{source_content_id}/unpublish",
+        json=payload,
+    )
+    if err:
+        return f"# Unpublish failed\n\n```\n{err}\n```"
+    if not result:
+        return "# Unpublish requested"
+    lines = [
+        "# Content unpublished",
+        "",
+        f"- **source_content_id**: `{source_content_id}`",
+        f"- **status**: {result.get('status', 'unpublished')}",
+    ]
+    if result.get("id"):
+        lines.append(f"- **post_id**: `{result['id']}`")
+    if result.get("slug"):
+        lines.append(f"- **slug**: {result['slug']}")
+    return "\n".join(lines)

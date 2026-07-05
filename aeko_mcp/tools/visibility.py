@@ -1,7 +1,12 @@
-from typing import Optional
+import json
+from typing import Any, Optional
 
 from ..server import mcp, client
-from ._annotations import READ_ONLY
+from ._annotations import READ_ONLY, WRITE_ONCE
+
+
+def _json_block(title: str, payload: Any) -> str:
+    return f"# {title}\n\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
 
 
 def _format_diff(value: float | None) -> str:
@@ -184,17 +189,27 @@ _VISIBILITY_SCOPES = {"overview", "cited_sources", "tracked_prompt_metrics"}
 def aeko_get_visibility_summary(
     domain_id: str,
     scope: str = "overview",
+    view: Optional[str] = None,
+    vertical_scope: Optional[str] = None,
+    country: Optional[str] = None,
+    ai_platform: Optional[str] = None,
+    query_type: Optional[str] = None,
+    funnel_stage: Optional[str] = None,
+    prompt_ids: Optional[list[str]] = None,
     window: Optional[str] = None,
 ) -> str:
     """Brand visibility + citation metrics across AI engines.
 
     One-tool consolidation of the prior `aeko_get_visibility_summary`,
-    `aeko_get_cited_sources`, and `aeko_get_metrics` surfaces — pick the
-    view via `scope`.
+    `aeko_get_cited_sources`, and `aeko_get_metrics` surfaces. New callers
+    should pick the view via `view`; `scope` remains the legacy view selector.
 
     Args:
         domain_id: UUID of the domain.
         scope:
+          Legacy view selector. Keep using one of the values below for
+          backwards compatibility, or pass `view=...`.
+        view:
           - `overview` (default) — all-time mention / citation / source counts
             with 7-day week-over-week diffs, a 13-week weekly trend, and recent
             brand mentions across ChatGPT / Claude / Gemini / Perplexity.
@@ -207,17 +222,38 @@ def aeko_get_visibility_summary(
             `tracked_prompt_metrics` scope (backend fixed at 7d + 7d WoW);
             reserved for future use on other scopes.
     """
-    if scope not in _VISIBILITY_SCOPES:
+    selected_view = view or scope
+    # Backwards-compatible escape hatch: if a caller accidentally passes a
+    # vertical filter via the old `scope` name, use it as the backend filter
+    # and keep the visible report on the overview view.
+    if selected_view not in _VISIBILITY_SCOPES and vertical_scope is None:
+        vertical_scope = scope
+        selected_view = view or "overview"
+    if selected_view not in _VISIBILITY_SCOPES:
         allowed = ", ".join(sorted(_VISIBILITY_SCOPES))
-        return f"Invalid `scope`: {scope}. Allowed: {allowed}."
+        return f"Invalid `view`: {selected_view}. Allowed: {allowed}."
 
-    if scope == "tracked_prompt_metrics":
+    if selected_view == "tracked_prompt_metrics":
         data = client.get("/api/tracked-prompts/metrics", params={"domain_id": domain_id})
         return _format_tracked_metrics(data)
 
-    data = client.get("/api/visibility/summary", params={"domain_id": domain_id})
+    params: dict[str, Any] = {"domain_id": domain_id}
+    if vertical_scope:
+        params["scope"] = vertical_scope
+    if country:
+        params["country"] = country
+    if ai_platform:
+        params["ai_platform"] = ai_platform
+    if query_type:
+        params["query_type"] = query_type
+    if funnel_stage:
+        params["funnel_stage"] = funnel_stage
+    if prompt_ids:
+        params["prompt_ids"] = ",".join(prompt_ids)
 
-    if scope == "cited_sources":
+    data = client.get("/api/visibility/summary", params=params)
+
+    if selected_view == "cited_sources":
         return _format_cited_pages(data.get("cited_pages") or [])
 
     return _format_visibility(data)
@@ -237,6 +273,24 @@ def aeko_get_domain_info(domain_id: str) -> str:
     return _format_domain(data)
 
 
+@mcp.tool(title="Get citability", annotations=READ_ONLY)
+def aeko_get_citability(
+    domain_id: Optional[str] = None,
+    source_id: Optional[str] = None,
+) -> str:
+    """Read AI citability scoring for a domain or a crawled source page.
+
+    Pass exactly one of `domain_id` or `source_id`. Starter+ server-side.
+    """
+    if bool(domain_id) == bool(source_id):
+        return "Pass exactly one of domain_id or source_id."
+    if domain_id:
+        data = client.get("/api/citability/domain", params={"domain_id": domain_id})
+        return _json_block("Citability domain score", data)
+    data = client.get("/api/citability/page", params={"source_id": source_id})
+    return _json_block("Citability page score", data)
+
+
 def _format_domain_list(domains: list[dict]) -> str:
     """Render the authenticated user's domain list as picker-friendly Markdown.
 
@@ -246,8 +300,8 @@ def _format_domain_list(domains: list[dict]) -> str:
     if not domains:
         return (
             "# Your AEKO Domains\n\n"
-            "No domains connected yet. Add one in the AEKO dashboard "
-            "(https://aeko-intelligence.com) before running domain-scoped skills."
+            "No domains connected yet. Use `aeko_add_domain` to add one from "
+            "the agent, then continue the setup flow."
         )
 
     lines = [f"# Your AEKO Domains ({len(domains)})", ""]
@@ -282,3 +336,36 @@ def aeko_list_domains() -> str:
     data = client.get("/api/domains")
     # Backend returns a bare list (List[DomainResponse]).
     return _format_domain_list(data if isinstance(data, list) else [])
+
+
+@mcp.tool(title="Add domain", annotations=WRITE_ONCE)
+def aeko_add_domain(
+    base_url: str,
+    display_name: Optional[str] = None,
+    scope: Optional[str] = None,
+    ko_name: Optional[str] = None,
+    domain_role: Optional[str] = None,
+    has_llms_txt: Optional[bool] = None,
+    robots_blocks_ai: Optional[bool] = None,
+    has_json_ld: Optional[bool] = None,
+    extracted_name: Optional[str] = None,
+) -> str:
+    """Add a domain to the current AEKO account.
+
+    Starter users can add domains within their plan limit. The backend owns
+    canonicalization, ownership checks, and package limits.
+    """
+    body = {
+        "base_url": base_url,
+        "display_name": display_name,
+        "scope": scope,
+        "ko_name": ko_name,
+        "domain_role": domain_role,
+        "has_llms_txt": has_llms_txt,
+        "robots_blocks_ai": robots_blocks_ai,
+        "has_json_ld": has_json_ld,
+        "extracted_name": extracted_name,
+    }
+    payload = {k: v for k, v in body.items() if v is not None}
+    data = client.post("/api/domains", json=payload)
+    return _json_block("Domain added", data)

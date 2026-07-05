@@ -1,6 +1,6 @@
 # aeko-mcp — What It Does
 
-> Notion paste-ready overview of the AEKO MCP (Model Context Protocol) server. Reflects the shipped state as of **v0.5.0 (2026-04-23)**: 22 tools + 12 skills after the major consolidation audit. Source of truth: [`github.com/AEKO-Intelligence/aeko-mcp`](https://github.com/AEKO-Intelligence/aeko-mcp). For tool-level details, always cross-check with `aeko_mcp/tools/*.py`.
+> Notion paste-ready overview of the AEKO MCP (Model Context Protocol) server. This document began as the v0.5.0 overview and keeps the architecture/token-flow context; the live tool surface is now **81 tools across 15 modules**. Source of truth: [`aeko_mcp/tools/*.py`](../aeko_mcp/tools/).
 
 ---
 
@@ -16,7 +16,7 @@ aeko-mcp is a thin, stateless process. It holds no database. Every call hits the
 
 The MCP surface is organized into three tiers. This frames how tools and skills compose for different user moments.
 
-- **Tier 1 — Ingredients (advertised tools).** Composable primitives Claude freestyles with: `aeko_list_domains`, `aeko_get_domain_info`, `aeko_get_visibility_summary` (scope-consolidated), `aeko_get_score`, `aeko_search_research_prompts`, `aeko_get_tracked_prompts`, `aeko_get_tracked_prompt` (new v0.5.0), `aeko_track_prompt` / `aeko_untrack_prompt` (new v0.5.0), `aeko_list_store_integrations`, `aeko_get_product_description` (new v0.5.0). Value is in the **data**; Claude assembles the sequence.
+- **Tier 1 — Ingredients (advertised tools).** Composable primitives Claude freestyles with: `aeko_list_domains`, `aeko_get_domain_info`, `aeko_get_visibility_summary` (scope-consolidated), `aeko_search_research_prompts`, `aeko_get_tracked_prompts`, `aeko_get_tracked_prompt` (new v0.5.0), `aeko_track_prompt` / `aeko_untrack_prompt` (new v0.5.0), `aeko_list_store_integrations`, `aeko_get_product_description` (new v0.5.0). Value is in the **data**; Claude assembles the sequence.
 - **Tier 2 — Meal kits (skills / slash commands).** Opinionated workflows with guardrails: `/aeko-action-center`, `/aeko-update-pdp`, `/aeko-create-content`, `/aeko-fix-technical`, `/aeko-visibility-report`, `/aeko-find-prompts-to-track`, `/aeko-prompt-deep-dive`, `/aeko-brand-competitor-analysis`, `/aeko-product-competitor-analysis`, `/aeko-refresh-jsonld`, plus the utility `/aeo-audit`. Value is in the **sequence**; the skill enforces the contract (JSON-LD, responsive HTML, brand voice, audit trail).
 - **Tier 3 — Plumbing (internal helpers).** Tools wired for skills but not intended for standalone use: `aeko_get_action_plan`, `aeko_complete_action_item`, `aeko_update_product_description`, `aeko_update_product_tags`, `aeko_update_product_meta`, `aeko_list_store_writes`, `aeko_revert_store_write`. Their descriptions open with "Internal helper for `/aeko-<skill>`" (where applicable) so Claude deprioritizes them in standalone reasoning.
 
@@ -135,9 +135,9 @@ aeko-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 
 ---
 
-## 5. Tools exposed (28 total)
+## 5. Tools exposed (81 total)
 
-aeko-mcp ships 28 tools across modules including `visibility`, `research`, `aeko_score`, `action_plan`, `store_write`, `crawl`, `own_content`, `media_upload`, and `content_variation`. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the source of truth.
+aeko-mcp ships tools across modules including `visibility`, `research`, `action_plan`, `store_write`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `icps`, `views`, and `setup`. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the source of truth.
 
 ### Domain / account (2)
 | Tool | Purpose |
@@ -145,10 +145,9 @@ aeko-mcp ships 28 tools across modules including `visibility`, `research`, `aeko
 | `aeko_list_domains` | List the user's connected domains. |
 | `aeko_get_domain_info` | Domain details + AI-readiness infrastructure status (llms.txt, robots.txt AI blockers, JSON-LD, sitemap). |
 
-### Visibility / citation forensics (3)
+### Visibility / citation forensics
 | Tool | Purpose |
 |---|---|
-| `aeko_get_score` | Composite AEKO Score (0–100, grade A–F) with 5-component breakdown. Powers the Brand Visibility page. |
 | `aeko_get_visibility_summary(domain_id, scope?, window?)` | **Consolidated in v0.5.0** — `scope` selects one of `overview` (default), `cited_sources`, `tracked_prompt_metrics`. Optional `window` = `7d / 30d / 90d`. Absorbs the retired `aeko_get_metrics` and `aeko_get_cited_sources`. |
 | `aeko_get_tracked_prompt(prompt_id, window?)` | **New in v0.5.0** — citation-forensics payload for one tracked prompt: responses per AI platform, per-response citation array, crawled source metadata (JSON-LD types, extracted text, source-analysis scores). Core primitive for the deep-dive + content skills. |
 
@@ -189,7 +188,6 @@ aeko-mcp holds no state. Every tool maps to one or more backend HTTP calls.
 |---|---|---|
 | `/api/domains` | GET | `aeko_list_domains` |
 | `/api/domains/{domain_id}` | GET | `aeko_get_domain_info` |
-| `/api/geo-score` | GET | `aeko_get_score` |
 | `/api/visibility/summary` | GET | `aeko_get_visibility_summary` (all three scopes) |
 | `/api/research/prompts` | GET | `aeko_search_research_prompts` |
 | `/api/tracked-prompts` | GET/POST/DELETE | `aeko_get_tracked_prompts`, `aeko_track_prompt`, `aeko_untrack_prompt` |
