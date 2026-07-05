@@ -88,7 +88,7 @@ The `reviews` group surfaces **Context Reviews** — classified customer reviews
 
 The `contexts` group surfaces curated **AEKO Context memories** saved in Brand Settings:
 
-- `aeko_list_contexts(domain_id, scope=None, kind=None)` — list saved curated context memories for a domain, optionally filtered by scope (`brand`, `product`, `category`) or kind (`customer_segment`, `skin_concern`, `product_experience`, `claim`, `content_angle`).
+- `aeko_list_contexts(domain_id, scope=None, kind=None)` — list saved curated context memories for a domain, optionally filtered by scope (`brand`, `product`, `category`) or free-text kind (for example `브랜드 충성도`, `재구매`, `피부 고민`, `content angle`).
 
 All tools carry MCP `ToolAnnotations` (`readOnlyHint`, `destructiveHint`, `openWorldHint`) so clients can offer per-tool approval policy (e.g. "always allow" for read-only GETs, approval-per-call for writes).
 
