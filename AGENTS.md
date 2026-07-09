@@ -22,9 +22,8 @@ Python MCP (Model Context Protocol) server bridging Claude and other AI assistan
 | `reviews` | 9 | Review source connect/sync, Context Reviews, suggested prompts |
 | `contexts` | 5 | Curated AEKO Context memories, CRUD, create-from-reviews |
 | `marketing` | 14 | Contextual reviews, review injection, OpenAI Ads setup/compose/report/optimize/state |
-| `analytics` | 4 | SOV, drift, Measure, persona analytics |
+| `analytics` | 3 | SOV, drift, Measure |
 | `ga4` | 4 | GA4 status, property selection, sync |
-| `icps` | 3 | ICP list/create/suggest |
 | `views` | 3 | Prompt view list/create/add prompts |
 | `setup` | 3 | Starter prompts and market setup |
 

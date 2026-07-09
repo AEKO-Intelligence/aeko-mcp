@@ -81,7 +81,7 @@ def aeko_list_contexts(
         filter_text = f" matching `{', '.join(filter_bits)}`" if filter_bits else ""
         return (
             f"# No saved contexts for domain `{domain_id}`{filter_text}\n\n"
-            "Save review-derived or manual Context memories in AEKO Brand Settings, "
+            "Save review-derived or manual Context memories in the AEKO Context tab, "
             "then call this tool again. Context memory is a Pro+ feature."
         )
 

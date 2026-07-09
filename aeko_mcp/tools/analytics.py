@@ -20,7 +20,6 @@ def _prompt_ids_param(prompt_ids: Optional[list[str]]) -> Optional[str]:
 @mcp.tool(title="Get share of voice", annotations=READ_ONLY)
 def aeko_get_share_of_voice(
     domain_id: str,
-    group_by_persona: bool = False,
     prompt_ids: Optional[list[str]] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -30,10 +29,7 @@ def aeko_get_share_of_voice(
     Starter+ feature server-side. Optional filters scope to prompt ids and a
     date range (`YYYY-MM-DD`).
     """
-    params: dict[str, Any] = {
-        "domain_id": domain_id,
-        "group_by_persona": group_by_persona,
-    }
+    params: dict[str, Any] = {"domain_id": domain_id}
     encoded_prompt_ids = _prompt_ids_param(prompt_ids)
     if encoded_prompt_ids:
         params["prompt_ids"] = encoded_prompt_ids
@@ -84,35 +80,3 @@ def aeko_get_measure(
     data = client.get(path, params=params)
     return _json_block(f"GET {path}", data)
 
-
-@mcp.tool(title="Get persona analytics", annotations=READ_ONLY)
-def aeko_get_persona_analytics(
-    domain_id: str,
-    view: str = "overview",
-    days: int = 30,
-    prompt_ids: Optional[list[str]] = None,
-    persona_type: Optional[str] = None,
-) -> str:
-    """Read ICP/persona analytics for a domain.
-
-    `overview` shows persona segments and heatmap. `drilldown` and `trend`
-    require `persona_type`.
-    """
-    normalized_view = view.strip().lower()
-    if normalized_view not in {"overview", "drilldown", "trend"}:
-        return "Invalid `view`. Use one of: overview, drilldown, trend."
-    if normalized_view in {"drilldown", "trend"} and not persona_type:
-        return f"`persona_type` is required for persona {normalized_view}."
-
-    params: dict[str, Any] = {"domain_id": domain_id}
-    if normalized_view in {"overview", "trend"}:
-        params["days"] = max(1, min(int(days), 365))
-    if persona_type:
-        params["persona_type"] = persona_type
-    encoded_prompt_ids = _prompt_ids_param(prompt_ids)
-    if encoded_prompt_ids:
-        params["prompt_ids"] = encoded_prompt_ids
-
-    path = f"/api/personas/{normalized_view}"
-    data = client.get(path, params=params)
-    return _json_block(f"GET {path}", data)

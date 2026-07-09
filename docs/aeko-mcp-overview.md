@@ -137,7 +137,7 @@ aeko-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 
 ## 5. Tools exposed (81 total)
 
-aeko-mcp ships tools across modules including `visibility`, `research`, `action_plan`, `store_write`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `icps`, `views`, and `setup`. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the source of truth.
+aeko-mcp ships tools across modules including `visibility`, `research`, `action_plan`, `store_write`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, and `setup`. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the source of truth.
 
 ### Domain / account (2)
 | Tool | Purpose |
@@ -154,7 +154,7 @@ aeko-mcp ships tools across modules including `visibility`, `research`, `action_
 ### Research prompts (4)
 | Tool | Purpose |
 |---|---|
-| `aeko_search_research_prompts` | Search the research prompt library (country, AI platform, query type, funnel stage, persona). Returns KO + EN phrasing with latest response metrics. Persona filter added in v0.5.0. |
+| `aeko_search_research_prompts` | Search the research prompt library (country, AI platform, query type, funnel stage). Returns KO + EN phrasing with latest response metrics. |
 | `aeko_get_tracked_prompts` | List prompts actively tracked for the user's domain. |
 | `aeko_track_prompt(raw_prompt, ai_platform, ...)` | **New in v0.5.0 (WRITE)** — closes the find-prompts-to-track loop. |
 | `aeko_untrack_prompt(prompt_id)` | **New in v0.5.0 (WRITE)** — inverse; preserves historical data (`UserPrompts.status='untracked'`). |
@@ -289,7 +289,7 @@ Skills are slash commands the user invokes in their MCP host. They encode the op
 | Skill | Command | What it does |
 |---|---|---|
 | **Visibility Report** | `/aeko-visibility-report [domain_id] [window=7d\|14d\|30d\|90d] [depth=summary\|full]` | On-demand visibility report. `depth=summary` → C-level snapshot. `depth=full` → deep dive with per-page analysis + ranked actions. |
-| **Find Prompts to Track** | `/aeko-find-prompts-to-track [domain_id]` | Discovery loop. Searches the research prompt library with filters (AI platform, persona, funnel stage, country), surfaces candidates, tracks the ones the user picks. |
+| **Find Prompts to Track** | `/aeko-find-prompts-to-track [domain_id]` | Discovery loop. Searches the research prompt library with filters (AI platform, query type, funnel stage, country), surfaces candidates, tracks the ones the user picks. |
 | **Prompt Deep Dive** | `/aeko-prompt-deep-dive <prompt_id> [window]` | Citation-forensics deep-dive on one tracked prompt. Lists per-platform responses, ranks cited sources, explains why they win citations, recommends a concrete action. The AEKO-unique value prop operationalized. |
 
 ### Competitor analysis (2)
@@ -334,7 +334,7 @@ Claude runs the 5-category weighted audit, returns a ranked list of fixes with s
 ```
 /aeko-find-prompts-to-track
 ```
-Claude asks for filter criteria (AI platform, persona, funnel stage, country), queries the research prompt library, surfaces 10–20 candidates grouped by persona/platform, the user picks which to track, and the skill calls `aeko_track_prompt` for each.
+Claude asks for filter criteria (AI platform, query type, funnel stage, country), queries the research prompt library, surfaces 10–20 candidates grouped by platform and market, the user picks which to track, and the skill calls `aeko_track_prompt` for each.
 
 **5. Deep-diving a tracked prompt**
 ```

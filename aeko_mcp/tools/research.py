@@ -208,23 +208,12 @@ def _format_tracked_prompts(data: list) -> str:
             ko_text = (prompt_ko[:57] + "...") if len(prompt_ko) > 60 else prompt_ko
             lines.append(f"|   |   | *{ko_text}* |   |   |   |")
         angle_bits: list[str] = []
-        icp_id = p.get("icp_id")
-        icp_name = p.get("icp_name")
-        if icp_name or icp_id:
-            label = icp_name or "ICP"
-            suffix = f" (`{icp_id}`)" if icp_id else ""
-            angle_bits.append(f"ICP: {label}{suffix}")
         context_id = p.get("context_id")
         context_title = p.get("context_title")
         if context_title or context_id:
             label = context_title or "Context"
             suffix = f" (`{context_id}`)" if context_id else ""
             angle_bits.append(f"Context: {label}{suffix}")
-        persona = p.get("persona")
-        persona_types = p.get("persona_types") or []
-        persona_label = persona or ", ".join(str(x) for x in persona_types if x)
-        if persona_label:
-            angle_bits.append(f"Persona: {persona_label}")
         funnel_stage = p.get("funnel_stage")
         if funnel_stage:
             angle_bits.append(f"Funnel: {funnel_stage}")
@@ -251,7 +240,6 @@ def aeko_search_research_prompts(
     country: str | None = None,
     ai_platform: str | None = None,
     query_type: str | None = None,
-    persona_type: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> str:
@@ -259,7 +247,7 @@ def aeko_search_research_prompts(
 
     Browse pre-built research prompts to understand how AI engines respond
     to queries in your industry. Powers the find-prompts-to-track loop: the
-    skill narrows the library by platform + persona + country, surfaces the
+    skill narrows the library by platform + query type + country, surfaces the
     best candidates, and the user tracks them with `aeko_track_prompt`.
 
     At least one filter must be provided.
@@ -271,10 +259,6 @@ def aeko_search_research_prompts(
         ai_platform: AI platform filter (`openai`, `anthropic`, `google`,
             `perplexity`).
         query_type: Query type filter (e.g., `comparison`, `recommendation`).
-        persona_type: Persona type filter — narrows prompts to those tagged
-            against a specific buyer persona (e.g., `new_mom`,
-            `enthusiast`). Use together with `ai_platform` for
-            high-precision audience research.
         page: Page number (default 1).
         page_size: Results per page (default 20, max 100).
     """
@@ -289,8 +273,6 @@ def aeko_search_research_prompts(
         params["ai_platform"] = ai_platform
     if query_type:
         params["query_type"] = query_type
-    if persona_type:
-        params["persona_type"] = persona_type
     data = client.get("/api/research/prompts", params=params)
     return _format_prompts(data)
 
@@ -395,7 +377,6 @@ def aeko_track_prompt(
     prompt_en: Optional[str] = None,
     ai_platforms: Optional[list[str]] = None,
     countries: Optional[list[str]] = None,
-    icp_id: Optional[str] = None,
     view_id: Optional[str] = None,
     context_ids: Optional[list[str]] = None,
     ai_platform: Optional[str] = None,
@@ -405,13 +386,12 @@ def aeko_track_prompt(
 
     Use after `aeko_search_research_prompts` to pick a research prompt to
     track, or pass your own shopper query. You can fan out across multiple
-    AI platforms and countries in one call and attach the prompt to an ICP,
-    saved view, and Context memories.
+    AI platforms and countries in one call and attach the prompt to a saved
+    view and Context memories.
 
     Settable angles are exactly the backend contract: `ai_platforms`,
-    `countries`, `icp_id`, `view_id`, and `context_ids`. Persona, tags,
-    query type, and funnel stage are derived server-side; pick an ICP to
-    represent a persona angle.
+    `countries`, `view_id`, and `context_ids`. Tags, query type, and funnel
+    stage are derived server-side.
 
     Idempotent: tracking a prompt you already track returns HTTP 201 with
     a per-result status of `already_tracked` (NOT a 409); tracking one you
@@ -425,7 +405,6 @@ def aeko_track_prompt(
         ai_platforms: AI engines to fan out to (`openai`, `anthropic`,
             `google`, `perplexity`). Defaults server-side when omitted.
         countries: ISO-3166 country codes. Defaults server-side when omitted.
-        icp_id: Optional ICP id to associate with the prompt.
         view_id: Optional saved prompt view id to add the prompt to.
         context_ids: Optional saved Context ids to ground the prompt.
         ai_platform: Legacy single-platform alias; prefer `ai_platforms`.
@@ -444,8 +423,6 @@ def aeko_track_prompt(
         body["countries"] = countries
     elif country is not None:
         body["country"] = country
-    if icp_id is not None:
-        body["icp_id"] = icp_id
     if view_id is not None:
         body["view_id"] = view_id
     if context_ids is not None:

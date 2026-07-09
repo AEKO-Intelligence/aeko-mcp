@@ -150,7 +150,6 @@ interface AekoItemSummary {
   write_mode?: WriteMode;
   channels?: string[];
   keywords?: string[];
-  persona_label?: string;
   updated_at: string;
   created_at: string;
   preview: string;
@@ -168,7 +167,7 @@ interface AekoItemSummary {
 
 The skill parses frontmatter for dispatch (all machine values) and reads the templated prose for execution steps (tool list, citability rules, JSON-LD rules, ad-law guardrails, acceptance-criteria echo). Frontmatter remains the sole source of machine truth; prose never re-declares a frontmatter value.
 
-**Frontmatter is machine-only.** Executor skills MUST NOT echo the raw frontmatter block to the user in chat. Render a short, human-friendly header (domain, artifact type, write mode, persona) and show only the prose body to the user. The full Plan.md is available if the user asks for it explicitly.
+**Frontmatter is machine-only.** Executor skills MUST NOT echo the raw frontmatter block to the user in chat. Render a short, human-friendly header (domain, artifact type, write mode) and show only the prose body to the user. The full Plan.md is available if the user asks for it explicitly.
 
 **Prose language contract.** The templated prose body is rendered in the language indicated by `target_language` (ISO-639-1). Korean and English are currently supported; other values fall back to English. Machine keys stay in English inside prose (e.g. `` `forbidden` ``) regardless of prose language.
 
@@ -194,7 +193,6 @@ The skill parses frontmatter for dispatch (all machine values) and reads the tem
 | `keywords` | string[] | empty array allowed, never omitted |
 | `prompts_to_rank_on` | string[] | empty array allowed, never omitted |
 | `products` | ProductRef[] (optional, **proposed v1.4 — not yet landed**) | When the v1.4 backend wiring ships, this field will be populated for action items created from the dashboard's 상품 선택 mode. Drives `aeko_shop`-channel product callout rendering (`<figure role="callout" data-variant="product" data-product-source-id="<source_id>">`) in body HTML and the sibling `<slug>.meta.json` sidecar's `featured_products[].product_source_id` consumed at publish. **No in-body JSON-LD** — the aeko.shop frontend regenerates Article + Product structured data from `PostUpsert` fields at render time. See §3.2.1 for the field shape. Until v1.4 lands, all live Plan.md continues to be stamped at v1.3 with no `products[]` field; executor skills tolerate the absence. See changelog for the four prerequisite tasks. |
-| `persona_label` | string (optional) | |
 | `requires_ocr_ingest` | boolean | |
 | `responsive_html_required` | boolean | |
 | `pdp_ocr_cache_key` | string (optional) | present for PDP items with a prior OCR run |

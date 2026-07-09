@@ -384,18 +384,16 @@ def aeko_track_suggested_prompt(
     suggestion_id: str,
     ai_platforms: Optional[list[str]] = None,
     countries: Optional[list[str]] = None,
-    icp_id: Optional[str] = None,
     view_id: Optional[str] = None,
 ) -> str:
     """Track one review-derived suggested prompt with review Context grounding.
 
-    Optional platform/country fan-out and ICP/view angles use the same settable
-    contract as `aeko_track_prompt`.
+    Optional platform/country fan-out and saved-view assignment use the same
+    settable contract as `aeko_track_prompt`.
     """
     body = {
         "ai_platforms": ai_platforms,
         "countries": countries,
-        "icp_id": icp_id,
         "view_id": view_id,
     }
     payload = {k: v for k, v in body.items() if v is not None}
@@ -416,7 +414,6 @@ def aeko_track_suggested_prompts(
     review_ids: Optional[list[str]] = None,
     ai_platforms: Optional[list[str]] = None,
     countries: Optional[list[str]] = None,
-    icp_id: Optional[str] = None,
     view_id: Optional[str] = None,
 ) -> str:
     """Track the top review-derived prompt for each review in a filtered set."""
@@ -427,7 +424,6 @@ def aeko_track_suggested_prompts(
         "review_ids": review_ids,
         "ai_platforms": ai_platforms,
         "countries": countries,
-        "icp_id": icp_id,
         "view_id": view_id,
     }
     body.update({k: v for k, v in optional.items() if v is not None})

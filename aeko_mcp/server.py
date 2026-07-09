@@ -37,7 +37,7 @@ def _build_mcp() -> FastMCP:
             "action items AEKO surfaces in your dashboard. Useful for "
             "discovering where your brand appears in AI answers, closing "
             "citability gaps on product and content pages, drafting "
-            "persona-targeted content from live suggestions, or coordinating "
+            "context-grounded content from live suggestions, or coordinating "
             "AEO work across PDP, blog, and schema layers."
         ),
         stateless_http=_env_flag("AEKO_MCP_STATELESS_HTTP", True),
@@ -54,7 +54,7 @@ client = AekoClient()
 atexit.register(client.close)
 
 # Import tool modules to register all tools with the mcp instance
-from .tools import visibility, research, store_write, action_plan, own_content, media_upload, content_variation, reviews, contexts, marketing, icps, views, setup, analytics, ga4  # noqa: E402, F401
+from .tools import visibility, research, store_write, action_plan, own_content, media_upload, content_variation, reviews, contexts, marketing, views, setup, analytics, ga4  # noqa: E402, F401
 
 
 @contextlib.asynccontextmanager

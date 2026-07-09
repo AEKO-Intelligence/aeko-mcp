@@ -26,9 +26,6 @@ Tier shorthand:
 | `aeko_generate_starter_prompts` | Generate starter prompt candidates for a domain. | Yes | No |
 | `aeko_accept_starter_prompts` | Accept generated starter prompts into tracking. | Yes, quota/platform caps | No |
 | `aeko_update_markets` | Update selected markets. | Yes, 1 market | Pro gets higher market cap |
-| `aeko_list_icps` | List ICP profiles. | Yes | No |
-| `aeko_create_icp` | Create an ICP profile. | Yes | No |
-| `aeko_suggest_icps` | Generate suggested ICP profiles. | Yes | No |
 | `aeko_list_views` | List saved prompt views. | Yes, view cap | Pro gets higher cap |
 | `aeko_create_view` | Create a saved prompt view. | Yes, view cap | Pro gets higher cap |
 | `aeko_add_prompts_to_view` | Add tracked prompts to a saved view. | Yes | No |
@@ -72,7 +69,6 @@ Tier shorthand:
 | `aeko_get_share_of_voice` | Read share-of-voice analytics. | Yes | No |
 | `aeko_get_answer_drift` | Read answer drift analytics. | Yes | No |
 | `aeko_get_measure` | Read Measure readiness, discovery, or impact. | Yes | No |
-| `aeko_get_persona_analytics` | Read ICP/persona analytics. | Yes | No |
 | `aeko_get_ga4_status` | Read GA4 connection/property status. | Yes | No |
 | `aeko_list_ga4_properties` | List GA4 properties after browser OAuth connection. | Yes | No |
 | `aeko_select_ga4_property` | Select the GA4 property for Measure. | Yes | No |
@@ -105,7 +101,7 @@ Tier shorthand:
 | `/aeko-find-prompts-to-track` | Finds prompt candidates and tracks selected prompts with supported angles. | Starter can add prompts within quota, one market, OpenAI platform. | Context angle and review-suggested prompt flows require Pro+. |
 | `/aeko-manage-tracked-prompts` | Reviews tracked prompts by angle/quota and untracks when needed. | Starter can manage tracked prompts. | Context-related views only appear when available. |
 | `/aeko-prompt-deep-dive` | Explains one tracked prompt's responses, citations, and next action. | Starter can inspect tracked prompt data. | Depends on having tracked prompts/responses. |
-| `/aeko-visibility-report` | Produces a visibility report from summary, tracked prompts, and analytics. | Starter can run visibility/SOV/drift/persona/Measure reads. | Broader platforms/countries depend on tier limits. |
+| `/aeko-visibility-report` | Produces a visibility report from summary, tracked prompts, and analytics. | Starter can run visibility/SOV/drift/Measure reads. | Broader platforms/countries depend on tier limits. |
 | `/aeko-brand-competitor-analysis` | Compares a competitor's public positioning with AEKO citation data. | Starter can run with WebSearch/WebFetch and tracked prompt data. | Depth depends on available tracked prompt coverage. |
 | `/aeko-product-competitor-analysis` | Compares one product against competitor PDPs. | Starter can run with store reads and web fetches. | Context reviews or richer ad/review data are Pro+. |
 | `/aeko-refresh-jsonld` | Refreshes existing product JSON-LD facts and writes back with audit trail. | Starter can run store-write updates. | No create-from-scratch JSON-LD; it updates existing blocks. |

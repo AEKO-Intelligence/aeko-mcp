@@ -4,11 +4,22 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.14.0] — 2026-07-09
+
+### Removed
+
+- Removed ICP tools (`aeko_list_icps`, `aeko_create_icp`, `aeko_suggest_icps`) now that Context is the single user-facing grounding concept.
+- Removed `aeko_get_persona_analytics`, the `group_by_persona` Share of Voice option, `persona_type` research search filtering, and ICP/persona payload fields from prompt, review, and action-item tools.
+
+### Changed
+
+- Updated Context tool empty-state copy and docs to point users to the Context tab.
+
 ## [0.11.0] — 2026-06-17
 
 ### Added
 
-- `aeko_list_contexts(domain_id, scope=None, kind=None)` — read-only access to curated AEKO Context memories saved in Brand Settings. The tool renders flexible memory facets (`고객 상태`, `최근 고민`, `제품 경험`, `느낀 효과`) with legacy problem/solution/outcome fallback for pre-migration rows.
+- `aeko_list_contexts(domain_id, scope=None, kind=None)` — read-only access to curated AEKO Context memories saved in the Context tab. The tool renders flexible memory facets (`고객 상태`, `최근 고민`, `제품 경험`, `느낀 효과`) with legacy problem/solution/outcome fallback for pre-migration rows.
 
 ### Changed
 

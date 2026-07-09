@@ -71,21 +71,18 @@ def test_analytics_tools_call_expected_routes(monkeypatch):
 
     monkeypatch.setattr(analytics.client, "get", fake_get)
 
-    sov = analytics.aeko_get_share_of_voice("domain-1", group_by_persona=True, prompt_ids=["p1"], start_date="2026-01-01", end_date="2026-01-31")
+    sov = analytics.aeko_get_share_of_voice("domain-1", prompt_ids=["p1"], start_date="2026-01-01", end_date="2026-01-31")
     drift = analytics.aeko_get_answer_drift("domain-1", days=14, prompt_ids=["p1"])
     measure = analytics.aeko_get_measure("domain-1", view="readiness")
-    personas = analytics.aeko_get_persona_analytics("domain-1", view="overview", days=60, prompt_ids=["p1"])
 
     assert "monitoring/sov" in sov
     assert "monitoring/drift" in drift
     assert "measure/readiness" in measure
-    assert "personas/overview" in personas
     assert calls == [
         {
             "path": "/api/monitoring/sov",
             "params": {
                 "domain_id": "domain-1",
-                "group_by_persona": True,
                 "prompt_ids": "p1",
                 "start_date": "2026-01-01",
                 "end_date": "2026-01-31",
@@ -93,7 +90,6 @@ def test_analytics_tools_call_expected_routes(monkeypatch):
         },
         {"path": "/api/monitoring/drift", "params": {"domain_id": "domain-1", "days": 14, "prompt_ids": "p1"}},
         {"path": "/api/measure/readiness", "params": {"domain_id": "domain-1"}},
-        {"path": "/api/personas/overview", "params": {"domain_id": "domain-1", "days": 60, "prompt_ids": "p1"}},
     ]
 
 

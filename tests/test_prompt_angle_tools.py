@@ -31,7 +31,6 @@ def test_track_prompt_forwards_only_settable_angles(monkeypatch):
         prompt_en="best regenerative cream for a friend gift",
         ai_platforms=["openai", "google"],
         countries=["US", "KR"],
-        icp_id="icp-1",
         view_id="view-1",
         context_ids=["ctx-1", "ctx-2"],
     )
@@ -45,7 +44,6 @@ def test_track_prompt_forwards_only_settable_angles(monkeypatch):
                 "prompt_en": "best regenerative cream for a friend gift",
                 "ai_platforms": ["openai", "google"],
                 "countries": ["US", "KR"],
-                "icp_id": "icp-1",
                 "view_id": "view-1",
                 "context_ids": ["ctx-1", "ctx-2"],
             },
@@ -74,12 +72,8 @@ def test_tracked_prompt_list_renders_angle_fields():
                 "ai_platform": "openai",
                 "country": "US",
                 "status": "tracked",
-                "icp_id": "icp-1",
-                "icp_name": "Gift buyers",
                 "context_id": "ctx-1",
                 "context_title": "Friend gift situation",
-                "persona": "gift shopper",
-                "persona_types": ["gift_buyer"],
                 "funnel_stage": "consideration",
                 "query_type": "recommendation",
                 "tags": ["gift", "cream"],
@@ -87,8 +81,6 @@ def test_tracked_prompt_list_renders_angle_fields():
         ]
     )
 
-    assert "Gift buyers" in rendered
-    assert "icp-1" in rendered
     assert "Friend gift situation" in rendered
     assert "consideration" in rendered
     assert "recommendation" in rendered
@@ -118,47 +110,6 @@ def test_quota_tool_reads_tracked_prompt_quota(monkeypatch):
     ]
     assert "tracked_count" in out
     assert "20" in out
-
-
-def test_icp_tools_call_expected_routes(monkeypatch):
-    icps = importlib.import_module("aeko_mcp.tools.icps")
-    calls = []
-
-    def fake_get(path, params=None):
-        calls.append({"method": "GET", "path": path, "params": params})
-        return [{"id": "icp-1", "name": "Gift buyers"}]
-
-    def fake_post(path, json=None):
-        calls.append({"method": "POST", "path": path, "json": json})
-        return {"id": "icp-2", "name": json.get("name", "Suggested ICP"), "drafts": []}
-
-    monkeypatch.setattr(icps.client, "get", fake_get)
-    monkeypatch.setattr(icps.client, "post", fake_post)
-
-    list_out = icps.aeko_list_icps()
-    create_out = icps.aeko_create_icp(
-        name="Gift buyers",
-        target_country="US",
-        purchase_motivation="Buying skincare as a gift",
-    )
-    suggest_out = icps.aeko_suggest_icps()
-
-    assert "icp-1" in list_out
-    assert "icp-2" in create_out
-    assert "Suggested ICP" in suggest_out
-    assert calls == [
-        {"method": "GET", "path": "/api/icps", "params": None},
-        {
-            "method": "POST",
-            "path": "/api/icps",
-            "json": {
-                "name": "Gift buyers",
-                "target_country": "US",
-                "purchase_motivation": "Buying skincare as a gift",
-            },
-        },
-        {"method": "POST", "path": "/api/icps/suggest", "json": {}},
-    ]
 
 
 def test_context_write_tools_call_expected_routes(monkeypatch):
@@ -298,7 +249,6 @@ def test_suggested_prompt_tools_call_expected_routes(monkeypatch):
         suggestion_id="sug-1",
         ai_platforms=["openai"],
         countries=["US"],
-        icp_id="icp-1",
         view_id="view-1",
     )
     batch_out = reviews.aeko_track_suggested_prompts(
@@ -307,7 +257,6 @@ def test_suggested_prompt_tools_call_expected_routes(monkeypatch):
         review_ids=["rev-1"],
         ai_platforms=["google"],
         countries=["KR"],
-        icp_id="icp-1",
         view_id="view-1",
     )
     dismiss_out = reviews.aeko_dismiss_suggested_prompt("int-1", "hash-1")
@@ -328,7 +277,6 @@ def test_suggested_prompt_tools_call_expected_routes(monkeypatch):
             "json": {
                 "ai_platforms": ["openai"],
                 "countries": ["US"],
-                "icp_id": "icp-1",
                 "view_id": "view-1",
             },
         },
@@ -340,7 +288,6 @@ def test_suggested_prompt_tools_call_expected_routes(monkeypatch):
                 "review_ids": ["rev-1"],
                 "ai_platforms": ["google"],
                 "countries": ["KR"],
-                "icp_id": "icp-1",
                 "view_id": "view-1",
             },
         },
