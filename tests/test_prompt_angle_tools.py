@@ -87,6 +87,29 @@ def test_tracked_prompt_list_renders_angle_fields():
     assert "gift, cream" in rendered
 
 
+def test_tracked_prompt_detail_renders_context_not_legacy_persona():
+    rendered = research._format_tracked_prompt_detail(
+        {
+            "window": "latest",
+            "prompt": {
+                "id": "tp-1",
+                "raw_prompt": "friend gift cream",
+                "country": "US",
+                "persona": "legacy shopper profile",
+                "context_id": "ctx-1",
+                "context_title": "Friend gift situation",
+                "context_snapshot": "Customer needs a practical gift.\nBudget is under $50.",
+            },
+            "responses": [],
+        }
+    )
+
+    assert "Friend gift situation" in rendered
+    assert "Customer needs a practical gift." in rendered
+    assert "Budget is under $50." in rendered
+    assert "legacy shopper profile" not in rendered
+
+
 def test_quota_tool_reads_tracked_prompt_quota(monkeypatch):
     calls = []
 
@@ -142,7 +165,12 @@ def test_context_write_tools_call_expected_routes(monkeypatch):
         scope="product",
         product_external_ref="sku-1",
     )
-    update_out = contexts.aeko_update_context("ctx-1", title="Updated gift situation", status="active")
+    update_out = contexts.aeko_update_context(
+        "ctx-1",
+        title="Updated gift situation",
+        context_for_prompt="Customer needs a practical gift for a friend.",
+        status="active",
+    )
     archive_out = contexts.aeko_archive_context("ctx-1")
     batch_out = contexts.aeko_create_contexts_from_reviews(
         domain_id="domain-1",
@@ -171,7 +199,15 @@ def test_context_write_tools_call_expected_routes(monkeypatch):
                 "curated": True,
             },
         },
-        {"method": "PATCH", "path": "/api/contexts/ctx-1", "json": {"title": "Updated gift situation", "status": "active"}},
+        {
+            "method": "PATCH",
+            "path": "/api/contexts/ctx-1",
+            "json": {
+                "title": "Updated gift situation",
+                "context_for_prompt": "Customer needs a practical gift for a friend.",
+                "status": "active",
+            },
+        },
         {"method": "DELETE", "path": "/api/contexts/ctx-1"},
         {
             "method": "POST",
@@ -183,6 +219,34 @@ def test_context_write_tools_call_expected_routes(monkeypatch):
                 "review_ids": ["rev-1"],
             },
         },
+    ]
+
+
+def test_list_contexts_renders_authoritative_prompt_text(monkeypatch):
+    calls = []
+
+    def fake_get(path, params=None):
+        calls.append({"path": path, "params": params})
+        return [
+            {
+                "id": "ctx-converted",
+                "title": "Converted ICP",
+                "context_for_prompt": "Age range: 20-29\nInterests: sensitive-skin care",
+                "kind": "persona",
+                "scope": "brand",
+            }
+        ]
+
+    monkeypatch.setattr(contexts.client, "get", fake_get)
+    out = contexts.aeko_list_contexts("domain-1")
+
+    assert "Age range: 20-29" in out
+    assert "Interests: sensitive-skin care" in out
+    assert calls == [
+        {
+            "path": "/api/contexts",
+            "params": {"domain_id": "domain-1", "status": "active", "curated": "true"},
+        }
     ]
 
 

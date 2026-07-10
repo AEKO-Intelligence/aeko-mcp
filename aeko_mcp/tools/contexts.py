@@ -90,6 +90,7 @@ def aeko_list_contexts(
         context_id = item.get("id", "?")
         title = item.get("title") or "(untitled context)"
         summary = _clean(item.get("summary"))
+        context_for_prompt = _clean(item.get("context_for_prompt"))
         item_kind = _clean(item.get("kind"))
         item_scope = _clean(item.get("scope"))
         category_ref = _clean(item.get("category_ref"))
@@ -102,6 +103,9 @@ def aeko_list_contexts(
             header += f" · {' / '.join(badges)}"
         lines.append(header)
         lines.append(f"- **context_id**: `{context_id}`")
+        if context_for_prompt:
+            lines.append("- **프롬프트 컨텍스트**:")
+            lines.extend(f"  > {line}" for line in context_for_prompt.splitlines())
         if summary:
             lines.append(f"- **요약**: {summary}")
 
@@ -222,6 +226,7 @@ def aeko_create_context(
 def aeko_update_context(
     context_id: str,
     title: Optional[str] = None,
+    context_for_prompt: Optional[str] = None,
     problem: Optional[str] = None,
     solution: Optional[str] = None,
     outcome: Optional[str] = None,
@@ -241,9 +246,15 @@ def aeko_update_context(
     lang: Optional[str] = None,
     status: Optional[str] = None,
 ) -> str:
-    """Update a curated Context memory. Omitted fields are left unchanged."""
+    """Update a curated Context memory. Omitted fields are left unchanged.
+
+    ``context_for_prompt`` is the authoritative grounding text for converted and
+    review-derived contexts. Update that field when changing what prompt tracking
+    should inject; changing only ``summary`` does not override it.
+    """
     body = {
         "title": title,
+        "context_for_prompt": context_for_prompt,
         "problem": problem,
         "solution": solution,
         "outcome": outcome,

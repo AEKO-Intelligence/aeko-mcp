@@ -517,12 +517,22 @@ def _format_tracked_prompt_detail(data: dict) -> str:
         lines.append(f"**Korean**: {prompt_ko}")
     lines.append(f"- **ID**: `{prompt.get('id', '?')}`")
     meta_bits: list[str] = []
-    for key in ("country", "industry", "vertical", "query_type", "funnel_stage", "persona"):
+    for key in ("country", "industry", "vertical", "query_type", "funnel_stage"):
         val = prompt.get(key)
         if val:
             meta_bits.append(f"{key}={val}")
     if meta_bits:
         lines.append(f"- {' · '.join(meta_bits)}")
+    context_id = prompt.get("context_id")
+    context_title = prompt.get("context_title")
+    context_snapshot = str(prompt.get("context_snapshot") or "").strip()
+    if context_title or context_id:
+        label = context_title or "Context"
+        suffix = f" (`{context_id}`)" if context_id else ""
+        lines.append(f"- **Context**: {label}{suffix}")
+    if context_snapshot:
+        lines.append("- **Context snapshot**:")
+        lines.extend(f"  > {line}" for line in context_snapshot.splitlines())
     lines.append("")
 
     if not responses:
