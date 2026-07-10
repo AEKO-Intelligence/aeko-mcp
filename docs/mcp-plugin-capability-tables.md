@@ -19,7 +19,7 @@ Tier shorthand:
 | `aeko_search_research_prompts` | Search prompt library candidates. | Yes | No |
 | `aeko_get_tracked_prompts` | List tracked prompts and angle metadata. | Yes | No |
 | `aeko_resolve_prompts_by_text` | Resolve prompt text to prompt ids. | Yes | No |
-| `aeko_track_prompt` | Track a prompt with platform, country, ICP, view, and context angles. | Starter limited | Context angle requires Pro+ |
+| `aeko_track_prompt` | Track a prompt with platform, country, view, and context angles. | Starter limited | Context angle requires Pro+ |
 | `aeko_get_quota` | Read tracked-prompt and account limit status. | Yes | No |
 | `aeko_untrack_prompt` | Stop tracking one prompt. | Yes | No |
 | `aeko_get_tracked_prompt` | Read one tracked prompt with response and citation details. | Yes | No |

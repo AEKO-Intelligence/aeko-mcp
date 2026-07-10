@@ -74,7 +74,7 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP exposes 81 tools covering setup, visibility metrics, citability, tracked-prompt angles, ICPs, views, content variations, media uploads, customer review contexts, saved memories, analytics, GA4, OpenAI Ads operations, and store-write actions.
+AEKO MCP exposes 75 tools covering setup, visibility metrics, citability, tracked-prompt angles, views, content variations, media uploads, customer review contexts, saved memories, analytics, GA4, OpenAI Ads operations, and store-write actions.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 

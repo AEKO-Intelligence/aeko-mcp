@@ -1,6 +1,6 @@
 # aeko-mcp — What It Does
 
-> Notion paste-ready overview of the AEKO MCP (Model Context Protocol) server. This document began as the v0.5.0 overview and keeps the architecture/token-flow context; the live tool surface is now **81 tools across 15 modules**. Source of truth: [`aeko_mcp/tools/*.py`](../aeko_mcp/tools/).
+> Notion paste-ready overview of the AEKO MCP (Model Context Protocol) server. This document began as the v0.5.0 overview and keeps the architecture/token-flow context; the live tool surface is now **75 tools across 14 modules**. Source of truth: [`aeko_mcp/tools/*.py`](../aeko_mcp/tools/).
 
 ---
 
@@ -135,7 +135,7 @@ aeko-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 
 ---
 
-## 5. Tools exposed (81 total)
+## 5. Tools exposed (75 total)
 
 aeko-mcp ships tools across modules including `visibility`, `research`, `action_plan`, `store_write`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, and `setup`. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the source of truth.
 
