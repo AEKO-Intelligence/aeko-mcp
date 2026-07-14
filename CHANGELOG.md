@@ -4,6 +4,14 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.15.1] — 2026-07-14
+
+### Fixed
+
+- `aeko_fetch_source_content` no longer suggests a generic canonical-URL fallback when no stored body is
+  available. It now preserves the caller's governing evidence policy and explicitly prevents frozen
+  content-idea handoffs from widening their snapshotted source read.
+
 ## [0.15.0] — 2026-07-13
 
 ### Added

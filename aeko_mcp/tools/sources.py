@@ -141,8 +141,9 @@ def aeko_fetch_source_content(domain_id: str, source_id: str) -> str:
         lines.extend(["~~~~text", extracted_text, "~~~~"])
     else:
         lines.append(
-            "No readable stored body is available. A caller may fetch the canonical URL once "
-            "as a fallback, while keeping this source id and its associated prompts as the scope."
+            "No readable stored body is available. Continue with the returned metadata and prompts "
+            "unless the governing workflow explicitly authorizes another read method. Frozen content-idea "
+            "handoffs must not fetch the canonical URL as a fallback."
         )
 
     lines.extend(

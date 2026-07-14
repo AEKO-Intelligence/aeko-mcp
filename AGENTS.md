@@ -2,7 +2,7 @@
 
 Python MCP (Model Context Protocol) server bridging Claude and other AI assistants to the AEKO backend for AI engine optimization (AEO): brand visibility across ChatGPT/Claude/Gemini/Perplexity, AI-readiness audits, AEO-optimized content drafting, and store-write workflows (Cafe24, Shopify).
 
-- **Version:** 0.15.0 (`pyproject.toml`) · **Framework:** FastMCP (mcp SDK >=1.11.0,<1.16.0), httpx, pydantic, Pillow
+- **Version:** 0.15.1 (`pyproject.toml`) · **Framework:** FastMCP (mcp SDK >=1.11.0,<1.16.0), httpx, pydantic, Pillow
 - **Hosted endpoint:** `https://aeko-intelligence.com/mcp` (clients connect here; no self-hosting needed)
 - **Auth:** OAuth 2.1 + PKCE — Dynamic Client Registration (RFC 7591) for Claude Code/Codex/Gemini CLI; pre-registered public client `aeko-mcp-v1` for Claude Desktop. Opaque bearer tokens (`aeko_ot1_`, 1h TTL) + 30-day refresh tokens.
 - **Transport:** streamable-http, stateless, JSON responses by default (`aeko_mcp/server.py`)

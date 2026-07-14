@@ -65,7 +65,7 @@ def test_fetch_source_content_preserves_unavailable_body_state(monkeypatch):
     output = sources.aeko_fetch_source_content("domain-1", "source-1")
 
     assert "Stored body**: unavailable" in output
-    assert "fetch the canonical URL once" in output
+    assert "must not fetch the canonical URL as a fallback" in output
 
 
 def test_content_idea_handoff_preserves_full_backend_payload(monkeypatch):
