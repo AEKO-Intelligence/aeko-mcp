@@ -95,6 +95,7 @@ def test_tracked_prompt_detail_renders_context_not_legacy_persona():
                 "id": "tp-1",
                 "raw_prompt": "friend gift cream",
                 "country": "US",
+                "language": "en",
                 "persona": "legacy shopper profile",
                 "context_id": "ctx-1",
                 "context_title": "Friend gift situation",
@@ -107,6 +108,7 @@ def test_tracked_prompt_detail_renders_context_not_legacy_persona():
     assert "Friend gift situation" in rendered
     assert "Customer needs a practical gift." in rendered
     assert "Budget is under $50." in rendered
+    assert "language=en" in rendered
     assert "legacy shopper profile" not in rendered
 
 

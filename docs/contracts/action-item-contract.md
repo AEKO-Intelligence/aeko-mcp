@@ -5,6 +5,10 @@ All new skills and MCP tools MUST reference this document.
 
 > **Brand kit retired (aeko-mcp v0.10.0, contract `2026-04-17.action.v1.6`).** The four brand-kit MCP tools (`aeko_get_brand_kit`, `aeko_get_brand_kit_by_id`, `aeko_list_brand_kits`, `aeko_update_brand_kit`) were removed. The executor no longer resolves a brand kit at run time: content is drafted in a neutral, product-led voice grounded in the verified domain identity rather than a per-brand voice/tone document. The `requires_brand_kit`, `brand_kit_id`, and `brand_kit_snapshot_version` frontmatter fields are dropped, and `aeko_request_media_upload` + the store-write image-upload path now key by `domain_id` instead of `brand_kit_id`.
 
+> **Source fetch reintroduced with a narrower contract (aeko-mcp v0.15.0).** The v0.5.0 URL-keyed helper remains retired. The current `aeko_fetch_source_content(domain_id, source_id)` is read-only, verifies owned-domain plus tracked-prompt association server-side, and is used by cited-source checks and server-snapshotted content-idea handoffs rather than ActionItem Plan execution.
+
+> **Atomic PDP execution and preview-first delivery (2026-07-13).** `/aeko-update-pdp` must claim a `ready` item with `aeko_claim_action_item` before Plan fetch or artifact generation. The separate claim is permanent until token-matched completion/release (or explicitly confirmed forced recovery), so the ActionItem remains `ready`; endpoint success returns a unique claim token and a concurrent claim receives 409 and stops. The skill always creates a local preview first. A private draft is available only through a real store capability that returns a distinct non-public ID, and updating the current product requires a separate Before/After/Risk/Undo confirmation plus one atomic, claim-fenced store request. Legacy `write_mode` / `write_target` values describe how a plan was authored; they do not authorize a store mutation.
+
 Contract version pinning (semver inside date):
 - Action plan: `2026-04-17.action.v1.6` (current — brand kit retired; content uses neutral/product-led voice + verified domain identity)
 - Technical guide: `2026-04-17.technical.v1.1`
@@ -18,6 +22,7 @@ Version format: `<YYYY-MM-DD>.<tab>.v<major>.<minor>`. Additive changes (new opt
 - Removed the four brand-kit MCP tools: `aeko_get_brand_kit`, `aeko_get_brand_kit_by_id`, `aeko_list_brand_kits`, `aeko_update_brand_kit`. Executor skills no longer load a brand kit; they draft in a neutral, product-led voice anchored on the verified domain identity and the Plan.md machine contract (`must_include`, `forbidden`, `sections_required`).
 - Dropped frontmatter fields `requires_brand_kit`, `brand_kit_id`, and `brand_kit_snapshot_version` from both the Action (§3.2) and Technical (§4.2) frontmatter schemas.
 - `aeko_request_media_upload` and the store-write image-upload path now key by `domain_id` instead of `brand_kit_id`.
+- `pdp_html` creation and AI execution now require Pro+; `json_ld` remains Starter+. Runtime Plan fetch/completion gates use the current artifact mapping so older Starter-stamped PDP rows cannot bypass the new entitlement.
 
 **v1.5** — backend-saved content variations + selected Brand Kit identity:
 
@@ -39,7 +44,7 @@ Version format: `<YYYY-MM-DD>.<tab>.v<major>.<minor>`. Additive changes (new opt
 
 **v1.3 (2026-04-23)** — aeko-mcp v0.5.0 tool consolidation:
 - `/aeko-run-action` is retired. It split into three executors aligned with `execution_class`: `/aeko-update-pdp` (store_write_artifact), `/aeko-create-content` (local_content_artifact), `/aeko-fix-technical` (technical_artifact). Contract references to "the executor skill" below apply to whichever of the three matches `execution_class`.
-- Retired MCP tools referenced in prior contract revisions — `aeko_inspect_product_page`, `aeko_fetch_source_content`, `aeko_update_product_jsonld`. Replacements: executors WebFetch `target_url` + crawled source URLs directly; JSON-LD lives inside the description HTML and is written via `aeko_update_product_description`. New read primitive `aeko_get_product_description` exposes the raw editable HTML for read → patch → write-back flows.
+- Retired MCP tools referenced in prior contract revisions — `aeko_inspect_product_page`, the old URL-keyed `aeko_fetch_source_content(url=...)`, and `aeko_update_product_jsonld`. Replacements for ActionItem execution: WebFetch the Plan's `target_url` when visible-page evidence is needed; use `aeko_get_product_description` for raw editable store HTML; submit JSON-LD through the claim-fenced atomic `aeko_update_product_page`. The v0.15 owner-scoped `aeko_fetch_source_content(domain_id, source_id)` is a separate cited-source check/handoff primitive, not an ActionItem target-page fetch.
 - §3.1 Authoring split and §3.3 `## Execution` prose: updated tool-list guidance to reflect the v0.5.0 surface (brand kit + tracked-prompt forensics + WebFetch, no more `aeko_inspect_product_page`).
 - §4 Technical Guide Document: clarified that technical items share `aeko_get_action_plan` — there is no separate `aeko_get_technical_guide` tool (was proposed in v1.1, never shipped). Section kept for its frontmatter contract, which technical items still honour.
 - §7a Store Write Response: removed `aeko_update_product_jsonld` from the list of direct-write tools.
@@ -48,20 +53,20 @@ Version format: `<YYYY-MM-DD>.<tab>.v<major>.<minor>`. Additive changes (new opt
 **v1.2 (2026-04-20, late)** — prose-templating pivot:
 - Backend retires Sonnet prose generation. `api/services/plan_md.py::render_plan_prose` emits a deterministic templated body at item-create time; no Service Bus round-trip, no async wait. Local Claude (in the aeko-run-action skill) fetches real context via MCP tools at execution time.
 - `ItemStatus`: `generating_prose` is no longer emitted by the backend on new inserts; new rows land directly in `ready`. Skills still recognise `generating_prose` for legacy rows but the retry branch is expected-dead code.
-- §3.1 Authoring split: rewritten — backend stamps frontmatter AND a thin templated prose body. Sonnet no longer authors prose. The executor skill calls `aeko_get_brand_kit`, `aeko_get_tracked_prompts` / `aeko_search_research_prompts`, `aeko_inspect_product_page`, `aeko_fetch_source_content` at run time and synthesizes the artifact locally.
+- §3.1 Authoring split was rewritten so the backend stamps frontmatter plus a thin templated prose body and the executor synthesizes the artifact locally. The v1.2 tool list that accompanied this change is superseded. Current executor guidance is in §3.1 and §3.3 below: tracked-prompt reads, `aeko_get_product_description`, and WebFetch of the Plan target when needed. It does not use the retired inspector or URL-keyed source-fetch helpers.
 - §5 `AekoBrandKit`: aligned with live backend schema. Fields dropped that never shipped (`brand_description`, `persona`, `competitors`, `viewpoint`, `writing_style`, `tone`, `writing_guidelines`, `cta_text`, `cta_link`, `sample_headlines`, `sample_bodies`). Fields kept/added that match `api/schemas/brand_kits.py`: `brand_name`, `tagline`, `tone_of_voice`, `brand_voice_summary`, `target_audience`, `primary_color`, `logo_url`, `sample_urls`, `must_include`, `forbidden`, `status`, `metadata.account_tier`, `metadata.billing_url`.
 - §8 tool signatures: completion tool is canonically `aeko_complete_action_item` (matches backend prose). `aeko_update_brand_kit` takes `(kit_id, <fields>)` and PATCHes `/api/brand-kits/{kit_id}` — there is no PATCH-by-domain route on the backend.
 
 **v1.2 (2026-04-27)** — tier restructure (4→3 tiers):
 - `SubscriptionTier`: removed `growth`. New ladder is `starter | pro | enterprise`. Backend keeps `growth` as a deprecated PackageType alias for one week to absorb in-flight requests, then drops it. MCP clients SHOULD treat any inbound `growth` as `starter` during the alias window.
-- `tier_required` semantics: store-write artifacts (`pdp_html`, `json_ld`) and shadow products are now Starter+ (was Growth+). Content-generation artifacts (`own_store_markdown`, `external_media_markdown`) move to Pro+ (was Growth+).
+- `tier_required` semantics at this release: store-write artifacts (`pdp_html`, `json_ld`) and shadow products became Starter+ (was Growth+). Content-generation artifacts (`own_store_markdown`, `external_media_markdown`) moved to Pro+ (was Growth+). The current v1.6 contract later moved `pdp_html` AI execution to Pro+ while keeping `json_ld` Starter+.
 - Brand Kit auto-generation moves to Pro+ (was Growth+) — pairs with Content Generation.
 
 **v1.1 (2026-04-20)** — additive alignment with the Phase 3 backend plan:
-- `ItemStatus`: added `generating_prose`, `ready`; retired `in_progress` (no prior consumer). Async prose generation → the executable states are now `pending` (legacy / prose pre-generated at create) and `ready` (Phase 3 / prose generated asynchronously by Sonnet).
+- `ItemStatus`: added `generating_prose`, `ready`; retired the unused prior execution-state enum. Async prose generation → the executable states are now `pending` (legacy / prose pre-generated at create) and `ready` (Phase 3 / prose generated asynchronously by Sonnet).
 - `SubscriptionTier`: added `growth` between `starter` and `pro` (subsequently removed in v1.2 — see above).
 - `WriteTarget` documented explicitly as `live | shadow | local` (previously implicit in §3.2). This is the canonical set; backend stamping MUST use these values, not `shadow | production | none`.
-- §11.2 Stage-1 guidance: while `aeko_create_shadow_product` is pending, backend MUST stamp `write_mode: preview_only` + `write_target: local` on `pdp_html` items. Flip to `shadow_product` + `shadow` once the shadow endpoint is live.
+- §11.2 originally proposed flipping PDP defaults to `shadow_product` once a shadow endpoint shipped. The 2026-07-13 preview-first delivery rule supersedes that proposal: a real private draft may be offered as a user choice, never assumed as the default.
 - `pdp_responsive_contract`: added `faq_jsonld_required`, `review_jsonld_when_available`.
 - §3.4 Citability + `[VERIFY]` baseline (executor-enforced).
 - Product JSON-LD expanded to list `shippingDetails`, `hasMerchantReturnPolicy`, `speakable`, `sameAs` as SHOULD-populate.
@@ -98,9 +103,10 @@ type ArtifactType =
   | "technical_bundle";
 
 type ItemStatus =
-  | "pending"             // legacy rows only; executable
+  | "pending"             // legacy / generation-not-ready rows; not claimable
   | "generating_prose"    // retired 2026-04-20 (v1.2 pivot) — no longer emitted on new inserts. Recognised for forward-compat on old rows.
-  | "ready"               // canonical on-create state — prose is templated inline at item creation
+  | "in_progress"         // legacy display/update compatibility; never created by the claim flow
+  | "ready"               // claimable state; remains ready while a separate claim exists
   | "completed"
   | "failed"
   | "dismissed";
@@ -128,7 +134,7 @@ type Destination =
 
 Dispatch rule: MCP branches on `execution_class`, NOT on UI action type.
 
-Executable statuses: the skill runs when `status ∈ {pending, ready}`. `generating_prose` → the skill halts with a "plan is still being generated, retry in a moment" message (409 from the backend).
+PDP execution status rule: `/aeko-update-pdp` claims only `ready`, then fetches and executes the still-`ready` Plan. Claim-endpoint success and its returned token, not an ActionItem status transition, are the sole execution-ownership signal. `pending`, `generating_prose`, and legacy `in_progress` do not enter the new claim flow.
 
 ## 2. Shared Item Summary
 
@@ -158,12 +164,12 @@ interface AekoItemSummary {
 
 ## 3. Action Plan Document (Plan.md)
 
-`aeko_get_action_plan(item_id)` returns a single markdown string — the Plan.md for the item. The payload is **dual-format**: YAML frontmatter (dispatch surface) plus a Sonnet-authored prose body (narrative guidance).
+`aeko_get_action_plan(item_id)` returns a single markdown string — the Plan.md for the item. The payload is **dual-format**: YAML frontmatter (dispatch surface) plus a deterministic templated prose body (narrative guidance). No model authors the Plan prose.
 
 ### 3.1 Authoring split (revised under v1.2 prose-templating pivot)
 
 - **Backend app layer** stamps the YAML frontmatter AND a thin templated prose body at item-create time. Both are deterministic functions of the `ActionItems` row; no AI model is invoked during plan generation. Source: `api/services/plan_md.py::build_plan_md` + `render_plan_prose`.
-- **Local Claude in the executor skill** (`/aeko-update-pdp`, `/aeko-create-content`, or `/aeko-fix-technical` per `execution_class`) does the creative synthesis at run time: calls `aeko_get_tracked_prompts` / `aeko_search_research_prompts` / `aeko_get_tracked_prompt`, plus `aeko_get_product_description` (raw editable HTML) and/or `WebFetch` (live page + crawled source URLs) to pull live context, then composes the actual artifact in a neutral, product-led voice against the frontmatter's machine contract and the verified domain identity. The templated prose points Claude at exactly these tools — it is execution scaffolding, not narrative guidance.
+- **Local Claude in the executor skill** (`/aeko-update-pdp`, `/aeko-create-content`, or `/aeko-fix-technical` per `execution_class`) does the creative synthesis at run time: calls `aeko_get_tracked_prompts` / `aeko_search_research_prompts` / `aeko_get_tracked_prompt`, plus `aeko_get_product_description` (raw editable HTML) and/or WebFetch of the Plan's `target_url` when visible-page evidence is needed. It then composes the artifact in a neutral, product-led voice against the frontmatter's machine contract and verified domain identity. The owner-scoped `aeko_fetch_source_content(domain_id, source_id)` is not part of this ActionItem target-fetch path; `/aeko-check-source` and direct content-idea handoffs use it for snapshot-bound cited sources.
 
 The skill parses frontmatter for dispatch (all machine values) and reads the templated prose for execution steps (tool list, citability rules, JSON-LD rules, ad-law guardrails, acceptance-criteria echo). Frontmatter remains the sole source of machine truth; prose never re-declares a frontmatter value.
 
@@ -178,7 +184,7 @@ The skill parses frontmatter for dispatch (all machine values) and reads the tem
 | `item_id` | string | canonical identifier |
 | `contract_version` | string | `"2026-04-17.action.v<major>.<minor>"`, e.g. `"2026-04-17.action.v1.1"` |
 | `tab` | `"action"` | literal |
-| `status` | `ItemStatus` | skill refuses to run unless `status ∈ {pending, ready}` (see §1) |
+| `status` | `ItemStatus` | `/aeko-update-pdp` requires `ready` after a successful atomic claim; exclusivity is stored separately (see §1) |
 | `execution_class` | `ExecutionClass` | ONLY dispatch key the executor relies on |
 | `artifact_type` | `ArtifactType` | narrows within a class |
 | `write_mode` | `WriteMode` (optional) | required when `execution_class == "store_write_artifact"` |
@@ -201,7 +207,7 @@ The skill parses frontmatter for dispatch (all machine values) and reads the tem
 | `must_include` | string[] | empty array allowed, never omitted |
 | `forbidden` | string[] | empty array allowed, never omitted |
 | `tier_required` | `SubscriptionTier` (optional) | Minimum subscription tier for this item to execute. Absent → Starter (all users). Skill refuses to execute and suggests an upgrade path when the caller's tier is below this. See §1 for enum values. |
-| `write_target` | `WriteTarget` (optional) | Redundant safety signal for write scope. `live` = touches the live store; `shadow` = non-selling draft; `local` = disk only. Skill double-checks this against `write_mode` — if they disagree, stop and surface the mismatch. Backend MUST use these exact values (not `production`, not `none`). |
+| `write_target` | `WriteTarget` (optional) | Legacy plan-authoring signal paired with `write_mode`. The skill still stops on an invalid pairing, but a valid pairing does not authorize a store write. Runtime delivery remains preview-first and user-selected. |
 | `generated_at` | string | ISO-8601, timestamp of frontmatter assembly |
 
 For PDP items (`execution_class == "store_write_artifact"` AND `artifact_type == "pdp_html"`), the frontmatter additionally includes a nested `pdp_responsive_contract` mapping (the dotted paths below are **documentation notation**, NOT literal YAML keys — render as a nested mapping):
@@ -281,7 +287,7 @@ The prose body is concatenated after the closing `---` of the frontmatter with a
 
 1. `# Plan: <item.title>`
 2. `## Why this plan matters` — 1-2 sentence stub keyed on `artifact_type`. No invented competitive context or fake prompt IDs.
-3. `## Execution` — an explicit tool list for the executor to run, composed from the current surface: `aeko_get_tracked_prompts(...)` / `aeko_search_research_prompts(...)` / `aeko_get_tracked_prompt(...)` for live context, `aeko_get_product_description(...)` for `store_write_artifact` items that need the editable HTML, and `WebFetch` for target URLs / crawled source pages (replacing the retired `aeko_inspect_product_page` and `aeko_fetch_source_content`). Honors curated inputs: if `prompts_to_rank_on` is populated, that is the ground-truth set and discovery is skipped. When both `prompts_to_rank_on` and `keywords` are empty, a visible thin-input advisory is emitted. Closes with a reminder to call `aeko_complete_action_item(item_id=..., artifact_summary=..., artifact_paths=[...])` on success.
+3. `## Execution` — an explicit tool list for the executor to run, composed from the current surface: `aeko_get_tracked_prompts(...)` / `aeko_search_research_prompts(...)` / `aeko_get_tracked_prompt(...)` for live context, `aeko_get_product_description(...)` for `store_write_artifact` items that need editable HTML, and WebFetch of the Plan's target URL when visible-page evidence is needed. These replace the retired PDP inspector and URL-keyed source fetch. Do not substitute the v0.15 owner-scoped source tool here; it belongs to cited-source checks and server-snapshotted idea handoffs. Honors curated inputs: if `prompts_to_rank_on` is populated, that is the ground-truth set and discovery is skipped. When both `prompts_to_rank_on` and `keywords` are empty, a visible thin-input advisory is emitted. Closes with a reminder to call `aeko_complete_action_item(item_id=..., artifact_summary=..., artifact_paths=[...])` on success.
 4. `## Content citability rules` — static passage-structure rules (80-167 words, name the subject explicitly, definition patterns, no fabricated facts — emit `[VERIFY: <field>]`).
 5. `## JSON-LD rules` — emitted only when `artifact_type == pdp_html` AND `pdp_responsive_contract.json_ld_required`. Covers Product schema required vs conditional fields, `[VERIFY]` never inside JSON-LD, `type="application/ld+json"` exactness. FAQPage sub-section emitted only when `faq_jsonld_required`.
 6. `## Ad-law guardrails` — country-specific (KR populated today). Always emits a visible section; markets without curated rules get an explicit "no guardrails curated yet — apply good-faith judgment" stub so the executor knows compliance was considered.
@@ -394,6 +400,14 @@ Brand kit was retired in `2026-04-17.action.v1.6` (aeko-mcp v0.10.0). There is n
 
 Canonical tool: `aeko_complete_action_item`. The backend's templated prose (see §3.3 `## Execution`) names this exact tool; skills MUST use the same name. The tool hits `POST /api/items/{item_id}/complete`, which is a shared endpoint used by both Action and Technical items.
 
+### 6.1 PDP execution claim
+
+Before reading Plan.md or generating a PDP artifact, `/aeko-update-pdp` calls `aeko_claim_action_item(item_id)`. The backend owner-scopes and tier-gates creation of a separate execution-claim row for a `ready` item. The ActionItem itself stays `ready`. Only endpoint success plus its unique `claim_id` grants ownership; 403/404/409 all stop before generation. Claims have no automatic expiry because a long AI run may legitimately remain active.
+
+A 409 may represent a live or stale claim. The executor never releases it automatically. It may offer forced recovery only after the user explicitly confirms both that no other run is active and that no store mutation occurred; then it sends `force=true` plus `confirm_no_active_execution=true`, ends the run, and asks the user to rerun. It never attempts a second claim in the same run.
+
+If execution ends before any store mutation, `aeko_release_action_item(item_id, claim_id)` deletes only the matching claim. Never release after a successful store call or an ambiguous transport/5xx result, because doing so could enable a duplicate mutation. Completion requires the same token while a claim is active and deletes that exact claim in the completion transaction.
+
 ```ts
 interface AekoCompleteItemRequest {
   completed_via: "mcp";
@@ -401,35 +415,39 @@ interface AekoCompleteItemRequest {
   artifact_summary?: string;
   artifact_paths?: string[];
   write_result?: {
-    mode?: WriteMode;
+    mode?: "preview_only" | "private_draft" | "current_product";
     audit_id?: string;
     admin_url?: string;
-    created_product_id?: string;
+    draft_id?: string;
   };
+  execution_claim_id?: string;
 }
 ```
 
-## 7a. Store Write Response (shared by direct-write tools)
+## 7a. Store Write Response (shared by product-write tools)
 
-The direct-write tools (`aeko_update_product_description`, `aeko_update_product_tags`, `aeko_update_product_meta`) MUST return this structured response so the skill can build consistent `write_result` payloads for `aeko_complete_action_item`. (`aeko_update_product_jsonld` was retired in aeko-mcp v0.5.0 — JSON-LD lives inside the description HTML and is written via `aeko_update_product_description`.)
+Agent-initiated product writes include `action_item_id` and `execution_claim_id`. The backend re-checks the current artifact tier and exact integration/product target, locks that claim through the platform mutation and audit commit, and rejects missing/mismatched tokens. `/aeko-update-pdp` uses `aeko_update_product_page` so description, JSON-LD, tags, and SEO meta share one store call and one audit/revert boundary. Browser-authenticated manual writes retain their existing dashboard contract.
 
 ```ts
 interface AekoStoreWriteResponse {
-  status: "success";
-  platform: "cafe24" | "shopify";
-  integration_id: string;
-  external_product_id: string;
-  mode: "replace" | "append_below_existing";
-  field_updated: "description_html" | "json_ld" | "tags" | "meta";
-  admin_url: string;
   audit_id: string;
-  revert_supported: boolean;
+  platform: "cafe24" | "shopify";
+  external_product_id: string;
+  status: "success" | "dry_run";
+  http_status?: number;
+  payload_sent?: Record<string, unknown>;
 }
 ```
 
-If the direct-write tools return markdown-only (missing `audit_id`), the executor skill (`/aeko-update-pdp`) handles the gap by setting `write_result.audit_id = null` and surfacing a warning to the user: "audit_id unavailable — revert is not supported for this write."
+`audit_id` is required on success and defines the single revert boundary. `admin_url` is not part of the
+current backend response; clients may display it only when a future platform operation explicitly returns it.
+The backend stores the request hash and response on the active execution claim. An identical retry replays
+that response, a different payload conflicts, and a started request without a recorded response requires
+manual reconciliation rather than automatic retry.
 
-## 7. Shadow Product Response
+## 7. Reserved Private-Draft Response (not on the current tool surface)
+
+This shape is reserved for a future explicit private-draft operation. The current MCP surface does not expose one. Executors must not simulate it with `aeko_update_product_description`, a local file, or a renamed current product. Even when a conforming operation becomes available, it is an optional post-preview user choice rather than a default.
 
 ```ts
 interface AekoShadowProductResponse {
@@ -544,6 +562,22 @@ def aeko_get_action_plan(item_id: str) -> str:
     # Response = "---\n" + yaml_frontmatter + "\n---\n\n" + prose_body
 
 @mcp.tool()
+def aeko_claim_action_item(item_id: str) -> str:
+    """Create an exclusive execution claim and return its unique claim_id."""
+    # Backend: POST /api/action-items/{item_id}/claim
+    # Success grants the permanent token-fenced claim; concurrent or invalid-state claims return 409.
+
+@mcp.tool()
+def aeko_release_action_item(
+    item_id: str,
+    claim_id: str | None = None,
+    force: bool = False,
+    confirm_no_active_execution: bool = False,
+) -> str:
+    """Release the matching claim, or perform explicitly confirmed recovery."""
+    # Backend: POST /api/action-items/{item_id}/release
+
+@mcp.tool()
 def aeko_get_domain_info(domain_id: str) -> str:
     """Domain details + AI-readiness infrastructure status (llms.txt, robots.txt AI blockers, JSON-LD, sitemap)."""
     # Backend: GET /api/domains/{domain_id}
@@ -555,21 +589,11 @@ def aeko_complete_action_item(
     artifact_summary: str = "",
     artifact_paths: list[str] | None = None,
     write_result: dict | None = None,
+    execution_claim_id: str | None = None,
 ) -> str:
     """Mark an Action or Technical item complete."""
     # Backend: POST /api/items/{item_id}/complete body: AekoCompleteItemRequest
     # Name chosen to match the backend's templated prose (api/services/plan_md.py).
-
-@mcp.tool()
-def aeko_create_shadow_product(
-    integration_id: str,
-    source_product_id: str,
-    description_html: str,
-    title_suffix: str = "[AEKO Draft]",
-) -> str:
-    """Create a non-selling shadow copy of a product with new description HTML."""
-    # Backend: POST /api/store-integrations/{integration_id}/products/{source_product_id}/shadow
-    # Response: AekoShadowProductResponse
 
 @mcp.tool()
 def aeko_get_product_description(
@@ -669,6 +693,9 @@ All MCP tools return markdown strings for human-facing output.
 
 - `aeko_get_action_plan` returns ONE Plan.md / guide.md string assembled from one DB row (shared across Action and Technical tabs — see §4). MCP never reconstructs plan state from multiple endpoints.
 - Plan.md / guide.md are dual-format: YAML frontmatter + prose body. Both are deterministic backend outputs of the row (v1.2 pivot — prose is templated, no AI author). Prose MUST reference fields by name, never by value.
+- `/aeko-update-pdp` calls `aeko_claim_action_item` before Plan fetch or generation. The ActionItem remains `ready`; only claim-endpoint success grants exclusivity.
+- The returned claim token fences normal release, completion, and agent-initiated store mutation. Claims do not expire automatically.
+- `aeko_release_action_item` is allowed only when no store mutation occurred. Forced recovery requires explicit two-part confirmation. Successful or ambiguous store calls retain the claim for explicit reconciliation.
 - `aeko_complete_action_item` always posts `completed_via="mcp"`, `status="completed"`.
 - `write_mode` lives on the item contract (frontmatter), not as a runtime flag to the skill.
 - `execution_class` is the only dispatch key the executor relies on.
@@ -681,8 +708,11 @@ All MCP tools return markdown strings for human-facing output.
 - `aeko_get_action_plan` for a non-PDP content item → frontmatter has `execution_class: local_content_artifact` and NO `pdp_responsive_contract.*` keys.
 - `aeko_get_action_plan` on a technical-tab item → frontmatter has `execution_class: technical_artifact`; `validation_hints` present when applicable; every required §4.2 key present.
 - Frontmatter / prose drift test: for any Plan.md, no line in the prose body equals `---` (no stray closing fence); no bullet *line* in the prose body equals, verbatim (after stripping leading bullet markers and whitespace), any string listed in `must_include` or `forbidden`. Whole-line equality only — legitimate narrative references to those values within a sentence are permitted.
+- Two claims racing on the same owned `ready` item produce exactly one successful token and one 409 while the item status remains `ready`.
+- Normal release/completion with the wrong or missing token is rejected while a claim is active; forced recovery requires the explicit confirmation flag.
+- Agent store writes reject missing/mismatched tokens and hold the matching claim lock through platform mutation plus audit commit.
 - `aeko_complete_action_item` accepts both store-write and non-store-write completions.
-- `aeko_create_shadow_product` response has `created_product_id`, `admin_url`, `selling=false`, `audit_id`; missing any → contract breach.
+- Any future private-draft operation must return a distinct non-public ID, admin URL, `selling=false`, and audit provenance; otherwise the executor treats the capability as unavailable.
 
 ## 11. Assumptions
 
@@ -699,27 +729,28 @@ All MCP tools return markdown strings for human-facing output.
 - Prose body starts on the line after the closing fence (trim a single leading blank line if present).
 - Unknown frontmatter keys are IGNORED by executors — the contract reserves the right to add new optional keys under the same major version without breaking skills.
 
-### 11.2 Stage-1 ship checklist (backend tools referenced but not yet wired)
+### 11.2 Runtime surface requirements
 
-Skills reference these tools; Stage-1 backend work must land them (or skills must degrade cleanly with clear messaging until they do):
+Executor skills rely on these backend-backed tools. Missing required operations must fail closed with a clear message:
 
 - `aeko_get_action_plan` — MUST assemble frontmatter from DB columns + templated prose body and return a single markdown string. Serves both Action and Technical items via the shared `GET /api/action-items/{item_id}` endpoint.
 - `aeko_list_action_items` / `aeko_list_technical_items` — MUST return tab-scoped summaries.
-- `aeko_complete_action_item` — MUST accept both store-write and non-store-write completions.
-- `aeko_create_shadow_product` — MUST return `AekoShadowProductResponse` with all six provenance fields.
+- `aeko_claim_action_item` — MUST owner-scope and tier-gate an exclusive permanent claim for a `ready` item without changing the ActionItem status; return a unique token; concurrent or invalid-state claims return 409.
+- `aeko_release_action_item` — MUST require the matching token for normal release; forced recovery MUST require explicit confirmation.
+- `aeko_complete_action_item` — MUST accept both store-write and non-store-write completions and require the matching token when a claim exists.
 - `aeko_get_product_description` — required for `append_below_existing` write mode; until wired, `/aeko-update-pdp` aborts that mode with a clear user message. Shipped in aeko-mcp v0.5.0.
-- `aeko_update_product_description` — MUST return `AekoStoreWriteResponse` (§7a); until upgraded, skill flags `audit_id: null` and warns revert is unavailable.
+- `aeko_update_product_page` — MUST make one claim-fenced request for all approved PDP fields and return one audit ID (§7a).
 - `aeko_check_ocr_cache` / `aeko_store_ocr_result` — optional per §8; skills degrade to live OCR when absent.
 
-Any skill referencing a Stage-1 tool that is absent at runtime MUST stop with "<tool> is not yet available — required for this item's write_mode/artifact_type" rather than producing partial output.
+Any skill referencing a required tool that is absent at runtime MUST stop with "<tool> is not yet available — required for this item's write_mode/artifact_type" rather than producing partial output.
 
 **Frontmatter keys added across v1.x** — backend stamping responsibility:
-- `tier_required` — set from the item's source policy. Post-2026-04-27 (4→3 tier restructure), `append_below_existing` and `shadow_product` items both stamp `tier_required: "starter"` (live-store writes and shadow products are Starter+). Content-generation artifacts (`own_store_markdown`, `external_media_markdown`) stamp `tier_required: "pro"`. Optional; absent = Starter-accessible.
+- `tier_required` — set from the item's source policy. Current policy: `pdp_html` and content-generation artifacts require Pro+; `json_ld` remains Starter+. The backend always re-evaluates the current artifact mapping, so an older stamped value cannot bypass entitlement. Optional frontmatter is informational, not authorization.
 - `write_target` — second safety signal, MUST agree with `write_mode` per the pairing rule in §3.2, and MUST use the canonical values `live | shadow | local` (not `production` / `none`). Optional but strongly recommended so the skill can refuse cleanly on misconfigured items.
 - `faq_jsonld_required` / `review_jsonld_when_available` — see §3.2 for semantics.
 
-**Stage-1 write-mode guidance (while `aeko_create_shadow_product` is pending):**
-The canonical PDP default is `write_mode: shadow_product` + `write_target: shadow`, but until the shadow endpoint ships, backend MUST stamp `write_mode: preview_only` + `write_target: local` on `pdp_html` items. The skill handles `preview_only` end-to-end today (generate HTML → open in browser → tell user to copy-paste into Cafe24). Flipping the default to `shadow_product` is a one-line backend change once the endpoint lands; no MCP release needed.
+**PDP delivery guidance:**
+Every run generates and opens a local preview before presenting delivery choices. The standard surface offers keeping that preview or updating the current product. A private-draft option appears only when the connected store exposes a real, explicit draft operation and it returns a distinct non-public identifier. The skill must never label a local file or current-product update as a private draft, and it must never silently downgrade one choice into another. A current-product update requires an exact Before/After/Risk/Undo summary followed by a second explicit confirmation.
 
 **Async-prose-generation status handling (v1.1, retired in v1.2):**
 Originally: insert row with `status: generating_prose` inside the same transaction that enqueued the Sonnet prose job; flip to `ready` on success, `failed` on error. **Retired 2026-04-20** (commit `6b667ad feat(plan_md): template Plan.md prose, retire Sonnet pipeline`). Prose is now rendered inline at create time via `api/services/plan_md.py::render_plan_prose`; new rows land directly in `ready`. The 409 retry branch in skills is forward-compat-only code for legacy rows; no new inserts exercise it. A `last_error` column is still populated on create-time failures.

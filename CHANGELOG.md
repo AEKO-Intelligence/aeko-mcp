@@ -4,6 +4,24 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.15.0] — 2026-07-13
+
+### Added
+
+- `aeko_fetch_source_content(domain_id, source_id)` reads stored cited-page evidence through the backend's owner-and-association-verified route. It returns the crawl ID, page metadata, JSON-LD types, stored text, and associated tracked prompts without allowing URL-keyed or cross-tenant lookup.
+- `aeko_get_content_idea_handoff(handoff_id)` returns the complete server snapshot for one rule-based content idea. The same short ID is retained while each start/reopen refreshes its evidence; unknown fields are preserved for forward-compatible skill use.
+- `aeko_claim_action_item(item_id)` creates a permanent token-fenced claim for a ready ActionItem; concurrent execution loses with 409 and the winner receives a unique `claim_id`.
+- `aeko_release_action_item(item_id, claim_id=...)` releases only the matching unmutated claim. Forced stale-claim recovery is explicit and claims never expire automatically.
+- `aeko_complete_action_item(..., execution_claim_id=...)` fences completion to the same winning execution.
+- `aeko_update_product_page(...)` sends description, JSON-LD, tags, and SEO meta in one claim-authorized store request and one audit/revert boundary.
+
+### Changed
+
+- Action-item list output now always includes `product_id`, even when a target URL is present, and includes `created_at`. `/aeko-update-pdp` uses both fields to avoid duplicate direct PDP work.
+- Action-item list pagination now reports an offset-aware range and `has_more`, so direct PDP deduplication stops correctly on the final page.
+- Domain info now exposes `brand_keywords`, and tracked-prompt detail includes the prompt `language`, so executor grounding does not silently discard either backend field.
+- Registered tool count is now 80 across 15 modules.
+
 ## [0.14.0] — 2026-07-09
 
 ### Removed
@@ -295,7 +313,9 @@ Local filesystem wrappers (5) — covered by native `Read`/`Write`/`Glob`/`Bash`
 
 Compound report + local preview + cached crawl wrappers (3):
 - `aeko_prepare_report` (#50), `aeko_get_page_analysis` (#51),
-  `aeko_preview_optimized_page` (#52), `aeko_fetch_source_content` (#53).
+  `aeko_preview_optimized_page` (#52), legacy URL-keyed
+  `aeko_fetch_source_content(url=...)` (#53). The owner-scoped v0.15 tool is
+  a later, narrower contract and is not an ActionItem target-page helper.
 
 Prerequisite: plugin skills must have a filesystem MCP connector
 available when running outside Claude Code. Added to

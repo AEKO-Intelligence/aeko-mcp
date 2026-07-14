@@ -23,6 +23,8 @@ Tier shorthand:
 | `aeko_get_quota` | Read tracked-prompt and account limit status. | Yes | No |
 | `aeko_untrack_prompt` | Stop tracking one prompt. | Yes | No |
 | `aeko_get_tracked_prompt` | Read one tracked prompt with response and citation details. | Yes | No |
+| `aeko_fetch_source_content` | Read stored content for an owner-associated cited source. | No | Pro+ |
+| `aeko_get_content_idea_handoff` | Read the current server snapshot for one rule-based idea. | No | Pro+; same ID refreshes when restarted. |
 | `aeko_generate_starter_prompts` | Generate starter prompt candidates for a domain. | Yes | No |
 | `aeko_accept_starter_prompts` | Accept generated starter prompts into tracking. | Yes, quota/platform caps | No |
 | `aeko_update_markets` | Update selected markets. | Yes, 1 market | Pro gets higher market cap |
@@ -48,14 +50,17 @@ Tier shorthand:
 | `aeko_list_store_products` | List synced or injected store products. | Yes | No |
 | `aeko_list_store_integrations` | List connected store integrations. | Yes | No |
 | `aeko_get_product_description` | Read editable PDP HTML from a store. | Yes | No |
-| `aeko_update_product_description` | Write PDP description HTML with audit trail. | Yes | No |
-| `aeko_update_product_tags` | Write product tags. | Yes | No |
-| `aeko_update_product_meta` | Write SEO meta fields. | Yes | No |
+| `aeko_update_product_description` | Write description HTML under a matching ActionItem claim. | Starter limited | The claimed artifact's current tier applies; PDP is Pro+. |
+| `aeko_update_product_tags` | Replace product tags under a matching ActionItem claim. | Starter limited | The claimed artifact's current tier applies. |
+| `aeko_update_product_meta` | Update SEO fields under a matching ActionItem claim. | Starter limited | The claimed artifact's current tier applies. |
+| `aeko_update_product_page` | Apply one atomic, audited PDP patch after preview and confirmation. | No | Pro+ `pdp_html` claim required. |
 | `aeko_list_store_writes` | List store-write audit entries. | Yes | No |
 | `aeko_revert_store_write` | Revert a prior store write. | Yes | No |
 | `aeko_list_action_items` | List action-plan items. | Yes | No |
 | `aeko_list_technical_items` | List technical-plan items. | Yes | No |
 | `aeko_get_action_plan` | Fetch Plan.md for an item. | Yes | No |
+| `aeko_claim_action_item` | Atomically create one permanent, token-fenced claim for a ready item. | Starter limited | Enforces the item's current artifact-tier requirement; PDP execution is Pro+. |
+| `aeko_release_action_item` | Release the matching unmutated claim; forced recovery requires explicit confirmation. | Yes, owner-scoped | No automatic expiry. |
 | `aeko_create_action_item` | Create an action item and enqueue Plan.md generation. | Starter limited | Context grounding requires Pro+ |
 | `aeko_dismiss_action_item` | Dismiss an action item. | Yes | No |
 | `aeko_complete_action_item` | Mark an action item complete. | Yes | No |
@@ -94,9 +99,10 @@ Tier shorthand:
 | `/aeko-onboarding` | Confirms setup, explains available skills, and routes the user to the right next workflow. | Works for all tiers. | Pro-only workflows are described as gated. |
 | `/aeko-setup-store` | Adds a domain, connects or injects products, generates starter prompts, and updates markets. | Starter can complete basic setup, manual products, starter prompts, and one market. | Review sources, Context library, ads, and aeko.shop publish are Pro+. |
 | `/aeko-action-center` | Lists actionable Technical/PDP/Content items and dispatches to executor skills. | Starter can execute Starter-tier items. | Context-grounded content plans and Pro suggestions depend on Pro+. |
-| `/aeko-update-pdp` | Uses Plan.md to draft PDP improvements and store-write artifacts. | Starter can run PDP items and store writes. | Shadow-product backend write is still not exposed; current backend stamps `preview_only`. |
+| `/aeko-update-pdp` | Atomically claims the Plan.md item, drafts and opens a local preview first, then lets the user keep it or explicitly choose a supported store path. A current-product update requires a separate Before/After/Risk/Undo confirmation. | Not available on Starter. The standard surface supports preview or confirmed current-product update with audit/revert metadata. | Pro+ PDP ActionItem and AI handoff. A private draft is offered only when the connected integration exposes a real draft operation returning a distinct non-public ID; no simulated draft or silent live fallback. |
 | `/aeko-fix-technical` | Produces crawler/schema/site technical fixes from Plan.md. | Starter can run technical items. | None beyond normal site/file access. |
-| `/aeko-create-content` | Drafts citation-ready content from Plan.md and saves backend content variations. | Starter can run content artifact items when created. | Context IDs and aeko.shop publish destination require Pro+. |
+| `/aeko-create-content` | ActionItem mode drafts citation-ready content and saves eligible variations; direct handoff mode follows one server snapshot/channel and never saves, completes, or publishes. | Not available for content ActionItems on Starter. | Content artifacts, rule-based idea handoffs, Context IDs, and aeko.shop publish require Pro+. |
+| `/aeko-check-source` | Compares one cited page with verified domain, prompt/Context, and official-product evidence; produces corrections or an outreach draft without creating an ActionItem. | Not available on Starter. | Pro+ source-check handoff. |
 | `/aeko-publish-content` | Publishes saved content variations after confirmation. | Starter can use non-aeko.shop draft destinations. | Publishing/unpublishing live aeko.shop posts is Pro+. |
 | `/aeko-find-prompts-to-track` | Finds prompt candidates and tracks selected prompts with supported angles. | Starter can add prompts within quota, one market, OpenAI platform. | Context angle and review-suggested prompt flows require Pro+. |
 | `/aeko-manage-tracked-prompts` | Reviews tracked prompts by angle/quota and untracks when needed. | Starter can manage tracked prompts. | Context-related views only appear when available. |
@@ -104,7 +110,7 @@ Tier shorthand:
 | `/aeko-visibility-report` | Produces a visibility report from summary, tracked prompts, and analytics. | Starter can run visibility/SOV/drift/Measure reads. | Broader platforms/countries depend on tier limits. |
 | `/aeko-brand-competitor-analysis` | Compares a competitor's public positioning with AEKO citation data. | Starter can run with WebSearch/WebFetch and tracked prompt data. | Depth depends on available tracked prompt coverage. |
 | `/aeko-product-competitor-analysis` | Compares one product against competitor PDPs. | Starter can run with store reads and web fetches. | Context reviews or richer ad/review data are Pro+. |
-| `/aeko-refresh-jsonld` | Refreshes existing product JSON-LD facts and writes back with audit trail. | Starter can run store-write updates. | No create-from-scratch JSON-LD; it updates existing blocks. |
+| `/aeko-refresh-jsonld` | Refreshes existing product JSON-LD through a claimed `json_ld` item and audited write. | Starter can run eligible `json_ld` items. | No create-from-scratch JSON-LD; it updates existing blocks. |
 | `/aeo-audit` | Generic URL-level AEO/shopping readiness audit. | Works without AEKO backend data. | Not an AEKO-measured score. |
 | `/aeko-inject-reviews` | Injects real reviews for stores without a review app. | Not available on Starter. | Pro+ only; real reviews only, no fabrication. |
 | `/aeko-compose-ads` | Pulls contextual reviews and creates paused OpenAI Ads groups. | Not available on Starter. | Pro+ with connected OpenAI Ads account; live writes stay paused for review. |
@@ -114,6 +120,6 @@ Tier shorthand:
 ## Starter Clarifications
 
 - Starter can add and track prompts through MCP. Limits are 100 tracked prompts, 1 market, and OpenAI-only platform unless account limits are overridden.
-- Starter can create basic action items for Starter-tier artifacts and execute PDP/content/technical workflows when those items exist.
+- Starter can create basic action items for Starter-tier artifacts and execute eligible content/technical workflows when those items exist. PDP AI improvement is Pro+.
 - Starter cannot use Context Reviews, Context library, OpenAI Ads, or aeko.shop live publishing.
 - Publishing to aeko.shop is Pro+ only. Saving a variation or producing an own-store draft is separate from live aeko.shop publish.

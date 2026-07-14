@@ -4,24 +4,25 @@ Wraps the AEKO backend's /api/store-integrations/{id}/products/{ext_id}
 endpoint (and audit + revert endpoints) so Claude Desktop can apply
 pdp_update suggestions directly to a merchant's live store.
 
-Seven tools total:
+Write tools include:
   - aeko_list_store_integrations  ← discovery (read-only, all tiers)
   - aeko_get_product_description  ← raw editable HTML (read-only)
   - aeko_update_product_description
   - aeko_update_product_tags
   - aeko_update_product_meta
+  - aeko_update_product_page  ← one atomic PDP patch + one audit record
   - aeko_list_store_writes
   - aeko_revert_store_write
 
-JSON-LD lives inside the description HTML and is written via
-`aeko_update_product_description` — there is no separate JSON-LD
-write tool.
+JSON-LD is stored inside the description HTML. The atomic page tool accepts it
+as a separate field so the backend can merge it with the current or proposed
+description in the same audited request.
 
-Post-tier-restructure (4→3 tiers, 2026-04-27): all write tools are
-available on every active subscription tier (Starter / Pro / Enterprise).
-Inactive or trial-expired accounts surface a 403 from the backend as a
-RuntimeError with the full upgrade-pitch message. ``aeko_list_store_integrations``
-remains available on every tier so users can always see what's connected.
+Agent-initiated product writes are fenced by an ActionItem execution claim.
+The caller passes the ActionItem id and the unique claim token returned by
+``aeko_claim_action_item``; the backend validates the artifact tier and exact
+store/product target while holding that claim through the platform mutation.
+``aeko_list_store_integrations`` remains read-only and available on every tier.
 """
 import base64
 import hashlib
@@ -69,7 +70,13 @@ def _update_product(
     integration_id: str,
     external_product_id: str,
     body: dict[str, Any],
+    action_item_id: str | None = None,
+    execution_claim_id: str | None = None,
 ) -> str:
+    if action_item_id is not None:
+        body["action_item_id"] = action_item_id
+    if execution_claim_id is not None:
+        body["execution_claim_id"] = execution_claim_id
     path = f"/api/store-integrations/{integration_id}/products/{external_product_id}"
     result, err = _safe(client.post, path, json=body)
     if err:
@@ -277,9 +284,9 @@ def aeko_list_store_integrations() -> str:
     scopes yet, the user needs to reconnect from the AEKO dashboard
     Settings → Store Integrations tab.
 
-    Returns markdown with one block per integration. Available on every
-    subscription tier (and post-2026-04-27 the write tools themselves are
-    also available on every active tier — Starter / Pro / Enterprise).
+    Returns markdown with one block per integration, including its AEKO
+    ``domain_id``. Discovery is available on every subscription tier; an
+    agent write is authorized by the claimed artifact's current tier.
     """
     result, err = _safe(client.get, "/api/store-integrations")
     if err:
@@ -315,6 +322,7 @@ def aeko_list_store_integrations() -> str:
             write_badge = "✅ Write enabled" if write_enabled else "⚠️ Read-only (reconnect in Settings to enable writes)"
 
         lines.append(f"## `{integration_id}`")
+        lines.append(f"- **Domain ID**: `{item.get('domain_id', '?')}`")
         lines.append(f"- **Platform**: {platform}")
         lines.append(f"- **Store**: `{store}`")
         lines.append(f"- **Write-back**: {write_badge}")
@@ -381,6 +389,8 @@ def aeko_update_product_description(
     description_html: str,
     skip_aeko_shop: bool = False,
     domain_id: str | None = None,
+    action_item_id: str | None = None,
+    execution_claim_id: str | None = None,
 ) -> str:
     """Replace the full description HTML for a product on a connected store.
 
@@ -403,6 +413,9 @@ def aeko_update_product_description(
             ``MediaPresignRequest.domain_id``. Pass the domain UUID, NOT the
             store integration_id. Pass-through to
             ``_upload_local_images_for_aeko_shop``.
+        action_item_id: Claimed ActionItem that authorizes this agent write.
+        execution_claim_id: Unique token returned by
+            ``aeko_claim_action_item`` for that item.
     """
     source_content_id = f"store-product:{integration_id}:{external_product_id}"
     clean_html = (
@@ -414,6 +427,8 @@ def aeko_update_product_description(
         integration_id,
         external_product_id,
         {"description": clean_html, "skip_aeko_shop": skip_aeko_shop},
+        action_item_id,
+        execution_claim_id,
     )
 
 
@@ -422,6 +437,8 @@ def aeko_update_product_tags(
     integration_id: str,
     external_product_id: str,
     tags: list[str],
+    action_item_id: str | None = None,
+    execution_claim_id: str | None = None,
 ) -> str:
     """Replace the tag list for a product on a connected store.
 
@@ -431,11 +448,15 @@ def aeko_update_product_tags(
         tags: Full replacement list (not append). Cafe24 joins with ","
             and Shopify joins with ", " — the backend handles the format
             difference.
+        action_item_id: Claimed ActionItem that authorizes this agent write.
+        execution_claim_id: Matching execution-claim token.
     """
     return _update_product(
         integration_id,
         external_product_id,
         {"tags": tags},
+        action_item_id,
+        execution_claim_id,
     )
 
 
@@ -445,6 +466,8 @@ def aeko_update_product_meta(
     external_product_id: str,
     title: str | None = None,
     description: str | None = None,
+    action_item_id: str | None = None,
+    execution_claim_id: str | None = None,
 ) -> str:
     """Update SEO meta fields (title tag and meta description) for a product.
 
@@ -455,6 +478,8 @@ def aeko_update_product_meta(
             metafields[global/title_tag].
         description: New meta description (max 1024 chars). Cafe24:
             seo_description. Shopify: metafields[global/description_tag].
+        action_item_id: Claimed ActionItem that authorizes this agent write.
+        execution_claim_id: Matching execution-claim token.
     """
     meta: dict[str, str] = {}
     if title is not None:
@@ -467,6 +492,90 @@ def aeko_update_product_meta(
         integration_id,
         external_product_id,
         {"meta": meta},
+        action_item_id,
+        execution_claim_id,
+    )
+
+
+@mcp.tool(title="Update product page atomically", annotations=WRITE_ONCE)
+def aeko_update_product_page(
+    integration_id: str,
+    external_product_id: str,
+    action_item_id: str,
+    execution_claim_id: str,
+    description_html: str | None = None,
+    json_ld: dict[str, Any] | None = None,
+    tags: list[str] | None = None,
+    meta_title: str | None = None,
+    meta_description: str | None = None,
+    skip_aeko_shop: bool = False,
+    domain_id: str | None = None,
+) -> str:
+    """Apply one confirmed PDP patch in one store request and audit record.
+
+    Use this tool after the user has reviewed the local preview and explicitly
+    confirmed the localized Before / After / Risk / Undo summary. Description,
+    JSON-LD, tags, and SEO meta are submitted together, so the platform update
+    and AEKO audit/revert boundary are a single operation. The backend records
+    a request hash on the execution claim: an identical retry replays the
+    recorded result, while an indeterminate write is never submitted twice.
+
+    Args:
+        integration_id: UUID of the exact connected store.
+        external_product_id: Exact platform-native product id.
+        action_item_id: Claimed ``pdp_html`` (or compatible) ActionItem.
+        execution_claim_id: Unique token returned by
+            ``aeko_claim_action_item``.
+        description_html: Final description HTML, if the visible body changes.
+            For metadata-only runs this can be omitted; the backend uses the
+            current store description as the JSON-LD base.
+        json_ld: One structured-data object, normally an ``@graph`` containing
+            Product and any evidence-backed FAQPage/Review nodes.
+        tags: Optional full replacement tag list.
+        meta_title: Optional SEO title.
+        meta_description: Optional SEO description.
+        skip_aeko_shop: Leave local image references untouched when true.
+        domain_id: AEKO domain UUID used only when local images must be uploaded
+            to aeko.shop before the store patch.
+    """
+    if all(
+        value is None
+        for value in (description_html, json_ld, tags, meta_title, meta_description)
+    ):
+        return "# Nothing to update\n\nSet at least one PDP field."
+
+    clean_html = description_html
+    if description_html is not None and not skip_aeko_shop:
+        source_content_id = f"store-product:{integration_id}:{external_product_id}"
+        clean_html = _upload_local_images_for_aeko_shop(
+            source_content_id,
+            description_html,
+            domain_id,
+        )
+
+    body: dict[str, Any] = {"skip_aeko_shop": skip_aeko_shop}
+    if clean_html is not None:
+        body["description"] = clean_html
+    if json_ld is not None:
+        body["json_ld"] = json_ld
+    if tags is not None:
+        body["tags"] = tags
+    if meta_title is not None or meta_description is not None:
+        body["meta"] = {
+            key: value
+            for key, value in {
+                "title": meta_title,
+                "description": meta_description,
+            }.items()
+            if value is not None
+        }
+
+    return _update_product(
+        integration_id,
+        external_product_id,
+        body,
+        action_item_id,
+        execution_claim_id,
     )
 
 

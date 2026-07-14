@@ -86,6 +86,13 @@ def _format_domain(data: dict) -> str:
     lines.append(f"- **URL**: {data.get('base_url', 'N/A')}")
     lines.append(f"- **Korean Name**: {data.get('ko_name') or 'N/A'}")
     lines.append(f"- **Industry Scope**: {data.get('scope') or 'N/A'}")
+    brand_keywords = [
+        str(value).strip()
+        for value in (data.get("brand_keywords") or [])
+        if str(value).strip()
+    ]
+    if brand_keywords:
+        lines.append(f"- **Brand Keywords**: {', '.join(brand_keywords)}")
     lines.append("")
 
     lines.append("## AI Readiness Checklist")

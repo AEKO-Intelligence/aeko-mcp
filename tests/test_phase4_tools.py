@@ -5,6 +5,24 @@ import importlib
 from aeko_mcp.tools import action_plan, content_variation, reviews, visibility
 
 
+def test_domain_info_renders_brand_keywords(monkeypatch):
+    monkeypatch.setattr(
+        visibility.client,
+        "get",
+        lambda *args, **kwargs: {
+            "name": "Grafen",
+            "ko_name": "그라펜",
+            "base_url": "https://grafen.co.kr",
+            "scope": "beauty",
+            "brand_keywords": ["Grafen", "그라펜"],
+        },
+    )
+
+    rendered = visibility.aeko_get_domain_info("domain-1")
+
+    assert "Brand Keywords**: Grafen, 그라펜" in rendered
+
+
 def test_visibility_summary_passes_backend_filters(monkeypatch):
     calls = []
 
@@ -141,6 +159,10 @@ def test_action_lifecycle_tools_call_expected_routes(monkeypatch):
 
     def fake_post(path, json=None, headers=None):
         calls.append({"method": "POST", "path": path, "json": json, "headers": headers})
+        if path.endswith("/claim"):
+            return {"id": "itm_1", "status": "ready", "title": "Plan"}
+        if path.endswith("/release"):
+            return {"id": "itm_1", "status": "ready", "title": "Plan"}
         return {"id": "itm_1", "status": "ready", "title": "Plan"}
 
     def fake_delete(path, params=None):
@@ -156,9 +178,19 @@ def test_action_lifecycle_tools_call_expected_routes(monkeypatch):
         idempotency_key="domain-1:pdp:sku-1",
         product_id="sku-1",
     )
+    claim = action_plan.aeko_claim_action_item("itm_1")
+    release = action_plan.aeko_release_action_item("itm_1", claim_id="claim-1")
+    complete = action_plan.aeko_complete_action_item(
+        "itm_1",
+        artifact_summary="Preview saved",
+        execution_claim_id="claim-1",
+    )
     dismiss = action_plan.aeko_dismiss_action_item("itm_1")
 
     assert "itm_1" in create
+    assert "Action item claimed" in claim
+    assert "ready" in release
+    assert "marked ready" in complete
     assert "dismissed" in dismiss
     assert calls == [
         {
@@ -167,8 +199,47 @@ def test_action_lifecycle_tools_call_expected_routes(monkeypatch):
             "json": {"domain_id": "domain-1", "artifact_type": "pdp_html", "product_id": "sku-1"},
             "headers": {"Idempotency-Key": "domain-1:pdp:sku-1"},
         },
+        {
+            "method": "POST",
+            "path": "/api/action-items/itm_1/claim",
+            "json": None,
+            "headers": None,
+        },
+        {
+            "method": "POST",
+            "path": "/api/action-items/itm_1/release",
+            "json": {
+                "force": False,
+                "confirm_no_active_execution": False,
+                "claim_id": "claim-1",
+            },
+            "headers": None,
+        },
+        {
+            "method": "POST",
+            "path": "/api/items/itm_1/complete",
+            "json": {
+                "artifact_summary": "Preview saved",
+                "execution_claim_id": "claim-1",
+            },
+            "headers": None,
+        },
         {"method": "DELETE", "path": "/api/action-items/itm_1", "params": None},
     ]
+
+
+def test_action_claim_annotations_expose_permanent_claim_semantics():
+    registered = {tool.name: tool for tool in action_plan.mcp._tool_manager.list_tools()}
+
+    claim = registered["aeko_claim_action_item"].annotations
+    assert claim.readOnlyHint is False
+    assert claim.idempotentHint is False
+    assert claim.destructiveHint is False
+
+    release = registered["aeko_release_action_item"].annotations
+    assert release.readOnlyHint is False
+    assert release.idempotentHint is True
+    assert release.destructiveHint is False
 
 
 def test_unpublish_content_calls_aeko_shop_route(monkeypatch):
