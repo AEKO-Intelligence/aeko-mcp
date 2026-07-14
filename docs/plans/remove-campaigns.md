@@ -1,5 +1,11 @@
 # Plan — Remove the "campaign" concept from AEKO MCP
 
+> Historical planning document, superseded by the shipped v0.15 source contract. References below to
+> `aeko_fetch_source_content(url=...)` or `/api/sources/content?url=...` describe the retired URL-keyed
+> helper. The current tool is `aeko_fetch_source_content(domain_id, source_id)`, verifies owner association
+> server-side, and is used by cited-source checks and server-snapshotted content-idea handoffs rather than ActionItem
+> target-page execution.
+
 ## Context
 
 AEKO is retiring the "campaign" concept. The MCP package currently surfaces

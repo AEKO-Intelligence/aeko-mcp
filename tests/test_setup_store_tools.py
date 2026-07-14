@@ -126,6 +126,84 @@ def test_inject_products_chunks_over_200(monkeypatch):
     assert '"synced": 450' in out
 
 
+def test_atomic_product_page_update_sends_one_fenced_patch(monkeypatch):
+    calls = []
+
+    def fake_post(path, json=None, headers=None):
+        calls.append({"path": path, "json": json, "headers": headers})
+        return {
+            "audit_id": "audit-1",
+            "platform": "shopify",
+            "external_product_id": "sku-1",
+            "status": "success",
+        }
+
+    monkeypatch.setattr(store_write.client, "post", fake_post)
+
+    out = store_write.aeko_update_product_page(
+        integration_id="store-1",
+        external_product_id="sku-1",
+        action_item_id="itm_1",
+        execution_claim_id="claim-1",
+        description_html="<section>Evidence</section>",
+        json_ld={"@context": "https://schema.org", "@type": "Product"},
+        tags=["gift"],
+        meta_title="Gift cream",
+        meta_description="Evidence-backed gift cream",
+        skip_aeko_shop=True,
+    )
+
+    assert "audit-1" in out
+    assert calls == [
+        {
+            "path": "/api/store-integrations/store-1/products/sku-1",
+            "json": {
+                "skip_aeko_shop": True,
+                "description": "<section>Evidence</section>",
+                "json_ld": {"@context": "https://schema.org", "@type": "Product"},
+                "tags": ["gift"],
+                "meta": {
+                    "title": "Gift cream",
+                    "description": "Evidence-backed gift cream",
+                },
+                "action_item_id": "itm_1",
+                "execution_claim_id": "claim-1",
+            },
+            "headers": None,
+        }
+    ]
+
+
+def test_legacy_product_update_forwards_claim_fence(monkeypatch):
+    calls = []
+
+    def fake_post(path, json=None, headers=None):
+        calls.append(json)
+        return {
+            "audit_id": "audit-1",
+            "platform": "cafe24",
+            "external_product_id": "7",
+            "status": "success",
+        }
+
+    monkeypatch.setattr(store_write.client, "post", fake_post)
+    store_write.aeko_update_product_meta(
+        "store-1",
+        "7",
+        title="SEO",
+        action_item_id="itm_jsonld",
+        execution_claim_id="claim-jsonld",
+    )
+
+    assert calls == [
+        {
+            "meta": {"title": "SEO"},
+            "action_item_id": "itm_jsonld",
+            "execution_claim_id": "claim-jsonld",
+        }
+    ]
+
+
 def test_quota_reads_prompt_quota_and_limit_status(monkeypatch):
     calls = []
 

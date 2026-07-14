@@ -517,7 +517,14 @@ def _format_tracked_prompt_detail(data: dict) -> str:
         lines.append(f"**Korean**: {prompt_ko}")
     lines.append(f"- **ID**: `{prompt.get('id', '?')}`")
     meta_bits: list[str] = []
-    for key in ("country", "industry", "vertical", "query_type", "funnel_stage"):
+    for key in (
+        "country",
+        "language",
+        "industry",
+        "vertical",
+        "query_type",
+        "funnel_stage",
+    ):
         val = prompt.get(key)
         if val:
             meta_bits.append(f"{key}={val}")

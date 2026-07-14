@@ -74,11 +74,22 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP exposes 75 tools covering setup, visibility metrics, citability, tracked-prompt angles, views, content variations, media uploads, customer review contexts, saved memories, analytics, GA4, OpenAI Ads operations, and store-write actions.
+AEKO MCP exposes 80 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, content-idea handoffs, views, content variations, media uploads, customer review contexts, saved memories, analytics, GA4, OpenAI Ads operations, and store-write actions.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
-Current groups: `visibility`, `research`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, and `setup`.
+Current groups: `visibility`, `research`, `sources`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, and `setup`.
+
+The `sources` group supports the Content dashboard's AI handoffs (Pro+):
+
+- `aeko_fetch_source_content(domain_id, source_id)` — fetch stored page evidence only after the backend verifies both domain ownership and tracked-prompt association.
+- `aeko_get_content_idea_handoff(handoff_id)` — read the full server snapshot for one rule-based content idea. Reopening keeps the ID but refreshes its evidence before the next run.
+
+The `action_plan` group includes a permanent, token-fenced execution claim for ActionItem executors:
+
+- `aeko_claim_action_item(item_id)` — create an exclusive execution claim for one owned `ready` item and return its unique `claim_id`. The item stays `ready`; a concurrent executor receives 409 and must stop.
+- `aeko_release_action_item(item_id, claim_id=...)` — release only the matching uncompleted claim when no store mutation occurred. Claims do not expire automatically; forced recovery requires explicit confirmation that no execution or mutation is active.
+- `aeko_update_product_page(...)` — submit description, JSON-LD, tags, and SEO meta as one claim-fenced product patch with one audit/revert boundary.
 
 The `reviews` group surfaces **Context Reviews** — classified customer reviews from connected Crema / Judge.me platforms — so content drafts can be grounded in real customer-state, concern, product-experience, and felt-effect details instead of invented copy (Pro+):
 

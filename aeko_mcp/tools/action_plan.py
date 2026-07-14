@@ -52,8 +52,13 @@ def _render_item_summary(item: dict, index: int | None = None) -> list[str]:
     product_id = item.get("product_id")
     if target_url:
         lines.append(f"- **Target**: {target_url}")
-    elif product_id:
+    # Keep product_id visible even when target_url is also populated. Direct
+    # PDP execution uses this exact field to deduplicate work for a product.
+    if product_id:
         lines.append(f"- **Product**: `{product_id}`")
+    created_at = item.get("created_at")
+    if created_at:
+        lines.append(f"- **Created**: {created_at}")
     preview = item.get("preview")
     if preview:
         trimmed = preview if len(preview) <= 160 else preview[:157] + "..."
@@ -96,7 +101,14 @@ def _list_items(
             f"Check back after the next suggestion scan, or explore other tabs."
         )
 
-    lines: list[str] = [f"# {tab_label} items ({len(items)} of {total})"]
+    start = offset + 1
+    end = offset + len(items)
+    has_more = end < total
+    lines: list[str] = [f"# {tab_label} items ({start}-{end} of {total})"]
+    lines.append(
+        f"- Pagination: `offset={offset}` · `limit={limit}` · "
+        f"`has_more={'true' if has_more else 'false'}`"
+    )
     if domain_id:
         lines.append(f"- Domain: `{domain_id}`")
     if status:
@@ -104,9 +116,11 @@ def _list_items(
     lines.append("")
     for idx, item in enumerate(items, start=1):
         lines.extend(_render_item_summary(item, index=idx))
-    if total > len(items):
-        hidden = total - len(items)
-        lines.append(f"_{hidden} more not shown — increase `limit` or page with `offset`._")
+    if has_more:
+        remaining = total - end
+        lines.append(
+            f"_{remaining} more not shown — request the next page with `offset={end}`._"
+        )
     return "\n".join(lines)
 
 
@@ -178,14 +192,65 @@ def aeko_get_action_plan(item_id: str) -> str:
     (`/aeko-update-pdp`, `/aeko-create-content`, `/aeko-fix-technical`) but
     safe to call standalone to inspect an item's contract.
 
-    Status gate: backend 409s if the item is not in {ready, completed}. The
-    409 body is plain text like "Plan is still being generated — retry in a
-    moment" — surface it to the user verbatim.
+    Status gate: backend serves executable ``ready`` plans and completed history.
+    A successful execution claim is stored separately and does not change the
+    item's status. Other states return 409; surface the backend message verbatim.
 
     Args:
         item_id: The `itm_<hex>` identifier.
     """
     return client.get_text(f"/api/action-items/{item_id}", accept="text/markdown")
+
+
+@mcp.tool(title="Claim action item execution", annotations=WRITE_ONCE)
+def aeko_claim_action_item(item_id: str) -> str:
+    """Atomically claim one ready ActionItem before generating its artifact.
+
+    The backend creates an owner-scoped execution-claim row while the item stays
+    ``ready``. Exactly one concurrent host can win. A second host receives 409
+    and must stop without generating or writing anything.
+
+    Args:
+        item_id: The ``itm_<hex>`` identifier to claim.
+    """
+    result = client.post(f"/api/action-items/{item_id}/claim")
+    return _json_block("Action item claimed", result)
+
+
+@mcp.tool(title="Release action item execution", annotations=WRITE)
+def aeko_release_action_item(
+    item_id: str,
+    claim_id: str | None = None,
+    force: bool = False,
+    confirm_no_active_execution: bool = False,
+) -> str:
+    """Release an uncompleted claim after an execution aborts.
+
+    Normal release is fenced by the unique ``claim_id`` returned from
+    ``aeko_claim_action_item``. ``force=True`` is recovery-only: use it only
+    after the user explicitly confirms that no other run is active and no
+    store mutation occurred. The item remains ``ready`` until completion.
+    Never release after a store write succeeds or may have succeeded; complete
+    the item with its audit result instead.
+
+    Args:
+        item_id: The ``itm_<hex>`` identifier whose claim should be released.
+        claim_id: Unique token returned by ``aeko_claim_action_item``. Required
+            for a normal release.
+        force: Owner-scoped stale-claim recovery. This is not an automatic
+            timeout and must follow explicit user confirmation.
+        confirm_no_active_execution: Required alongside ``force=True``. Set
+            only after the user confirms that no other execution is active
+            and no store mutation occurred.
+    """
+    body: dict[str, Any] = {
+        "force": force,
+        "confirm_no_active_execution": confirm_no_active_execution,
+    }
+    if claim_id is not None:
+        body["claim_id"] = claim_id
+    result = client.post(f"/api/action-items/{item_id}/release", json=body)
+    return _json_block("Action item released", result)
 
 
 @mcp.tool(title="Create action item", annotations=WRITE_ONCE)
@@ -258,6 +323,7 @@ def aeko_complete_action_item(
     artifact_summary: Optional[str] = None,
     artifact_paths: Optional[List[str]] = None,
     write_result: Optional[dict] = None,
+    execution_claim_id: Optional[str] = None,
 ) -> str:
     """Mark an action item as completed after producing its artifact.
 
@@ -266,13 +332,16 @@ def aeko_complete_action_item(
 
     Args:
         item_id: The `itm_<hex>` identifier.
-        artifact_summary: One-line human summary ("shadow draft created",
+        artifact_summary: One-line human summary ("PDP preview generated",
             "PDP HTML saved to ./aeko-artifacts/...").
         artifact_paths: Absolute paths of any files written to disk.
         write_result: Optional dict describing store writes, e.g.
-            {"mode": "shadow_product", "audit_id": "...", "admin_url": "...",
-             "created_product_id": "..."}. Set to None for preview-only /
-             local content runs.
+            {"mode": "current_product", "audit_id": "...", "admin_url": "..."}
+            or {"mode": "private_draft", "draft_id": "..."}. Preview-only PDP
+            runs can pass {"mode": "preview_only"}; local content may use None.
+        execution_claim_id: Unique token returned by
+            ``aeko_claim_action_item``. Required when the item has an active
+            execution claim; it fences completion to the winning run.
     """
     body: dict[str, Any] = {}
     if artifact_summary is not None:
@@ -281,6 +350,8 @@ def aeko_complete_action_item(
         body["artifact_paths"] = artifact_paths
     if write_result is not None:
         body["write_result"] = write_result
+    if execution_claim_id is not None:
+        body["execution_claim_id"] = execution_claim_id
 
     resp = client.post(f"/api/items/{item_id}/complete", json=body)
     status = resp.get("status", "ok")
