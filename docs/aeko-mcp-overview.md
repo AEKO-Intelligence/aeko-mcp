@@ -1,6 +1,6 @@
 # aeko-mcp — What It Does
 
-> Notion paste-ready overview of the AEKO MCP (Model Context Protocol) server. This document began as the v0.5.0 overview and keeps the architecture/token-flow context; the live tool surface is now **80 tools across 15 modules**. Source of truth: [`aeko_mcp/tools/*.py`](../aeko_mcp/tools/).
+> Notion paste-ready overview of the AEKO MCP (Model Context Protocol) server. This document began as the v0.5.0 overview and keeps the architecture/token-flow context; the live tool surface is now **92 tools across 15 modules**. Source of truth: [`aeko_mcp/tools/*.py`](../aeko_mcp/tools/).
 
 ---
 

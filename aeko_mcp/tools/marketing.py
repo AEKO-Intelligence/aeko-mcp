@@ -8,16 +8,18 @@ manual-review-inject routes under ``/api/review-integrations/*``) so a plugin sk
   - inject real reviews it gathered for merchants without a review app (``aeko_inject_reviews``),
   - read ad performance and reallocate budget by performance (``aeko_get_ad_insights`` +
     ``aeko_update_campaign_budget``), and pause wasteful ads/campaigns (``aeko_set_ad_state`` /
-    ``aeko_set_campaign_state``).
+    ``aeko_set_campaign_state``),
+  - validate, preview, explicitly arm, audit, and globally stop automated pacing rules.
 
 Design rules (mirror the skill/tool split):
   - Reasoning (clustering, ranking, deciding) lives in the SKILL; these tools stay thin (~1:1 to a
     backend route).
   - Tools that feed a later tool call return a machine-parseable JSON block (explicit IDs), not just
     prose, so a skill can chain list -> create.
-  - Every OpenAI-Ads WRITE route requires an ``Idempotency-Key`` header; write tools take a stable,
-    caller-supplied ``idempotency_key`` (the skill mints ONE per logical action, reused on retries)
-    so a re-run never double-creates or double-charges.
+  - Direct OpenAI-Ads entity/feed WRITE routes that support replay protection take a stable,
+    caller-supplied ``idempotency_key`` (the skill mints ONE per logical action, reused on retries).
+    The pacing-rule routes instead expose idempotent state transitions and a separately explicit
+    enable step, matching their backend contract without an idempotency header.
   - Spend is real: ``aeko_update_campaign_budget`` defaults to dry-run and enforces an absolute
     ceiling + max per-call delta at the TOOL layer (the backend only enforces a floor).
   - State changes can pause, confirm-gated resume, or confirm-gated archive.
@@ -55,6 +57,40 @@ def _json_block(title: str, payload: Any) -> str:
 
 def _idem_headers(idempotency_key: str) -> dict[str, str]:
     return {"Idempotency-Key": idempotency_key}
+
+
+def _ad_rule_payload(
+    *,
+    domain_id: str,
+    name: str,
+    scope_level: str,
+    scope_filter: dict,
+    match: str,
+    conditions: list[dict],
+    action: str,
+    guards: dict,
+    cooldown_minutes: int,
+    max_actions_per_day: int,
+    max_entities_per_run: int,
+    description: Optional[str],
+) -> dict[str, Any]:
+    """Build the shared create/validate rule body with MCP-safe fixed fields."""
+    return {
+        "domain_id": domain_id,
+        "name": name,
+        "description": description,
+        "enabled": False,
+        "scope_level": scope_level,
+        "scope_filter": scope_filter,
+        "match": match,
+        "conditions": conditions,
+        "guards": guards,
+        "action": action,
+        "cooldown_minutes": int(cooldown_minutes),
+        "max_actions_per_day": int(max_actions_per_day),
+        "max_entities_per_run": int(max_entities_per_run),
+        "created_by": "mcp",
+    }
 
 
 # --- Reviews: domain-wide pull + inject -------------------------------------------
@@ -277,6 +313,358 @@ def aeko_sync_feed(domain_id: str, idempotency_key: str) -> str:
     if err:
         return f"# Failed to sync feed\n\n```\n{err}\n```"
     return _json_block("Feed sync queued", result)
+
+
+# --- Automated pacing / guardrail rules -------------------------------------------
+
+
+@mcp.tool(title="List OpenAI Ads pacing rules", annotations=READ_ONLY)
+def aeko_list_ad_rules(domain_id: str, include_disabled: bool = False) -> str:
+    """List non-deleted pacing rules for a domain.
+
+    By default only enabled rules are returned. Set ``include_disabled=True`` to include drafts and
+    disabled rules. Each response includes the complete saved definition, enabled state, version,
+    account currency/timezone snapshot, evaluation timestamps, and trigger count.
+    """
+    result, err = _safe(
+        client.get,
+        "/api/marketing/rules",
+        params={
+            "domain_id": domain_id,
+            "include_disabled": bool(include_disabled),
+        },
+    )
+    if err:
+        return f"# Failed to list ad rules\n\n```\n{err}\n```"
+    items = result if isinstance(result, list) else []
+    return _json_block(f"{len(items)} ad rules for domain `{domain_id}`", items)
+
+
+@mcp.tool(title="Get OpenAI Ads pacing rule", annotations=READ_ONLY)
+def aeko_get_ad_rule(rule_id: str) -> str:
+    """Get one non-deleted pacing rule by its AEKO rule UUID."""
+    result, err = _safe(client.get, f"/api/marketing/rules/{rule_id}")
+    if err:
+        return f"# Failed to get ad rule\n\n```\n{err}\n```"
+    return _json_block("Ad rule", result)
+
+
+@mcp.tool(title="Create OpenAI Ads pacing rule", annotations=WRITE_ONCE)
+def aeko_create_ad_rule(
+    domain_id: str,
+    name: str,
+    scope_level: str,
+    scope_filter: dict,
+    match: str,
+    conditions: list[dict],
+    action: str,
+    guards: dict,
+    cooldown_minutes: int,
+    max_actions_per_day: int,
+    max_entities_per_run: int,
+    description: Optional[str] = None,
+) -> str:
+    """Create a pacing rule draft. New rules are ALWAYS disabled; preview it, then explicitly enable.
+
+    Call ``aeko_get_ad_rule_capabilities`` first instead of inventing combinations. ``scope_level`` is
+    ``campaign | ad_group | ad``. ``scope_filter`` is ``{"target":"all","ids":[]}`` or
+    ``{"target":"ids","ids":[<AEKO entity UUID>, ...]}`` (max 5000 IDs).
+
+    ``conditions`` contains 1-5 condition objects, optionally with one nested group
+    ``{"match":"all|any","conditions":[...]}`` at one level. A condition has ``metric`` (spend,
+    impressions, clicks, cpm, cpc, ctr, pace_ratio, or budget_utilization), ``operator``
+    (gt/gte/lt/lte), exactly one of ``threshold_micros`` or ``threshold_value``, and ``window``.
+    Window kinds are last_n_hours (requires hours 1-24), this_completed_hour, today_so_far,
+    rolling_24h, last_complete_day, rolling_days (requires days 2-30), or campaign_to_date. Money
+    metrics spend/cpm/cpc use ``threshold_micros``; other metrics use ``threshold_value``.
+
+    ``guards`` has min_impressions, min_clicks, min_spend_micros, min_elapsed_fraction (0-1), and
+    min_hours_observed (1-24). ``action`` is pause, notify_only, decrease_budget, or decrease_bid;
+    the shipped evaluator currently applies only pause (the latter two are capability-reserved).
+    Cooldown is 15-10080 minutes; daily actions 1-200; entities per run 1-100, further tier-capped.
+    """
+    payload = _ad_rule_payload(
+        domain_id=domain_id,
+        name=name,
+        description=description,
+        scope_level=scope_level,
+        scope_filter=scope_filter,
+        match=match,
+        conditions=conditions,
+        action=action,
+        guards=guards,
+        cooldown_minutes=cooldown_minutes,
+        max_actions_per_day=max_actions_per_day,
+        max_entities_per_run=max_entities_per_run,
+    )
+    result, err = _safe(client.post, "/api/marketing/rules", json=payload)
+    if err:
+        return f"# Failed to create ad rule\n\n```\n{err}\n```"
+    return _json_block("Ad rule created (disabled)", result)
+
+
+@mcp.tool(title="Update OpenAI Ads pacing rule", annotations=WRITE)
+def aeko_update_ad_rule(
+    rule_id: str,
+    name: Optional[str] = None,
+    scope_level: Optional[str] = None,
+    scope_filter: Optional[dict] = None,
+    match: Optional[str] = None,
+    conditions: Optional[list[dict]] = None,
+    action: Optional[str] = None,
+    guards: Optional[dict] = None,
+    cooldown_minutes: Optional[int] = None,
+    max_actions_per_day: Optional[int] = None,
+    max_entities_per_run: Optional[int] = None,
+    description: Optional[str] = None,
+) -> str:
+    """Patch the supplied fields on a saved pacing rule and increment its version.
+
+    Omitted/``None`` arguments are left unchanged. The backend re-validates the fully merged
+    definition, refreshes the account currency/timezone snapshot, and clears per-entity rule state.
+    Pass an empty string to clear the optional description.
+    """
+    fields = {
+        "name": name,
+        "description": description,
+        "scope_level": scope_level,
+        "scope_filter": scope_filter,
+        "match": match,
+        "conditions": conditions,
+        "guards": guards,
+        "action": action,
+        "cooldown_minutes": (
+            int(cooldown_minutes) if cooldown_minutes is not None else None
+        ),
+        "max_actions_per_day": (
+            int(max_actions_per_day) if max_actions_per_day is not None else None
+        ),
+        "max_entities_per_run": (
+            int(max_entities_per_run) if max_entities_per_run is not None else None
+        ),
+    }
+    payload = {key: value for key, value in fields.items() if value is not None}
+    result, err = _safe(
+        client.patch,
+        f"/api/marketing/rules/{rule_id}",
+        json=payload,
+    )
+    if err:
+        return f"# Failed to update ad rule\n\n```\n{err}\n```"
+    return _json_block("Ad rule updated", result)
+
+
+@mcp.tool(title="Delete OpenAI Ads pacing rule", annotations=DESTRUCTIVE)
+def aeko_delete_ad_rule(rule_id: str) -> str:
+    """Soft-delete a pacing rule. The backend disables it and retains its audit history."""
+    result, err = _safe(client.delete, f"/api/marketing/rules/{rule_id}")
+    if err:
+        return f"# Failed to delete ad rule\n\n```\n{err}\n```"
+    return _json_block("Ad rule deleted (soft delete)", result)
+
+
+@mcp.tool(title="Enable or disable OpenAI Ads pacing rule", annotations=DESTRUCTIVE)
+def aeko_set_ad_rule_enabled(
+    rule_id: str,
+    enabled: bool,
+    acknowledge_broad_match: bool = False,
+) -> str:
+    """Enable or disable a saved pacing rule.
+
+    Enabling can pause live ad entities. Preview first. If the latest successful preview matched
+    more than half its targets, the backend returns ``MARKETING_RULE_BROAD_MATCH_ACK_REQUIRED``;
+    inspect the blast radius and re-call with ``acknowledge_broad_match=True`` only when intended.
+    Disabling is immediate and ignores ``acknowledge_broad_match``.
+    """
+    if enabled:
+        result, err = _safe(
+            client.post,
+            f"/api/marketing/rules/{rule_id}/enable",
+            params={"acknowledge_broad_match": bool(acknowledge_broad_match)},
+        )
+    else:
+        result, err = _safe(
+            client.post,
+            f"/api/marketing/rules/{rule_id}/disable",
+        )
+    if err:
+        if "MARKETING_RULE_BROAD_MATCH_ACK_REQUIRED" in err:
+            return (
+                "# Broad-match acknowledgement required\n\n"
+                "The latest preview matched more than half of the targeted entities. Review "
+                "`target_count` and `matched_count`, then re-call "
+                "`aeko_set_ad_rule_enabled` with `acknowledge_broad_match=True` only if this blast "
+                f"radius is intended.\n\n```\n{err}\n```"
+            )
+        return f"# Failed to set ad rule enabled state\n\n```\n{err}\n```"
+    return _json_block(f"Ad rule {'enabled' if enabled else 'disabled'}", result)
+
+
+@mcp.tool(title="Get OpenAI Ads pacing rule capabilities", annotations=READ_ONLY)
+def aeko_get_ad_rule_capabilities(domain_id: str) -> str:
+    """Get the authoritative rule grammar for a domain before drafting a rule.
+
+    Returns metrics, operators, windows, scopes, actions, the metric×window×scope compatibility
+    matrix, account currency/timezone, the account-wide automation kill switch, tier, and tier caps.
+    """
+    result, err = _safe(
+        client.get,
+        "/api/marketing/rules/capabilities",
+        params={"domain_id": domain_id},
+    )
+    if err:
+        return f"# Failed to get ad rule capabilities\n\n```\n{err}\n```"
+    return _json_block("Ad rule capabilities", result)
+
+
+@mcp.tool(title="Validate OpenAI Ads pacing rule", annotations=WRITE)
+def aeko_validate_ad_rule(
+    domain_id: str,
+    name: str,
+    scope_level: str,
+    scope_filter: dict,
+    match: str,
+    conditions: list[dict],
+    action: str,
+    guards: dict,
+    cooldown_minutes: int,
+    max_actions_per_day: int,
+    max_entities_per_run: int,
+    description: Optional[str] = None,
+) -> str:
+    """Validate and normalize an unsaved rule body without fetching Ads insights or saving a rule.
+
+    The body grammar is identical to ``aeko_create_ad_rule``. A successful response contains
+    ``valid=true``, the normalized definition, and warnings; invalid combinations return the
+    backend's field-level validation error.
+    """
+    payload = _ad_rule_payload(
+        domain_id=domain_id,
+        name=name,
+        description=description,
+        scope_level=scope_level,
+        scope_filter=scope_filter,
+        match=match,
+        conditions=conditions,
+        action=action,
+        guards=guards,
+        cooldown_minutes=cooldown_minutes,
+        max_actions_per_day=max_actions_per_day,
+        max_entities_per_run=max_entities_per_run,
+    )
+    result, err = _safe(
+        client.post,
+        "/api/marketing/rules/validate",
+        json=payload,
+    )
+    if err:
+        return f"# Failed to validate ad rule\n\n```\n{err}\n```"
+    return _json_block("Ad rule validation", result)
+
+
+@mcp.tool(title="Preview OpenAI Ads pacing rule", annotations=WRITE)
+def aeko_preview_ad_rule(
+    rule_id: Optional[str] = None,
+    rule: Optional[dict] = None,
+) -> str:
+    """Dry-run exactly one saved or unsaved pacing rule against completed Ads insights.
+
+    Pass either ``rule_id`` for ``/rules/{id}/preview`` or a full create-shaped ``rule`` dict for
+    ``/rules/preview``. The preview never changes ad state. It returns run_id, dry_run,
+    data_through_hour, target_count, matched_count, matched_entities (remote ID, name, metrics), and
+    warnings. Preview calls are hourly tier-capped and are retained in rule-run history.
+    """
+    if bool(rule_id) == bool(rule):
+        return "# Pass exactly one of `rule_id` (saved rule) or `rule` (full unsaved rule body)."
+    if rule_id:
+        result, err = _safe(
+            client.post,
+            f"/api/marketing/rules/{rule_id}/preview",
+        )
+    else:
+        result, err = _safe(
+            client.post,
+            "/api/marketing/rules/preview",
+            json=rule,
+        )
+    if err:
+        return f"# Failed to preview ad rule\n\n```\n{err}\n```"
+    return _json_block("Ad rule preview (dry run)", result)
+
+
+@mcp.tool(title="List OpenAI Ads rule executions", annotations=READ_ONLY)
+def aeko_list_ad_rule_executions(
+    domain_id: str,
+    rule_id: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+) -> str:
+    """List newest-first per-entity rule execution/audit records for a domain.
+
+    Optionally filter by rule UUID and exact execution status. Records include action/status,
+    skip_reason, matched metrics, condition snapshot, rule version, error details, and revert data.
+    """
+    params: dict[str, Any] = {
+        "domain_id": domain_id,
+        "limit": max(1, min(int(limit), 200)),
+    }
+    if rule_id:
+        params["rule_id"] = rule_id
+    if status:
+        params["status"] = status
+    result, err = _safe(
+        client.get,
+        "/api/marketing/rule-executions",
+        params=params,
+    )
+    if err:
+        return f"# Failed to list ad rule executions\n\n```\n{err}\n```"
+    items = result if isinstance(result, list) else []
+    return _json_block(f"{len(items)} ad rule executions", items)
+
+
+@mcp.tool(title="List OpenAI Ads rule runs", annotations=READ_ONLY)
+def aeko_list_ad_rule_runs(domain_id: str, limit: int = 20) -> str:
+    """List newest-first rule evaluation runs for a domain.
+
+    Each run reports trigger/dry-run/status, data-through hour, counts for evaluated/matched/actioned
+    entities and all verdicts, insights usage, partial reason, and error details.
+    """
+    result, err = _safe(
+        client.get,
+        "/api/marketing/rule-runs",
+        params={
+            "domain_id": domain_id,
+            "limit": max(1, min(int(limit), 200)),
+        },
+    )
+    if err:
+        return f"# Failed to list ad rule runs\n\n```\n{err}\n```"
+    items = result if isinstance(result, list) else []
+    return _json_block(f"{len(items)} ad rule runs", items)
+
+
+@mcp.tool(title="Set OpenAI Ads automation kill switch", annotations=DESTRUCTIVE)
+def aeko_set_ad_automation_enabled(domain_id: str, enabled: bool) -> str:
+    """Set the connected ad account's global rules kill switch.
+
+    ``enabled=False`` stops all scheduled rule evaluation/actions without changing individual rule
+    enabled states. Re-enabling resumes evaluation of every individually enabled rule.
+    """
+    result, err = _safe(
+        client.patch,
+        "/api/marketing/ad-account",
+        json={
+            "domain_id": domain_id,
+            "rules_enabled": bool(enabled),
+        },
+    )
+    if err:
+        return f"# Failed to set ad automation enabled state\n\n```\n{err}\n```"
+    return _json_block(
+        f"Ad automation {'enabled' if enabled else 'disabled'}",
+        result,
+    )
 
 
 # --- Writes: compose ad group, budget, pause --------------------------------------

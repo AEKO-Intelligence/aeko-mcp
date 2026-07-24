@@ -4,6 +4,20 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.16.0] — 2026-07-24
+
+### Added
+
+- Added eleven MCP tools for the complete OpenAI Ads pacing-rule lifecycle: capability discovery,
+  validation, disabled-only creation, partial update, preview, explicit enable/disable with broad-match
+  acknowledgement, soft deletion, and rule/execution/run inspection.
+- Added `aeko_set_ad_automation_enabled(domain_id, enabled)` for the connected ad account's global rule
+  kill switch.
+
+### Changed
+
+- Registered tool count is now 92 across 15 modules.
+
 ## [0.15.1] — 2026-07-14
 
 ### Fixed
