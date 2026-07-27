@@ -8,20 +8,19 @@ This repo ships the **Python MCP server** only. For the guided workflows (skills
 
 The hosted AEKO MCP server is already running at `https://aeko-intelligence.com/mcp`. You don't need to host it yourself. Connect your client:
 
-### Claude Desktop (recommended — pre-registered public client)
+### Claude Desktop (recommended)
 
 1. Settings → Connectors → **Add custom connector**
 2. Server URL: `https://aeko-intelligence.com/mcp`
-3. Expand **Advanced settings**
-   - **Client ID**: `aeko-mcp-v1`
-   - **Client Secret**: leave blank (public client, PKCE only)
-4. Click **Connect** and complete browser OAuth
+3. Click **Connect** and complete browser OAuth
 
-The pre-registered client routes the callback through `https://claude.ai/api/mcp/auth_callback`, which is reliable across Desktop's sandboxed runtime.
+Leave **Advanced settings** collapsed — the OAuth Client ID and Secret fields are optional
+and should stay empty. Desktop self-registers through Dynamic Client Registration like
+every other client.
 
 ### Claude Code / Codex CLI / Gemini CLI
 
-These use Dynamic Client Registration (RFC 7591) automatically — no client ID needed:
+Same Dynamic Client Registration, from the terminal:
 
 ```bash
 # Claude Code
@@ -54,8 +53,15 @@ Recent Gemini CLI builds also accept the consolidated `url` form with `"type": "
 
 Browser OAuth 2.1 flow with PKCE. Two paths depending on client:
 
-- **Pre-registered public client** (Claude Desktop custom connector, and any future tool that supports hosted callbacks) — paste `aeko-mcp-v1` into the connector's client-ID field. No secret.
-- **Dynamic Client Registration** (Claude Code, Codex CLI, Gemini CLI, any generic MCP client with loopback) — client auto-registers with AEKO via RFC 7591. No manual configuration. Gemini CLI uses its built-in `dynamic_discovery` provider, which reads `/.well-known/oauth-authorization-server` on first connect.
+- **Dynamic Client Registration (the normal path — all clients)** — the client auto-registers
+  with AEKO via RFC 7591 and needs no manual configuration. `_validate_redirect_uri` accepts
+  any `https://` callback as well as loopback, so hosted-callback clients such as Claude
+  Desktop register the same way terminal clients do. Gemini CLI uses its built-in
+  `dynamic_discovery` provider, which reads `/.well-known/oauth-authorization-server` on
+  first connect.
+- **Pre-registered public client `aeko-mcp-v1` (fallback only)** — still served for any host
+  that cannot do DCR. Do not put it in user-facing setup instructions: it adds a step, and
+  the connector UI marks the field optional.
 
 AEKO is the authorization server and resource server. Tokens are opaque (not JWTs) and persist in the `oauth_access_tokens` / `oauth_refresh_tokens` tables. OAuth discovery lives at `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource`.
 

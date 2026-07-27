@@ -4,7 +4,7 @@ Python MCP (Model Context Protocol) server bridging Claude and other AI assistan
 
 - **Version:** 0.16.0 (`pyproject.toml`) · **Framework:** FastMCP (mcp SDK >=1.11.0,<1.16.0), httpx, pydantic, Pillow
 - **Hosted endpoint:** `https://aeko-intelligence.com/mcp` (clients connect here; no self-hosting needed)
-- **Auth:** OAuth 2.1 + PKCE — Dynamic Client Registration (RFC 7591) for Claude Code/Codex/Gemini CLI; pre-registered public client `aeko-mcp-v1` for Claude Desktop. Opaque bearer tokens (`aeko_ot1_`, 1h TTL) + 30-day refresh tokens.
+- **Auth:** OAuth 2.1 + PKCE — Dynamic Client Registration (RFC 7591) for all clients including Claude Desktop (`_validate_redirect_uri` accepts hosted `https://` callbacks, not just loopback); pre-registered public client `aeko-mcp-v1` retained as a fallback only, and deliberately kept out of user-facing setup docs. Opaque bearer tokens (`aeko_ot1_`, 1h TTL) + 30-day refresh tokens.
 - **Transport:** streamable-http, stateless, JSON responses by default (`aeko_mcp/server.py`)
 - **Backend (prod default):** `https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io` (override with `AEKO_API_URL`)
 
