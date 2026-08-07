@@ -4,6 +4,18 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.16.1] — 2026-08-07
+
+### Fixed
+
+- `aeko_set_ad_automation_enabled` now posts to `/api/marketing/ad-account/automation` instead of
+  `PATCH /api/marketing/ad-account`. The latter is guarded by `require_user_context`, which accepts
+  only CIAM JWTs and Shopify session tokens, so every call from an agent token returned 401 — an
+  agent could create and enable a pacing rule but could never stop one. `PATCH /ad-account` also
+  writes the SFTP password and conversions API token, so it deliberately stays dashboard-only;
+  the kill switch moved to its own narrow, credential-free endpoint instead.
+  Requires backend `aeko` at or after the commit that adds that route.
+
 ## [0.16.0] — 2026-07-24
 
 ### Added
