@@ -650,13 +650,17 @@ def aeko_set_ad_automation_enabled(domain_id: str, enabled: bool) -> str:
 
     ``enabled=False`` stops all scheduled rule evaluation/actions without changing individual rule
     enabled states. Re-enabling resumes evaluation of every individually enabled rule.
+
+    Targets the narrow ``/ad-account/automation`` endpoint rather than ``PATCH /ad-account``:
+    the latter also writes the SFTP password and conversions API token and stays dashboard-only,
+    so calling it from here returned 401 and left agents unable to stop automation they had armed.
     """
     result, err = _safe(
-        client.patch,
-        "/api/marketing/ad-account",
+        client.post,
+        "/api/marketing/ad-account/automation",
         json={
             "domain_id": domain_id,
-            "rules_enabled": bool(enabled),
+            "enabled": bool(enabled),
         },
     )
     if err:

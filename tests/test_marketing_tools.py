@@ -479,24 +479,46 @@ def test_preview_ad_rule_selects_saved_or_unsaved_route(monkeypatch):
     ]
 
 
-def test_set_ad_automation_enabled_patches_rules_kill_switch(monkeypatch):
+def test_set_ad_automation_enabled_posts_to_narrow_automation_endpoint(monkeypatch):
+    """The kill switch must NOT go through PATCH /ad-account.
+
+    That endpoint also writes the SFTP password and conversions API token, so it is
+    guarded by require_user_context (CIAM/Shopify only) and returned 401 for every MCP
+    token — leaving an agent able to arm automation but never stop it. The switch now
+    has its own credential-free dual-auth endpoint.
+    """
     calls = []
 
-    def fake_patch(path, json=None, headers=None):
+    def fake_post(path, json=None, params=None, headers=None):
         calls.append({"path": path, "json": json, "headers": headers})
-        return {"domain_id": json["domain_id"], "rules_enabled": json["rules_enabled"]}
+        return {"domain_id": json["domain_id"], "rules_enabled": json["enabled"]}
 
-    monkeypatch.setattr(marketing.client, "patch", fake_patch)
+    def fail_patch(*args, **kwargs):  # pragma: no cover - must never be reached
+        raise AssertionError(
+            "aeko_set_ad_automation_enabled used PATCH; that route is CIAM-only "
+            "and writes ad-account credentials."
+        )
+
+    monkeypatch.setattr(marketing.client, "post", fake_post)
+    monkeypatch.setattr(marketing.client, "patch", fail_patch)
     out = marketing.aeko_set_ad_automation_enabled("domain-1", False)
 
     assert "Ad automation disabled" in out
     assert calls == [
         {
-            "path": "/api/marketing/ad-account",
-            "json": {"domain_id": "domain-1", "rules_enabled": False},
+            "path": "/api/marketing/ad-account/automation",
+            "json": {"domain_id": "domain-1", "enabled": False},
             "headers": None,
         }
     ]
+
+
+def test_set_ad_automation_enabled_can_re_enable(monkeypatch):
+    def fake_post(path, json=None, params=None, headers=None):
+        return {"domain_id": json["domain_id"], "rules_enabled": json["enabled"]}
+
+    monkeypatch.setattr(marketing.client, "post", fake_post)
+    assert "Ad automation enabled" in marketing.aeko_set_ad_automation_enabled("d1", True)
 
 
 def test_ad_rule_tools_are_registered_with_expected_annotations():
