@@ -25,6 +25,21 @@ class _FakeHttpx:
         return _FakeResp()
 
 
+def test_client_preserves_branchable_http_error_codes():
+    for code in (402, 409, 422, 429, 502, 503):
+        assert str(code) in client_mod.ERROR_MESSAGES[code]
+
+
+def test_client_formats_tracked_prompt_quota_detail():
+    class _QuotaResp:
+        def json(self):
+            return {"detail": {"would_add": 6, "remaining": 2, "blocked": True}}
+
+    assert client_mod._extract_detail_message(_QuotaResp()) == (
+        "This request would add 6 tracked-prompt variant(s), but only 2 slot(s) remain."
+    )
+
+
 def test_client_post_forwards_idempotency_key_over_auth():
     c = client_mod.AekoClient.__new__(client_mod.AekoClient)
     c._client = _FakeHttpx()

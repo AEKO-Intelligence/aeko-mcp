@@ -8,7 +8,7 @@ Python MCP (Model Context Protocol) server bridging Claude and other AI assistan
 - **Transport:** streamable-http, stateless, JSON responses by default (`aeko_mcp/server.py`)
 - **Backend (prod default):** `https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io` (override with `AEKO_API_URL`)
 
-## Registered tool groups — 92 tools across 15 modules (`aeko_mcp/tools/`)
+## Registered tool groups — 93 tools across 15 modules (`aeko_mcp/tools/`)
 
 | Module | Tools | Covers |
 |---|---|---|
@@ -25,7 +25,7 @@ Python MCP (Model Context Protocol) server bridging Claude and other AI assistan
 | `analytics` | 3 | SOV, drift, Measure |
 | `ga4` | 4 | GA4 status, property selection, sync |
 | `views` | 3 | Prompt view list/create/add prompts |
-| `setup` | 3 | Starter prompts and market setup |
+| `setup` | 4 | Starter prompts and account-market read/replace setup |
 | `sources` | 2 | Owner-associated cited-source content and server-snapshotted content-idea handoffs |
 
 ## Run locally

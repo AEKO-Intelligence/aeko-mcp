@@ -4,7 +4,7 @@ import json
 from typing import Any, Optional
 
 from ..server import client, mcp
-from ._annotations import WRITE, WRITE_ONCE
+from ._annotations import READ_ONLY, WRITE, WRITE_ONCE
 
 
 def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
@@ -50,12 +50,29 @@ def aeko_accept_starter_prompts(domain_id: str, selections: list[dict]) -> str:
     return _json_block("Starter prompts accepted", result)
 
 
+@mcp.tool(title="Get current target markets", annotations=READ_ONLY)
+def aeko_get_current_markets() -> str:
+    """Read the account-wide selected market list before replacing it.
+
+    ``aeko_update_markets`` is a full account-level replacement, not a domain
+    patch. This read surface returns only ``selected_markets`` from the current
+    user record so callers can show an exact before/after diff.
+    """
+    result, err = _safe(client.get, "/api/user")
+    if err:
+        return f"# Failed to get current markets\n\n```\n{err}\n```"
+    selected = result.get("selected_markets", []) if isinstance(result, dict) else []
+    return _json_block("Current target markets", {"selected_markets": selected or []})
+
+
 @mcp.tool(title="Update target markets", annotations=WRITE)
 def aeko_update_markets(markets: list[str]) -> str:
-    """Update the account's selected target markets.
+    """Replace the account's selected target markets.
 
-    Starter can select one supported market; Pro/Enterprise can select more
-    according to backend package limits.
+    This is account-wide and replaces the full list; call
+    ``aeko_get_current_markets`` and show the exact diff first. Starter can
+    select one supported market; Pro/Enterprise can select more according to
+    backend package limits.
     """
     if not markets:
         return "# No markets provided — pass at least one country code."

@@ -10,10 +10,15 @@ import httpx
 # getting masked by a generic fallback.
 ERROR_MESSAGES = {
     401: "Authentication failed. Your AEKO session may be expired or invalid. Reconnect through your MCP client.",
+    402: "Tracked-prompt quota exceeded (HTTP 402). Review the current package limit and narrow the fan-out.",
     403: "Access denied. Your subscription may not include this feature.",
     404: "Resource not found. Check the domain_id or analysis_id.",
+    409: "API error 409 (conflict).",
+    422: "API error 422 (validation failed).",
+    429: "API error 429 (rate limited).",
     500: "AEKO server error. Please try again later.",
-    502: "Upstream store API failed (Cafe24 / Shopify). The merchant's store token may need to be reconnected in Settings → Store Integrations.",
+    502: "Upstream service failed (HTTP 502).",
+    503: "Service unavailable (HTTP 503).",
 }
 
 
@@ -42,6 +47,12 @@ def _extract_detail_message(resp: httpx.Response) -> str | None:
     if isinstance(detail, str):
         return detail
     if isinstance(detail, dict):
+        if {"would_add", "remaining", "blocked"}.issubset(detail):
+            return (
+                "This request would add "
+                f"{detail['would_add']} tracked-prompt variant(s), but only "
+                f"{detail['remaining']} slot(s) remain."
+            )
         # Store-write platform error shape.
         message = detail.get("message")
         code = detail.get("code")

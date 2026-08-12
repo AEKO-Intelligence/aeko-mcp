@@ -222,7 +222,7 @@ def aeko_create_context(
     return _json_block("Context created", result)
 
 
-@mcp.tool(title="Update AEKO context", annotations=WRITE)
+@mcp.tool(title="Update AEKO context", annotations=DESTRUCTIVE)
 def aeko_update_context(
     context_id: str,
     title: Optional[str] = None,
@@ -249,9 +249,17 @@ def aeko_update_context(
     """Update a curated Context memory. Omitted fields are left unchanged.
 
     ``context_for_prompt`` is the authoritative grounding text for converted and
-    review-derived contexts. Update that field when changing what prompt tracking
-    should inject; changing only ``summary`` does not override it.
+    review-derived contexts. The backend does not let PATCH create that field on
+    a Context that lacks it. ``status=archived`` is refused here; use
+    ``aeko_archive_context`` so archival cannot bypass its dedicated skill gate.
     """
+    if status == "archived":
+        return (
+            "# Context update refused\n\n"
+            "`status=archived` must use `aeko_archive_context` and its separate "
+            "typed confirmation gate."
+        )
+
     body = {
         "title": title,
         "context_for_prompt": context_for_prompt,
@@ -284,7 +292,7 @@ def aeko_update_context(
     return _json_block("Context updated", result)
 
 
-@mcp.tool(title="Archive AEKO context", annotations=DESTRUCTIVE)
+@mcp.tool(title="Archive AEKO context", annotations=WRITE)
 def aeko_archive_context(context_id: str) -> str:
     """Soft-archive a Context memory.
 

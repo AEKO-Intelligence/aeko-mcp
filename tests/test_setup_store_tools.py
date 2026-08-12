@@ -211,6 +211,8 @@ def test_quota_reads_prompt_quota_and_limit_status(monkeypatch):
         calls.append({"path": path, "params": params})
         if path == "/api/tracked-prompts/quota":
             return {"tracked_count": 8, "max_tracked_prompts": 20, "remaining": 12}
+        if path == "/api/user":
+            return {"package_type": "pro", "selected_markets": ["US"]}
         return {"domains": {"current": 1, "limit": 5}, "tracked_prompts": {"current": 8, "limit": 20}}
 
     monkeypatch.setattr(research.client, "get", fake_get)
@@ -219,9 +221,11 @@ def test_quota_reads_prompt_quota_and_limit_status(monkeypatch):
     assert calls == [
         {"path": "/api/tracked-prompts/quota", "params": None},
         {"path": "/api/users/limit-status", "params": None},
+        {"path": "/api/user", "params": None},
     ]
     assert "tracked_prompt_quota" in out
     assert "limit_status" in out
+    assert '"package_type": "pro"' in out
 
 
 def test_setup_tools_call_expected_routes(monkeypatch):
@@ -236,18 +240,25 @@ def test_setup_tools_call_expected_routes(monkeypatch):
         calls.append({"method": "PUT", "path": path, "json": json})
         return {"selected_markets": json["markets"]}
 
+    def fake_get(path, params=None):
+        calls.append({"method": "GET", "path": path, "params": params})
+        return {"selected_markets": ["KR"]}
+
     monkeypatch.setattr(setup.client, "post", fake_post)
     monkeypatch.setattr(setup.client, "put", fake_put)
+    monkeypatch.setattr(setup.client, "get", fake_get)
 
     gen_out = setup.aeko_generate_starter_prompts("domain-1")
     accept_out = setup.aeko_accept_starter_prompts(
         "domain-1",
         [{"raw_prompt": "best gift cream", "prompt_kind": "discovery", "target_market": "US"}],
     )
+    current_markets_out = setup.aeko_get_current_markets()
     markets_out = setup.aeko_update_markets(["US", "KR"])
 
     assert "best gift cream" in gen_out
     assert "results" in accept_out
+    assert "KR" in current_markets_out
     assert "US" in markets_out
     assert calls == [
         {"method": "POST", "path": "/api/tracked-prompts/starter/generate", "json": {"domain_id": "domain-1"}},
@@ -259,5 +270,29 @@ def test_setup_tools_call_expected_routes(monkeypatch):
                 "selections": [{"raw_prompt": "best gift cream", "prompt_kind": "discovery", "target_market": "US"}],
             },
         },
+        {"method": "GET", "path": "/api/user", "params": None},
         {"method": "PUT", "path": "/api/user/markets", "json": {"markets": ["US", "KR"]}},
     ]
+
+
+def test_store_integrations_surface_partial_sync_status(monkeypatch):
+    monkeypatch.setattr(
+        store_write.client,
+        "get",
+        lambda *args, **kwargs: [
+            {
+                "id": "store-1",
+                "domain_id": "domain-1",
+                "platform": "cafe24",
+                "store_identifier": "shop",
+                "scopes": "mall.write_product",
+                "last_sync_status": "partial_failure",
+                "last_sync_error_message": "17 products could not be fetched",
+            }
+        ],
+    )
+
+    out = store_write.aeko_list_store_integrations()
+
+    assert "Last sync status**: partial_failure" in out
+    assert "17 products could not be fetched" in out

@@ -27,7 +27,8 @@ Tier shorthand:
 | `aeko_get_content_idea_handoff` | Read the current server snapshot for one rule-based idea. | No | Pro+; same ID refreshes when restarted. |
 | `aeko_generate_starter_prompts` | Generate starter prompt candidates for a domain. | Yes | No |
 | `aeko_accept_starter_prompts` | Accept generated starter prompts into tracking. | Yes, quota/platform caps | No |
-| `aeko_update_markets` | Update selected markets. | Yes, 1 market | Pro gets higher market cap |
+| `aeko_get_current_markets` | Read the account-wide selected-market list before replacement. | Yes | No |
+| `aeko_update_markets` | Replace the complete account-wide selected-market list. | Yes, 1 market | Pro gets higher market cap |
 | `aeko_list_views` | List saved prompt views. | Yes, view cap | Pro gets higher cap |
 | `aeko_create_view` | Create a saved prompt view. | Yes, view cap | Pro gets higher cap |
 | `aeko_add_prompts_to_view` | Add tracked prompts to a saved view. | Yes | No |

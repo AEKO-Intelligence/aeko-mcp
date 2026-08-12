@@ -4,7 +4,7 @@ import unicodedata
 from typing import Any, Optional
 
 from ..server import mcp, client
-from ._annotations import READ_ONLY, WRITE
+from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE
 
 
 _UUID_RE = re.compile(
@@ -68,13 +68,32 @@ def _format_prompts(data: dict) -> str:
         if prompt_ko:
             lines.append(f"- **Korean**: {prompt_ko[:100]}{'...' if len(prompt_ko) > 100 else ''}")
         lines.append(f"- **ID**: `{p.get('id', 'N/A')}`")
-        lines.append(f"- **Platform**: {platform}")
+        platform_enum = p.get("ai_platform") or ""
+        lines.append(f"- **Platform**: {platform} (`{platform_enum}`)")
         lines.append(f"- **Country**: {country}")
         lines.append(f"- **Query Type**: {query_type}")
         lines.append(f"- **Funnel Stage**: {funnel}")
         lines.append(f"- **Scopes**: {scopes}")
         lines.append(f"- **Keywords**: {keywords}")
         lines.append(f"- **Tags**: {tags}")
+        # The heading is deliberately compact for people, but tracking must
+        # never reuse that truncated display string. Keep the backend's full
+        # prompt and raw platform enum in a parseable handoff.
+        lines.append("- **Track-safe fields**:")
+        lines.append(
+            "  ```json\n"
+            + json.dumps(
+                {
+                    "raw_prompt": p.get("raw_prompt") or prompt_text,
+                    "prompt_en": p.get("prompt_en"),
+                    "ai_platform": platform_enum,
+                    "country": country,
+                },
+                ensure_ascii=False,
+                default=str,
+            )
+            + "\n  ```"
+        )
 
         # Latest response
         resp = p.get("latest_response")
@@ -226,6 +245,30 @@ def _format_tracked_prompts(data: list) -> str:
         if angle_bits:
             lines.append(f"|   |   | _Angles_: {' · '.join(angle_bits)} |   |   |   |")
 
+    lines.append("")
+    lines.append("## Reconciliation payload")
+    lines.append("")
+    lines.append(
+        "```json\n"
+        + json.dumps(
+            [
+                {
+                    "prompt_id": p.get("id"),
+                    "raw_prompt": p.get("raw_prompt"),
+                    "prompt_en": p.get("prompt_en"),
+                    "ai_platform": p.get("ai_platform"),
+                    "country": p.get("country"),
+                    "context_id": p.get("context_id"),
+                    "status": p.get("status", "tracked"),
+                }
+                for p in data
+            ],
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        )
+        + "\n```"
+    )
     lines.append("")
     lines.append("Pass an `ID` from the table to `aeko_get_tracked_prompt` for full forensics (cited sources, JSON-LD `@types`, citability scores).")
     lines.append("")
@@ -431,7 +474,9 @@ def aeko_track_prompt(
     # POST /api/tracked-prompts returns 201 with a BulkTrackResponse:
     # {results: [{seed_index, item_id, ai_platform, country, status,
     #             tracked_prompt_id, reason}], summary: {...}}.
-    # A single-prompt call yields exactly one result row.
+    # A single seed can yield many result rows after platform, country, and
+    # Context fan-out. Preserve all rows and every summary flag so callers can
+    # reconcile partial success instead of treating results[0] as the request.
     resp = client.post("/api/tracked-prompts", json=body)
     results = resp.get("results") or []
     summary = resp.get("summary") or {}
@@ -442,27 +487,14 @@ def aeko_track_prompt(
             f"but reported nothing for this prompt. Summary: {summary or 'N/A'}"
         )
 
-    result = results[0]
-    status_val = result.get("status", "unknown")
-    prompt_id = result.get("tracked_prompt_id") or "?"
-    display = (prompt_en or raw_prompt)[:120]
-
-    summary_bits = []
-    for key in ("tracked", "reactivated", "associated", "already_tracked"):
-        count = summary.get(key)
-        if count:
-            summary_bits.append(f"{key}={count}")
-    summary_str = f" [{', '.join(summary_bits)}]" if summary_bits else ""
-
-    if status_val in ("tracked", "reactivated", "associated"):
-        return f"Tracked prompt `{prompt_id}` ({status_val}): {display}{summary_str}"
-    if status_val == "already_tracked":
-        return (
-            f"Prompt already tracked as `{prompt_id}` — no new row created: "
-            f"{display}{summary_str}"
-        )
-    reason = result.get("reason") or "no reason given"
-    return f"Tracking failed ({status_val}): {reason} — prompt: {display}{summary_str}"
+    return _json_block(
+        "Track prompt result",
+        {
+            "requested_raw_prompt": raw_prompt,
+            "results": results,
+            "summary": summary,
+        },
+    )
 
 
 @mcp.tool(title="Get tracked prompt quota", annotations=READ_ONLY)
@@ -470,20 +502,23 @@ def aeko_get_quota() -> str:
     """Read tracked-prompt quota and broader account limit status.
 
     Use before batch tracking prompts so the skill can warn about plan limits
-    before sending a write call. The backend enforces the actual tier gates.
+    before sending a write call. Includes the package label needed to explain
+    an HTTP 402 quota block; the backend enforces the actual tier gates.
     """
     prompt_quota = client.get("/api/tracked-prompts/quota")
     limit_status = client.get("/api/users/limit-status")
+    user = client.get("/api/user")
     return _json_block(
         "AEKO quota",
         {
             "tracked_prompt_quota": prompt_quota,
             "limit_status": limit_status,
+            "package_type": user.get("package_type") if isinstance(user, dict) else None,
         },
     )
 
 
-@mcp.tool(title="Untrack a prompt", annotations=WRITE)
+@mcp.tool(title="Untrack a prompt", annotations=DESTRUCTIVE)
 def aeko_untrack_prompt(prompt_id: str) -> str:
     """Stop tracking a prompt. Historical response data is preserved.
 
