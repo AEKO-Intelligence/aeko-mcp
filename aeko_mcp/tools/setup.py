@@ -37,13 +37,48 @@ def aeko_generate_starter_prompts(domain_id: str) -> str:
 
 @mcp.tool(title="Accept starter prompts", annotations=WRITE)
 def aeko_accept_starter_prompts(domain_id: str, selections: list[dict]) -> str:
-    """Accept selected starter prompts and create tracked prompts."""
+    """Accept selected starter prompts and create tracked prompts.
+
+    Generated prompt objects can be passed directly from
+    ``aeko_generate_starter_prompts``. This wrapper maps their
+    ``prompt_text`` response field to the accept route's ``raw_prompt`` field.
+    """
     if not selections:
         return "# No starter prompt selections provided."
+    normalized_selections: list[dict[str, Any]] = []
+    for index, selection in enumerate(selections):
+        if not isinstance(selection, dict):
+            return f"# Starter prompt selection {index + 1} must be an object."
+        accepted_fields = (
+            "raw_prompt",
+            "prompt_kind",
+            "target_market",
+            "prompt_en",
+            "attributes_products",
+            "product_fit_score",
+            "naturalness_score",
+            "prompt_grade",
+            "grade_reason",
+            "ai_platforms",
+            "countries",
+        )
+        normalized = {
+            field: selection[field]
+            for field in accepted_fields
+            if field in selection
+        }
+        raw_prompt = normalized.get("raw_prompt") or selection.get("prompt_text")
+        if not isinstance(raw_prompt, str) or not raw_prompt.strip():
+            return (
+                f"# Starter prompt selection {index + 1} must include "
+                "`raw_prompt` or generated `prompt_text`."
+            )
+        normalized["raw_prompt"] = raw_prompt.strip()
+        normalized_selections.append(normalized)
     result, err = _safe(
         client.post,
         "/api/tracked-prompts/starter/accept",
-        json={"domain_id": domain_id, "selections": selections},
+        json={"domain_id": domain_id, "selections": normalized_selections},
     )
     if err:
         return f"# Failed to accept starter prompts\n\n```\n{err}\n```"

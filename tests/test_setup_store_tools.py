@@ -275,6 +275,71 @@ def test_setup_tools_call_expected_routes(monkeypatch):
     ]
 
 
+def test_starter_prompt_generate_output_can_pass_wholesale_to_accept(monkeypatch):
+    setup = importlib.import_module("aeko_mcp.tools.setup")
+    generated_prompt = {
+        "prompt_text": "best gift cream",
+        "prompt_kind": "discovery",
+        "target_market": "US",
+        "target_language": "en",
+        "intent": "recommendation",
+        "attributes_products": ["sku-1"],
+    }
+    calls = []
+
+    def fake_post(path, json=None):
+        calls.append({"path": path, "json": json})
+        if path.endswith("/generate"):
+            return {"prompts": [generated_prompt]}
+        return {"results": [], "summary": {"requested": 1, "tracked": 1}}
+
+    monkeypatch.setattr(setup.client, "post", fake_post)
+
+    generated = setup.aeko_generate_starter_prompts("domain-1")
+    accepted = setup.aeko_accept_starter_prompts("domain-1", [generated_prompt])
+
+    assert '"prompt_text": "best gift cream"' in generated
+    assert '"tracked": 1' in accepted
+    assert calls == [
+        {
+            "path": "/api/tracked-prompts/starter/generate",
+            "json": {"domain_id": "domain-1"},
+        },
+        {
+            "path": "/api/tracked-prompts/starter/accept",
+            "json": {
+                "domain_id": "domain-1",
+                "selections": [
+                    {
+                        "raw_prompt": "best gift cream",
+                        "prompt_kind": "discovery",
+                        "target_market": "US",
+                        "attributes_products": ["sku-1"],
+                    }
+                ],
+            },
+        },
+    ]
+
+
+def test_accept_starter_prompts_rejects_missing_prompt_text_locally(monkeypatch):
+    setup = importlib.import_module("aeko_mcp.tools.setup")
+    called = {"post": False}
+
+    def unexpected_post(*args, **kwargs):
+        called["post"] = True
+        return {}
+
+    monkeypatch.setattr(setup.client, "post", unexpected_post)
+    output = setup.aeko_accept_starter_prompts(
+        "domain-1",
+        [{"prompt_kind": "discovery", "target_market": "US"}],
+    )
+
+    assert "must include `raw_prompt` or generated `prompt_text`" in output
+    assert called["post"] is False
+
+
 def test_store_integrations_surface_partial_sync_status(monkeypatch):
     monkeypatch.setattr(
         store_write.client,
