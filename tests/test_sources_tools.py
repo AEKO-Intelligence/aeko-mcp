@@ -85,6 +85,22 @@ def test_action_item_summary_keeps_product_and_created_time_with_target():
     assert "**Created**: 2026-07-13T01:02:03Z" in output
 
 
+def test_action_item_summary_renders_channels_from_list_response():
+    lines = action_plan._render_item_summary(
+        {
+            "id": "itm_calendar",
+            "title": "Seed the content calendar",
+            "artifact_type": "own_store_markdown",
+            "execution_class": "local_content_artifact",
+            "status": "ready",
+            "channels": ["naver_blog", "aeko_shop"],
+        }
+    )
+
+    output = "\n".join(lines)
+    assert "**Channels**: `naver_blog`, `aeko_shop`" in output
+
+
 def test_action_item_list_pagination_is_offset_aware(monkeypatch):
     monkeypatch.setattr(
         action_plan.client,
