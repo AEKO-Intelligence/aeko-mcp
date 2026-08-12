@@ -27,6 +27,52 @@ jobs:
             echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Checkout aeko-mcp
+        uses: actions/checkout@v4
+        with:
+          path: mcp
+
+      - name: Verify synchronized release version
+        working-directory: mcp
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          config = json.loads(Path(".version-bump.json").read_text())
+
+          def field_value(payload, dotted_field):
+              value = payload
+              for part in dotted_field.split("."):
+                  value = value[part]
+              return value
+
+          declarations = {}
+          for entry in config["files"]:
+              path = Path(entry["path"])
+              if path.suffix == ".toml":
+                  payload = tomllib.loads(path.read_text())
+              elif path.suffix == ".json":
+                  payload = json.loads(path.read_text())
+              else:
+                  raise ValueError(f"Unsupported version declaration: {path}")
+              declarations[str(path)] = str(field_value(payload, entry["field"]))
+
+          expected = os.environ["RELEASE_TAG"].removeprefix("v")
+          if not declarations or set(declarations.values()) != {expected}:
+              print(
+                  f"::error::Release tag {expected} does not match version declarations: {declarations}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          print(f"Version declarations match release tag {expected}: {declarations}")
+          PY
+
       - name: Checkout backend repo
         uses: actions/checkout@v4
         with:
