@@ -80,7 +80,7 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP exposes 98 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, analytics, GA4, OpenAI Ads operations and pacing rules, and store-write actions.
+AEKO MCP exposes 104 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, and store-write actions.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
@@ -114,6 +114,11 @@ The `reviews` group surfaces **Context Reviews** — classified customer reviews
 The `contexts` group surfaces curated **AEKO Context memories** saved in the Context tab:
 
 - `aeko_list_contexts(domain_id, scope=None, kind=None)` — list saved curated context memories for a domain, optionally filtered by scope (`brand`, `product`, `category`) or free-text kind (for example `브랜드 충성도`, `재구매`, `피부 고민`, `content angle`).
+- `aeko_list_context_opportunities(domain_id, market=None)` — compare Focus quota, ranked opportunity signals, recommendations, next actions, and reason codes.
+- `aeko_get_context_metrics(context_id, market=None)` — read one Context's opportunity-detail payload.
+- `aeko_list_focused_contexts(domain_id, market)` — list the scarce Focus slots currently claimed for a domain and market.
+- `aeko_focus_context(...)` / `aeko_unfocus_context(...)` — start or end a Context measurement period; Focus-slot conflicts retain the full occupant list for an explicit user decision.
+- `aeko_update_context_translation(context_id, language, text)` — replace one stored Context translation.
 
 All tools carry MCP `ToolAnnotations` (`readOnlyHint`, `destructiveHint`, `openWorldHint`) so clients can offer per-tool approval policy (e.g. "always allow" for read-only GETs, approval-per-call for writes).
 

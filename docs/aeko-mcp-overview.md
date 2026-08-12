@@ -1,6 +1,6 @@
 # aeko-mcp — What It Does
 
-> Notion paste-ready overview of the AEKO MCP (Model Context Protocol) server. This document began as the v0.5.0 overview and keeps the architecture/token-flow context; the live tool surface is now **98 tools across 16 modules**. Source of truth: [`aeko_mcp/tools/*.py`](../aeko_mcp/tools/).
+> Notion paste-ready overview of the AEKO MCP (Model Context Protocol) server. This document began as the v0.5.0 overview and keeps the architecture/token-flow context; the live tool surface is now **104 tools across 16 modules**. Source of truth: [`aeko_mcp/tools/*.py`](../aeko_mcp/tools/).
 
 ---
 
@@ -135,7 +135,7 @@ aeko-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 
 ---
 
-## 5. Tools exposed (98 total)
+## 5. Tools exposed (104 total)
 
 aeko-mcp ships tools across modules including `visibility`, `research`, `sources`, `content_ideas`, `action_plan`, `store_write`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, and `setup`. Each is a `@mcp.tool()` the LLM can call by name with typed arguments. See [`aeko_mcp/tools/`](../aeko_mcp/tools/) for the source of truth.
 
@@ -169,6 +169,16 @@ aeko-mcp ships tools across modules including `visibility`, `research`, `sources
 |---|---|
 | `aeko_update_ad_group(ad_group_id, idempotency_key, ...)` | Dry-run or apply ad-group copy, Context-hint, and maximum-bid changes; real bid writes require current value, ceiling, and delta guards. |
 | `aeko_update_ad_creative(ad_id, idempotency_key, ...)` | Replace an existing ad's complete creative after reading and resending every field that must be kept. |
+
+### Context opportunity / Focus (6)
+| Tool | Purpose |
+|---|---|
+| `aeko_list_context_opportunities(domain_id, market?)` | Render Focus quota plus ranked Context opportunity, confidence, recommendation, next-action, and reason-code signals. |
+| `aeko_get_context_metrics(context_id, market?)` | Read one Context's stored opportunity-detail payload. |
+| `aeko_list_focused_contexts(domain_id, market)` | List the open Focus periods occupying a domain and market's scarce slots. |
+| `aeko_focus_context(context_id, market, objective, ...)` | Claim one Focus slot for an organic, paid, or combined measurement period. |
+| `aeko_unfocus_context(context_id, market, end_reason)` | End an open Focus period and its attached baseline. |
+| `aeko_update_context_translation(context_id, language, text)` | Replace one stored language rendering for a Context. |
 
 ### Research prompts (4)
 | Tool | Purpose |
@@ -223,6 +233,12 @@ aeko-mcp holds no state. Every tool maps to one or more backend HTTP calls.
 | `/api/content-ideas/handoffs/{handoff_id}` | GET | `aeko_get_content_idea_handoff` |
 | `/api/marketing/ad-groups/{ad_group_id}` | POST | `aeko_update_ad_group` |
 | `/api/marketing/ads/{ad_id}` | POST | `aeko_update_ad_creative` |
+| `/api/contexts/opportunities` | GET | `aeko_list_context_opportunities` |
+| `/api/contexts/{context_id}/metrics` | GET | `aeko_get_context_metrics` |
+| `/api/contexts/focus` | GET | `aeko_list_focused_contexts` |
+| `/api/contexts/{context_id}/focus` | POST | `aeko_focus_context` |
+| `/api/contexts/{context_id}/unfocus` | POST | `aeko_unfocus_context` |
+| `/api/contexts/{context_id}/translations` | PUT | `aeko_update_context_translation` |
 | `/api/action-items` | GET | `aeko_list_action_items`, `aeko_list_technical_items` (distinguished by `tab` param) |
 | `/api/action-items` | POST | `aeko_create_action_item` |
 | `/api/action-items/{item_id}` | GET | `aeko_get_action_plan` |

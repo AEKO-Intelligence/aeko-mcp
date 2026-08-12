@@ -40,6 +40,12 @@ Tier shorthand:
 | `aeko_update_context` | Update a curated Context memory. | No | Pro+ |
 | `aeko_archive_context` | Archive a curated Context memory. | No | Pro+ |
 | `aeko_create_contexts_from_reviews` | Promote review grounding into curated Context memories. | No | Pro+ |
+| `aeko_list_context_opportunities` | Rank saved Contexts and show Focus quota, recommendations, and next actions. | No | Pro+ |
+| `aeko_get_context_metrics` | Read the opportunity-detail payload for one Context. | No | Pro+ |
+| `aeko_list_focused_contexts` | List open Context Focus periods for one domain and market. | No | Pro+ |
+| `aeko_focus_context` | Claim a scarce Context Focus slot for a measurement period. | No | Pro+; active subscription required. |
+| `aeko_unfocus_context` | End an open Context Focus period and its attached baseline. | No | Pro+; active subscription required. |
+| `aeko_update_context_translation` | Replace one stored language rendering for a Context. | No | Pro+; active subscription required. |
 | `aeko_list_review_integrations` | List connected review sources. | No | Pro+ |
 | `aeko_list_review_products` | List products with review/context counts. | No | Pro+ |
 | `aeko_get_product_reviews` | Read contextual reviews for one product. | No | Pro+ |

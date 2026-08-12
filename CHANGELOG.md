@@ -4,6 +4,20 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.19.0] — 2026-08-12
+
+### Added
+
+- Added six Context opportunity and Focus tools for ranked decision surfaces,
+  stored metrics, Focus-slot listing and lifecycle, and edited translations.
+- Focus-slot quota conflicts retain the complete backend detail, including
+  current occupants, so callers can ask which Context to unfocus without
+  retrying or selecting another scarce slot automatically.
+
+### Changed
+
+- Registered tool count is now 104 across 16 modules.
+
 ## [0.18.0] — 2026-08-12
 
 ### Added

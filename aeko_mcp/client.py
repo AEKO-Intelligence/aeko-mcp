@@ -53,6 +53,11 @@ def _extract_detail_message(resp: httpx.Response) -> str | None:
                 f"{detail['would_add']} tracked-prompt variant(s), but only "
                 f"{detail['remaining']} slot(s) remain."
             )
+        # Focus conflicts carry the current slot occupants an agent must show
+        # before asking the user what to unfocus. Preserve the complete detail
+        # instead of collapsing it to only ``[code] message`` below.
+        if detail.get("code") == "focus_slots_full":
+            return str(detail)
         # Store-write platform error shape.
         message = detail.get("message")
         code = detail.get("code")
