@@ -92,6 +92,8 @@ Tier shorthand:
 | `aeko_sync_feed` | Queue OpenAI Ads product-feed sync. | No | Pro+ |
 | `aeko_create_ad_group_from_context` | Create a paused context-grounded ad group and ads. | No | Pro+ |
 | `aeko_update_campaign_budget` | Guarded campaign budget update. | No | Pro+ |
+| `aeko_update_ad_group` | Preview or apply guarded ad-group copy, Context-hint, and maximum-bid changes. | No | Pro+ |
+| `aeko_update_ad_creative` | Replace an existing ad's complete creative after a read-before-write. | No | Pro+ |
 | `aeko_set_campaign_state` | Pause, resume, or archive a campaign. | No | Pro+ |
 | `aeko_set_ad_group_state` | Pause, resume, or archive an ad group. | No | Pro+ |
 | `aeko_set_ad_state` | Pause, resume, or archive an ad. | No | Pro+ |

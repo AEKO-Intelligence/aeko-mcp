@@ -80,7 +80,7 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP exposes 96 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, analytics, GA4, OpenAI Ads operations and pacing rules, and store-write actions.
+AEKO MCP exposes 98 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, analytics, GA4, OpenAI Ads operations and pacing rules, and store-write actions.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
@@ -93,6 +93,11 @@ The `sources` and `content_ideas` groups support the Content dashboard's AI work
 - `aeko_start_content_idea(domain_id, fingerprint, window)` — start or reopen an idea and return the backend-authored `/aeko-create-content` handoff command.
 - `aeko_dismiss_content_idea(domain_id, fingerprint, window)` — dismiss an idea from the rolling set; starting it again reverses the dismissal.
 - `aeko_get_content_idea_handoff(handoff_id)` — read the full server snapshot for one rule-based content idea. Reopening keeps the ID but refreshes its evidence before the next run.
+
+The `marketing` group includes guarded updates for existing OpenAI Ads entities (Pro+):
+
+- `aeko_update_ad_group(ad_group_id, idempotency_key, ...)` — preview or apply ad-group copy, Context hints, and maximum-bid changes with mandatory real-write ceiling and delta guards.
+- `aeko_update_ad_creative(ad_id, idempotency_key, ...)` — replace an existing ad creative only after the caller resends the complete creative returned by `aeko_list_ads`.
 
 The `action_plan` group includes a permanent, token-fenced execution claim for ActionItem executors:
 

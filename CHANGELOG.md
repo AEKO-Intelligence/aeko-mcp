@@ -4,6 +4,19 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.18.0] — 2026-08-12
+
+### Added
+
+- Added `aeko_update_ad_group` with dry-run-by-default bid previews, mandatory
+  real-write delta/ceiling guards, and safe non-bid copy/Context-hint edits.
+- Added `aeko_update_ad_creative` with whole-object creative validation and a
+  required read-before-write contract that prevents partial creative loss.
+
+### Changed
+
+- Registered tool count is now 98 across 16 modules.
+
 ## [0.17.0] — 2026-08-12
 
 ### Added
@@ -18,7 +31,7 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 - `aeko_get_visibility_summary(..., window=...)` now explicitly discloses when
   a non-`7d` tracked-metrics window is ignored; the backend remains fixed at
   7 days plus the previous 7 days for comparison.
-- Registered tool count is now 95 across 16 modules.
+- Registered tool count is now 96 across 16 modules.
 
 ## [0.16.1] — 2026-08-07
 

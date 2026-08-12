@@ -100,6 +100,272 @@ def test_budget_rejects_over_delta(monkeypatch):
     assert "exceeds max_delta_pct" in out and flag["posted"] is False
 
 
+# --- Ad-group bid + creative update guardrails ------------------------------------
+
+
+def test_ad_update_tools_are_registered_as_idempotent_writes():
+    registered = {
+        tool.name: tool for tool in marketing.mcp._tool_manager.list_tools()
+    }
+    for name in ("aeko_update_ad_group", "aeko_update_ad_creative"):
+        annotations = registered[name].annotations
+        assert annotations.readOnlyHint is False
+        assert annotations.idempotentHint is True
+        assert annotations.destructiveHint is False
+
+
+def test_ad_group_bid_defaults_to_dry_run_with_full_bidding_object(monkeypatch):
+    flag = _no_write(monkeypatch)
+    out = marketing.aeko_update_ad_group(
+        "ag1",
+        "idem",
+        max_bid_micros=1_200_000,
+        current_max_bid_micros=1_000_000,
+        max_bid_ceiling_micros=2_000_000,
+    )
+
+    assert "DRY RUN" in out
+    assert '"billing_event_type": "impression"' in out
+    assert '"max_bid_micros": 1200000' in out
+    assert flag["posted"] is False
+
+
+def test_ad_group_bid_rejects_outside_backend_bounds(monkeypatch):
+    flag = _no_write(monkeypatch)
+
+    below = marketing.aeko_update_ad_group(
+        "ag1", "idem", max_bid_micros=0, dry_run=False
+    )
+    above = marketing.aeko_update_ad_group(
+        "ag1", "idem", max_bid_micros=100_000_001, dry_run=False
+    )
+
+    assert "must be between 1 and 100000000" in below
+    assert "must be between 1 and 100000000" in above
+    assert flag["posted"] is False
+
+
+def test_ad_group_real_bid_write_requires_both_caps(monkeypatch):
+    flag = _no_write(monkeypatch)
+    out = marketing.aeko_update_ad_group(
+        "ag1", "idem", max_bid_micros=1_000_000, dry_run=False
+    )
+
+    assert "requires BOTH" in out
+    assert flag["posted"] is False
+
+
+def test_ad_group_bid_rejects_ceiling_and_delta(monkeypatch):
+    flag = _no_write(monkeypatch)
+    ceiling = marketing.aeko_update_ad_group(
+        "ag1",
+        "idem",
+        max_bid_micros=2_000_000,
+        dry_run=False,
+        current_max_bid_micros=1_000_000,
+        max_bid_ceiling_micros=1_500_000,
+        max_delta_pct=200,
+    )
+    delta = marketing.aeko_update_ad_group(
+        "ag1",
+        "idem",
+        max_bid_micros=2_000_000,
+        dry_run=False,
+        current_max_bid_micros=1_000_000,
+        max_bid_ceiling_micros=3_000_000,
+        max_delta_pct=25,
+    )
+
+    assert "exceeds the ceiling" in ceiling
+    assert "exceeds max_delta_pct" in delta
+    assert flag["posted"] is False
+
+
+def test_ad_group_real_bid_write_posts_guarded_payload(monkeypatch):
+    calls = []
+
+    def fake_post(path, json=None, headers=None):
+        calls.append({"path": path, "json": json, "headers": headers})
+        return {"id": "ag1", "bidding": json["bidding_config"]}
+
+    monkeypatch.setattr(marketing.client, "post", fake_post)
+    out = marketing.aeko_update_ad_group(
+        "ag1",
+        "idem-bid",
+        max_bid_micros=900_000,
+        dry_run=False,
+        current_max_bid_micros=1_000_000,
+        max_bid_ceiling_micros=1_500_000,
+        max_delta_pct=25,
+    )
+
+    assert "Ad group updated" in out
+    assert calls == [
+        {
+            "path": "/api/marketing/ad-groups/ag1",
+            "json": {
+                "bidding_config": {
+                    "billing_event_type": "impression",
+                    "max_bid_micros": 900_000,
+                }
+            },
+            "headers": {"Idempotency-Key": "idem-bid"},
+        }
+    ]
+
+
+def test_ad_group_non_bid_write_skips_bid_caps_but_honors_dry_run(monkeypatch):
+    calls = []
+
+    def fake_post(path, json=None, headers=None):
+        calls.append({"path": path, "json": json, "headers": headers})
+        return {"id": "ag1", **json}
+
+    monkeypatch.setattr(marketing.client, "post", fake_post)
+    preview = marketing.aeko_update_ad_group(
+        "ag1", "idem-copy", description="New description"
+    )
+    written = marketing.aeko_update_ad_group(
+        "ag1",
+        "idem-copy",
+        name="New ad group",
+        context_hints=[],
+        dry_run=False,
+    )
+
+    assert "DRY RUN" in preview
+    assert "Ad group updated" in written
+    assert calls == [
+        {
+            "path": "/api/marketing/ad-groups/ag1",
+            "json": {"name": "New ad group", "context_hints": []},
+            "headers": {"Idempotency-Key": "idem-copy"},
+        }
+    ]
+
+
+def test_ad_group_update_rejects_empty_or_invalid_fields(monkeypatch):
+    flag = _no_write(monkeypatch)
+
+    empty = marketing.aeko_update_ad_group("ag1", "idem")
+    short_name = marketing.aeko_update_ad_group("ag1", "idem", name="AG")
+    long_description = marketing.aeko_update_ad_group(
+        "ag1", "idem", description="x" * 5001
+    )
+
+    assert "at least one" in empty
+    assert "at least 3 characters" in short_name
+    assert "at most 5000" in long_description
+    assert flag["posted"] is False
+
+
+def test_ad_creative_rejects_partial_whole_object_replace(monkeypatch):
+    flag = _no_write(monkeypatch)
+    out = marketing.aeko_update_ad_creative(
+        "ad1", "idem", title="A complete-looking title"
+    )
+
+    assert "requires `creative_type`, `title`, and `body`" in out
+    assert "Read `aeko_list_ads` first" in out
+    assert flag["posted"] is False
+
+
+def test_chat_card_prevalidates_url_image_and_price(monkeypatch):
+    flag = _no_write(monkeypatch)
+    base = {
+        "ad_id": "ad1",
+        "idempotency_key": "idem",
+        "creative_type": "chat_card",
+        "title": "Chat card title",
+        "body": "Chat card body",
+    }
+
+    no_target = marketing.aeko_update_ad_creative(**base, image_url="https://img.example/a.png")
+    no_image = marketing.aeko_update_ad_creative(**base, target_url="https://example.com/p")
+    priced = marketing.aeko_update_ad_creative(
+        **base,
+        target_url="https://example.com/p",
+        image_url="https://img.example/a.png",
+        price="$10",
+    )
+    invalid_url = marketing.aeko_update_ad_creative(
+        **base,
+        target_url="javascript:alert(1)",
+        image_url="https://img.example/a.png",
+    )
+
+    assert "requires `target_url`" in no_target
+    assert "requires `file_id` or `image_url`" in no_image
+    assert "must not include `price`" in priced
+    assert "must be an http(s) URL" in invalid_url
+    assert flag["posted"] is False
+
+
+def test_ad_creative_validates_lengths_before_posting(monkeypatch):
+    flag = _no_write(monkeypatch)
+    out = marketing.aeko_update_ad_creative(
+        "ad1",
+        "idem",
+        creative_type="product_ad_template",
+        title="ok",
+        body="body",
+    )
+
+    assert "between 3 and 50" in out
+    assert flag["posted"] is False
+
+
+def test_ad_creative_posts_complete_replace_with_idempotency_key(monkeypatch):
+    calls = []
+
+    def fake_post(path, json=None, headers=None):
+        calls.append({"path": path, "json": json, "headers": headers})
+        return {"id": "ad1", **json}
+
+    monkeypatch.setattr(marketing.client, "post", fake_post)
+    out = marketing.aeko_update_ad_creative(
+        "ad1",
+        "idem-creative",
+        name="Updated ad",
+        creative_type="chat_card",
+        title="Updated title",
+        body="Updated body",
+        target_url="https://example.com/product",
+        image_url="https://img.example/product.png",
+    )
+
+    assert "Ad creative updated" in out
+    assert calls == [
+        {
+            "path": "/api/marketing/ads/ad1",
+            "json": {
+                "name": "Updated ad",
+                "creative": {
+                    "type": "chat_card",
+                    "title": "Updated title",
+                    "body": "Updated body",
+                    "target_url": "https://example.com/product",
+                    "image_url": "https://img.example/product.png",
+                },
+            },
+            "headers": {"Idempotency-Key": "idem-creative"},
+        }
+    ]
+
+
+def test_ad_creative_name_only_update_does_not_blank_creative(monkeypatch):
+    calls = []
+
+    def fake_post(path, json=None, headers=None):
+        calls.append(json)
+        return {"id": "ad1", **json}
+
+    monkeypatch.setattr(marketing.client, "post", fake_post)
+    marketing.aeko_update_ad_creative("ad1", "idem", name="Renamed ad")
+
+    assert calls == [{"name": "Renamed ad"}]
+
+
 # --- Compose + pause validation ---------------------------------------------------
 
 
