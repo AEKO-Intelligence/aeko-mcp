@@ -24,6 +24,9 @@ Tier shorthand:
 | `aeko_untrack_prompt` | Stop tracking one prompt. | Yes | No |
 | `aeko_get_tracked_prompt` | Read one tracked prompt with response and citation details. | Yes | No |
 | `aeko_fetch_source_content` | Read stored content for an owner-associated cited source. | No | Pro+ |
+| `aeko_list_content_ideas` | List ranked content ideas with facets and evidence references. | No | Pro+ |
+| `aeko_start_content_idea` | Start or reopen an idea and receive its content-creation handoff. | No | Pro+ |
+| `aeko_dismiss_content_idea` | Dismiss an idea from the rolling set; starting it reverses the dismissal. | No | Pro+ |
 | `aeko_get_content_idea_handoff` | Read the current server snapshot for one rule-based idea. | No | Pro+; same ID refreshes when restarted. |
 | `aeko_generate_starter_prompts` | Generate starter prompt candidates for a domain. | Yes | No |
 | `aeko_accept_starter_prompts` | Accept generated starter prompts into tracking. | Yes, quota/platform caps | No |

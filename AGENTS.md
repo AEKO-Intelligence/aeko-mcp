@@ -2,13 +2,13 @@
 
 Python MCP (Model Context Protocol) server bridging Claude and other AI assistants to the AEKO backend for AI engine optimization (AEO): brand visibility across ChatGPT/Claude/Gemini/Perplexity, AI-readiness audits, AEO-optimized content drafting, and store-write workflows (Cafe24, Shopify).
 
-- **Version:** 0.16.0 (`pyproject.toml`) · **Framework:** FastMCP (mcp SDK >=1.11.0,<1.16.0), httpx, pydantic, Pillow
+- **Version:** 0.17.0 (`pyproject.toml`) · **Framework:** FastMCP (mcp SDK >=1.11.0,<1.16.0), httpx, pydantic, Pillow
 - **Hosted endpoint:** `https://aeko-intelligence.com/mcp` (clients connect here; no self-hosting needed)
 - **Auth:** OAuth 2.1 + PKCE — Dynamic Client Registration (RFC 7591) for all clients including Claude Desktop (`_validate_redirect_uri` accepts hosted `https://` callbacks, not just loopback); pre-registered public client `aeko-mcp-v1` retained as a fallback only, and deliberately kept out of user-facing setup docs. Opaque bearer tokens (`aeko_ot1_`, 1h TTL) + 30-day refresh tokens.
 - **Transport:** streamable-http, stateless, JSON responses by default (`aeko_mcp/server.py`)
 - **Backend (prod default):** `https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io` (override with `AEKO_API_URL`)
 
-## Registered tool groups — 93 tools across 15 modules (`aeko_mcp/tools/`)
+## Registered tool groups — 96 tools across 16 modules (`aeko_mcp/tools/`)
 
 | Module | Tools | Covers |
 |---|---|---|
@@ -26,7 +26,8 @@ Python MCP (Model Context Protocol) server bridging Claude and other AI assistan
 | `ga4` | 4 | GA4 status, property selection, sync |
 | `views` | 3 | Prompt view list/create/add prompts |
 | `setup` | 4 | Starter prompts and account-market read/replace setup |
-| `sources` | 2 | Owner-associated cited-source content and server-snapshotted content-idea handoffs |
+| `sources` | 1 | Owner-associated cited-source content |
+| `content_ideas` | 4 | Ranked content ideas, start/dismiss lifecycle, server-snapshotted handoffs |
 
 ## Run locally
 

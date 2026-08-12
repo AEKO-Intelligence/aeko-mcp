@@ -4,6 +4,19 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.17.0] — 2026-08-12
+
+### Added
+
+- Added `aeko_list_content_ideas`, `aeko_start_content_idea`, and
+  `aeko_dismiss_content_idea`, completing the Pro+ content-idea workflow from
+  ranked discovery through the exact `/aeko-create-content handoff=<id>` command.
+
+### Changed
+
+- Moved `aeko_get_content_idea_handoff` into the new `content_ideas` tool group.
+- Registered tool count is now 95 across 16 modules.
+
 ## [0.16.1] — 2026-08-07
 
 ### Fixed
