@@ -31,6 +31,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: mcp
+          ref: ${{ steps.tag.outputs.tag }}
 
       - name: Verify synchronized release version
         working-directory: mcp
