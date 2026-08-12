@@ -2,7 +2,7 @@
 
 import importlib
 
-from aeko_mcp.tools import action_plan, content_variation, reviews, visibility
+from aeko_mcp.tools import action_plan, content_variation, reviews, store_write, visibility
 
 
 def test_domain_info_renders_brand_keywords(monkeypatch):
@@ -259,3 +259,15 @@ def test_unpublish_content_calls_aeko_shop_route(monkeypatch):
             "json": {"item_id": "itm_1"},
         }
     ]
+
+
+def test_public_state_removal_tools_are_annotated_destructive():
+    registered = {tool.name: tool for tool in content_variation.mcp._tool_manager.list_tools()}
+
+    unpublish = registered["aeko_unpublish_content"].annotations
+    assert unpublish.readOnlyHint is False
+    assert unpublish.destructiveHint is True
+
+    sync = registered["aeko_sync_store"].annotations
+    assert sync.readOnlyHint is False
+    assert sync.destructiveHint is True

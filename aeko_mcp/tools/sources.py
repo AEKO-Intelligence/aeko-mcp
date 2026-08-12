@@ -1,9 +1,7 @@
-"""Read-only source evidence and content-idea handoff tools.
+"""Read-only source evidence tools.
 
-The backend owns tenant checks and snapshot persistence. These wrappers keep
-the MCP surface deliberately small: fetch one owner-associated source by
-``domain_id`` + ``source_id``, or fetch one server-snapshotted content-idea
-handoff by its opaque short token.
+The backend owns tenant checks and snapshot persistence. This wrapper fetches
+one owner-associated source by ``domain_id`` + ``source_id``.
 """
 import json
 from typing import Any
@@ -16,15 +14,6 @@ def _clean(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
-
-
-def _json_block(title: str, payload: Any) -> str:
-    return (
-        f"# {title}\n\n"
-        f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
-    )
-
-
 def _source_prompt_refs(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Accept the current field name plus the plan's earlier spelling."""
     raw = data.get("associated_prompts")
@@ -153,24 +142,3 @@ def aeko_fetch_source_content(domain_id: str, source_id: str) -> str:
         ]
     )
     return "\n".join(lines)
-
-
-@mcp.tool(title="Get content idea handoff", annotations=READ_ONLY)
-def aeko_get_content_idea_handoff(handoff_id: str) -> str:
-    """Fetch one content-idea evidence snapshot for the current run.
-
-    The returned JSON is the full backend payload, including any fields added
-    after this MCP release. The same ID may be refreshed when the user starts
-    or reopens the idea. ``/aeko-create-content handoff=<id>`` fetches once and
-    uses that returned payload as the current run's source of truth for
-    prompt/context evidence, channel, action, sources, market, and language.
-    It must not re-derive or widen that scope.
-
-    Owner-only; unknown or cross-tenant tokens return 404. Read-only. Pro+ is
-    enforced server-side.
-
-    Args:
-        handoff_id: Opaque short token returned by the content-idea handoff endpoint.
-    """
-    data = client.get(f"/api/content-ideas/handoffs/{handoff_id}")
-    return _json_block("Content idea handoff snapshot", data)

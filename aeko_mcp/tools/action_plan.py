@@ -48,6 +48,19 @@ def _render_item_summary(item: dict, index: int | None = None) -> list[str]:
         meta_bits.append(f"write_mode: {write_mode}")
     if meta_bits:
         lines.append(f"- {' | '.join(meta_bits)}")
+    channels = item.get("channels")
+    if isinstance(channels, list):
+        channel_values = [str(channel).strip() for channel in channels if str(channel).strip()]
+    elif channels:
+        # Defensive compatibility for an older/simpler response shape.
+        channel_values = [str(channels).strip()]
+    else:
+        channel_values = []
+    if channel_values:
+        lines.append(
+            "- **Channels**: "
+            + ", ".join(f"`{channel}`" for channel in channel_values)
+        )
     target_url = item.get("target_url")
     product_id = item.get("product_id")
     if target_url:
@@ -138,7 +151,7 @@ def aeko_list_action_items(
     to the right executor based on `execution_class` — `/aeko-update-pdp` for
     store writes, `/aeko-create-content` for local content artifacts. Each
     item carries a title, priority, artifact_type, execution_class,
-    write_mode, and a short `preview` snippet of its Plan.md prose.
+    write_mode, channels, and a short `preview` snippet of its Plan.md prose.
 
     Returns a markdown list with a ready-to-copy executor command under each
     item so the user (or Claude) can pick one and run it directly.

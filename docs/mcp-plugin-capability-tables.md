@@ -24,10 +24,14 @@ Tier shorthand:
 | `aeko_untrack_prompt` | Stop tracking one prompt. | Yes | No |
 | `aeko_get_tracked_prompt` | Read one tracked prompt with response and citation details. | Yes | No |
 | `aeko_fetch_source_content` | Read stored content for an owner-associated cited source. | No | Pro+ |
+| `aeko_list_content_ideas` | List ranked content ideas with facets and evidence references. | No | Pro+ |
+| `aeko_start_content_idea` | Start or reopen an idea and receive its content-creation handoff. | No | Pro+ |
+| `aeko_dismiss_content_idea` | Dismiss an idea from the rolling set; starting it reverses the dismissal. | No | Pro+ |
 | `aeko_get_content_idea_handoff` | Read the current server snapshot for one rule-based idea. | No | Pro+; same ID refreshes when restarted. |
 | `aeko_generate_starter_prompts` | Generate starter prompt candidates for a domain. | Yes | No |
 | `aeko_accept_starter_prompts` | Accept generated starter prompts into tracking. | Yes, quota/platform caps | No |
-| `aeko_update_markets` | Update selected markets. | Yes, 1 market | Pro gets higher market cap |
+| `aeko_get_current_markets` | Read the account-wide selected-market list before replacement. | Yes | No |
+| `aeko_update_markets` | Replace the complete account-wide selected-market list. | Yes, 1 market | Pro gets higher market cap |
 | `aeko_list_views` | List saved prompt views. | Yes, view cap | Pro gets higher cap |
 | `aeko_create_view` | Create a saved prompt view. | Yes, view cap | Pro gets higher cap |
 | `aeko_add_prompts_to_view` | Add tracked prompts to a saved view. | Yes | No |
@@ -36,6 +40,12 @@ Tier shorthand:
 | `aeko_update_context` | Update a curated Context memory. | No | Pro+ |
 | `aeko_archive_context` | Archive a curated Context memory. | No | Pro+ |
 | `aeko_create_contexts_from_reviews` | Promote review grounding into curated Context memories. | No | Pro+ |
+| `aeko_list_context_opportunities` | Rank saved Contexts and show Focus quota, recommendations, and next actions. | No | Pro+ |
+| `aeko_get_context_metrics` | Read the opportunity-detail payload for one Context. | No | Pro+ |
+| `aeko_list_focused_contexts` | List open Context Focus periods for one domain and market. | No | Pro+ |
+| `aeko_focus_context` | Claim a scarce Context Focus slot for a measurement period. | No | Pro+; active subscription required. |
+| `aeko_unfocus_context` | End an open Context Focus period and its attached baseline. | No | Pro+; active subscription required. |
+| `aeko_update_context_translation` | Replace one stored language rendering for a Context. | No | Pro+; active subscription required. |
 | `aeko_list_review_integrations` | List connected review sources. | No | Pro+ |
 | `aeko_list_review_products` | List products with review/context counts. | No | Pro+ |
 | `aeko_get_product_reviews` | Read contextual reviews for one product. | No | Pro+ |
@@ -88,6 +98,8 @@ Tier shorthand:
 | `aeko_sync_feed` | Queue OpenAI Ads product-feed sync. | No | Pro+ |
 | `aeko_create_ad_group_from_context` | Create a paused context-grounded ad group and ads. | No | Pro+ |
 | `aeko_update_campaign_budget` | Guarded campaign budget update. | No | Pro+ |
+| `aeko_update_ad_group` | Preview or apply guarded ad-group copy, Context-hint, and maximum-bid changes. | No | Pro+ |
+| `aeko_update_ad_creative` | Replace an existing ad's complete creative after a read-before-write. | No | Pro+ |
 | `aeko_set_campaign_state` | Pause, resume, or archive a campaign. | No | Pro+ |
 | `aeko_set_ad_group_state` | Pause, resume, or archive an ad group. | No | Pro+ |
 | `aeko_set_ad_state` | Pause, resume, or archive an ad. | No | Pro+ |

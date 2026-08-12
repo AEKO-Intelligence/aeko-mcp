@@ -34,6 +34,9 @@ from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
 
 # Backend enforces this floor on campaign budgets (schemas/marketing.py MarketingBudget).
 MIN_BUDGET_MICROS = 1_000_000
+# Backend bidding schema accepts 1..100_000_000 micros per impression.
+MIN_BID_MICROS = 1
+MAX_BID_MICROS = 100_000_000
 # Backend caps one inject request at 200 reviews (schemas/review.py ReviewInjectRequest).
 INJECT_REVIEWS_BATCH_SIZE = 200
 # Backend caps ads per ad group at 100 (schemas/marketing.py MarketingAdGroupFromContextRequest).
@@ -822,6 +825,245 @@ def aeko_update_campaign_budget(
     if err:
         return f"# Failed to update budget\n\n```\n{err}\n```"
     return _json_block(f"Budget updated (Δ {delta_note or 'n/a'})", result)
+
+
+@mcp.tool(title="Update ad group", annotations=WRITE)
+def aeko_update_ad_group(
+    ad_group_id: str,
+    idempotency_key: str,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    context_hints: Optional[list[str]] = None,
+    max_bid_micros: Optional[int] = None,
+    dry_run: bool = True,
+    current_max_bid_micros: Optional[int] = None,
+    max_bid_ceiling_micros: Optional[int] = None,
+    max_delta_pct: float = 25.0,
+) -> str:
+    """Update ad-group copy, Context hints, or the maximum impression bid.
+
+    Bid is spend, so the same tool-level safety pattern as campaign budgets is
+    enforced: the call defaults to ``dry_run=True``; a real bid write requires
+    both ``current_max_bid_micros`` and ``max_bid_ceiling_micros``; values above
+    the ceiling or beyond ``max_delta_pct`` are rejected, never clamped.
+    Non-bid-only edits skip those bid guards but still honor ``dry_run``.
+
+    Status and product-set changes are deliberately excluded. Use
+    ``aeko_set_ad_group_state`` for pause/resume/archive so its confirmation
+    gates cannot be bypassed. Read the current bidding value from
+    ``aeko_list_ad_groups`` before changing it. Pro+ is enforced server-side.
+    """
+    payload: dict[str, Any] = {}
+    if name is not None:
+        normalized_name = name.strip()
+        if len(normalized_name) < MIN_NAME_LENGTH:
+            return f"# `name` must be at least {MIN_NAME_LENGTH} characters (after trimming whitespace)."
+        if len(normalized_name) > 1000:
+            return "# `name` must be at most 1000 characters."
+        payload["name"] = normalized_name
+    if description is not None:
+        if len(description) > 5000:
+            return "# `description` must be at most 5000 characters."
+        payload["description"] = description
+    if context_hints is not None:
+        payload["context_hints"] = context_hints
+
+    delta_note = ""
+    if max_bid_micros is not None:
+        new_bid = int(max_bid_micros)
+        if new_bid < MIN_BID_MICROS or new_bid > MAX_BID_MICROS:
+            return (
+                f"# Rejected — bid {new_bid} must be between {MIN_BID_MICROS} and "
+                f"{MAX_BID_MICROS} micros."
+            )
+        if not dry_run and (
+            current_max_bid_micros is None or max_bid_ceiling_micros is None
+        ):
+            return (
+                "# Rejected — a real bid write (dry_run=false) requires BOTH "
+                "`current_max_bid_micros` (for the delta guard) AND "
+                "`max_bid_ceiling_micros` (the ceiling). Dry-run first, then "
+                "re-call with both."
+            )
+        if (
+            max_bid_ceiling_micros is not None
+            and new_bid > int(max_bid_ceiling_micros)
+        ):
+            return (
+                f"# Rejected — bid {new_bid} exceeds the ceiling "
+                f"{int(max_bid_ceiling_micros)} micros. Raise "
+                "`max_bid_ceiling_micros` deliberately if this is intended."
+            )
+        if current_max_bid_micros is not None and int(current_max_bid_micros) > 0:
+            current_bid = int(current_max_bid_micros)
+            delta_pct = abs(new_bid - current_bid) / current_bid * 100.0
+            delta_note = (
+                f"{'+' if new_bid >= current_bid else '-'}{abs(new_bid - current_bid)} "
+                f"micros ({delta_pct:.1f}%)"
+            )
+            if delta_pct > float(max_delta_pct):
+                return (
+                    f"# Rejected — bid change {delta_note} exceeds max_delta_pct "
+                    f"{max_delta_pct}%. Split into smaller steps or raise the cap deliberately."
+                )
+        payload["bidding_config"] = {
+            "billing_event_type": "impression",
+            "max_bid_micros": new_bid,
+        }
+
+    if not payload:
+        return "# Provide at least one ad-group field to update."
+    if dry_run:
+        return _json_block(
+            "DRY RUN — no write performed",
+            {
+                "ad_group_id": ad_group_id,
+                "proposed_changes": payload,
+                "current_max_bid_micros": current_max_bid_micros,
+                "max_bid_ceiling_micros": max_bid_ceiling_micros,
+                "bid_delta": delta_note or "n/a",
+                "note": "Re-call with dry_run=false to apply.",
+            },
+        )
+
+    result, err = _safe(
+        client.post,
+        f"/api/marketing/ad-groups/{ad_group_id}",
+        json=payload,
+        headers=_idem_headers(idempotency_key),
+    )
+    if err:
+        return f"# Failed to update ad group\n\n```\n{err}\n```"
+    return _json_block(
+        f"Ad group updated (bid Δ {delta_note or 'n/a'})"
+        if max_bid_micros is not None
+        else "Ad group updated",
+        result,
+    )
+
+
+@mcp.tool(title="Update ad creative", annotations=WRITE)
+def aeko_update_ad_creative(
+    ad_id: str,
+    idempotency_key: str,
+    name: Optional[str] = None,
+    creative_type: Optional[str] = None,
+    title: Optional[str] = None,
+    body: Optional[str] = None,
+    price: Optional[str] = None,
+    target_url: Optional[str] = None,
+    image_url: Optional[str] = None,
+    file_id: Optional[str] = None,
+) -> str:
+    """Update an ad name and/or replace its complete creative object.
+
+    The creative is a whole-object replacement, not a merge. Read the current
+    creative from ``aeko_list_ads`` first and resend every field you want to
+    keep. Supplying any creative field requires ``creative_type``, ``title``,
+    and ``body``; ``chat_card`` additionally requires ``target_url`` and either
+    ``file_id`` or ``image_url``, and forbids ``price``.
+
+    Status is deliberately excluded. Use ``aeko_set_ad_state`` for
+    pause/resume/archive so its confirmation gates cannot be bypassed.
+    Pro+ is enforced server-side.
+    """
+    payload: dict[str, Any] = {}
+    if name is not None:
+        normalized_name = name.strip()
+        if len(normalized_name) < MIN_NAME_LENGTH:
+            return f"# `name` must be at least {MIN_NAME_LENGTH} characters (after trimming whitespace)."
+        if len(normalized_name) > 1000:
+            return "# `name` must be at most 1000 characters."
+        payload["name"] = normalized_name
+
+    creative_requested = any(
+        value is not None
+        for value in (
+            creative_type,
+            title,
+            body,
+            price,
+            target_url,
+            image_url,
+            file_id,
+        )
+    )
+    if creative_requested:
+        missing = [
+            field
+            for field, value in (
+                ("creative_type", creative_type),
+                ("title", title),
+                ("body", body),
+            )
+            if value is None or not str(value).strip()
+        ]
+        if missing:
+            return (
+                "# Creative replacement requires `creative_type`, `title`, and `body`; "
+                f"missing: {', '.join(missing)}. Read `aeko_list_ads` first and resend "
+                "every field you want to keep."
+            )
+        if creative_type not in {"chat_card", "product_ad_template"}:
+            return "# `creative_type` must be `chat_card` or `product_ad_template`."
+
+        normalized_title = str(title).strip()
+        normalized_body = str(body).strip()
+        if not 3 <= len(normalized_title) <= 50:
+            return "# Creative `title` must be between 3 and 50 characters."
+        if len(normalized_body) > 100:
+            return "# Creative `body` must be at most 100 characters."
+        for field_name, value, max_length in (
+            ("price", price, 100),
+            ("target_url", target_url, 2048),
+            ("image_url", image_url, 2048),
+            ("file_id", file_id, 255),
+        ):
+            if value is not None and len(value) > max_length:
+                return f"# `{field_name}` must be at most {max_length} characters."
+        for field_name, value in (("target_url", target_url), ("image_url", image_url)):
+            if value is not None and value.strip() and not value.strip().startswith(
+                ("https://", "http://")
+            ):
+                return f"# `{field_name}` must be an http(s) URL."
+
+        if creative_type == "chat_card":
+            if price is not None:
+                return "# `chat_card` creative must not include `price`."
+            if target_url is None or not target_url.strip():
+                return "# `chat_card` creative requires `target_url`."
+            has_file = file_id is not None and bool(file_id.strip())
+            has_image = image_url is not None and bool(image_url.strip())
+            if not has_file and not has_image:
+                return "# `chat_card` creative requires `file_id` or `image_url`."
+
+        creative: dict[str, Any] = {
+            "type": creative_type,
+            "title": normalized_title,
+            "body": normalized_body,
+        }
+        for field_name, value in (
+            ("price", price),
+            ("target_url", target_url),
+            ("image_url", image_url),
+            ("file_id", file_id),
+        ):
+            if value is not None:
+                creative[field_name] = value.strip()
+        payload["creative"] = creative
+
+    if not payload:
+        return "# Provide `name` or a complete creative object to update."
+
+    result, err = _safe(
+        client.post,
+        f"/api/marketing/ads/{ad_id}",
+        json=payload,
+        headers=_idem_headers(idempotency_key),
+    )
+    if err:
+        return f"# Failed to update ad creative\n\n```\n{err}\n```"
+    return _json_block("Ad creative updated", result)
 
 
 _STATE_ENDPOINTS = {

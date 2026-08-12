@@ -1,6 +1,6 @@
 {
   "files": [
-    { "path": ".claude-plugin/plugin.json", "field": "version" },
-    { "path": ".claude-plugin/marketplace.json", "field": "plugins.0.version" }
+    { "path": "pyproject.toml", "field": "project.version" },
+    { "path": "server.json", "field": "version" }
   ]
 }

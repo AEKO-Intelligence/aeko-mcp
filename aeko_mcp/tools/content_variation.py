@@ -27,7 +27,7 @@ already-published row returns the stored handles without creating duplicates.
 from typing import Any, Optional
 
 from ..server import mcp, client
-from ._annotations import READ_ONLY, WRITE, WRITE_ONCE
+from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────
@@ -409,7 +409,7 @@ def aeko_publish_content_variation(item_id: str, variation_id: str) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(title="Unpublish aeko.shop content", annotations=WRITE)
+@mcp.tool(title="Unpublish aeko.shop content", annotations=DESTRUCTIVE)
 def aeko_unpublish_content(
     source_content_id: str,
     item_id: Optional[str] = None,

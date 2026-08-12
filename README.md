@@ -80,16 +80,24 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP exposes 92 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, content-idea handoffs, views, content variations, media uploads, customer review contexts, saved memories, analytics, GA4, OpenAI Ads operations and pacing rules, and store-write actions.
+AEKO MCP exposes 104 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, and store-write actions.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
-Current groups: `visibility`, `research`, `sources`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, and `setup`.
+Current groups: `visibility`, `research`, `sources`, `content_ideas`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, and `setup`.
 
-The `sources` group supports the Content dashboard's AI handoffs (Pro+):
+The `sources` and `content_ideas` groups support the Content dashboard's AI workflow (Pro+):
 
 - `aeko_fetch_source_content(domain_id, source_id)` — fetch stored page evidence only after the backend verifies both domain ownership and tracked-prompt association.
+- `aeko_list_content_ideas(domain_id, ...)` — list ranked ideas with filters, facets, evidence references, and honest cursor pagination.
+- `aeko_start_content_idea(domain_id, fingerprint, window)` — start or reopen an idea and return the backend-authored `/aeko-create-content` handoff command.
+- `aeko_dismiss_content_idea(domain_id, fingerprint, window)` — dismiss an idea from the rolling set; starting it again reverses the dismissal.
 - `aeko_get_content_idea_handoff(handoff_id)` — read the full server snapshot for one rule-based content idea. Reopening keeps the ID but refreshes its evidence before the next run.
+
+The `marketing` group includes guarded updates for existing OpenAI Ads entities (Pro+):
+
+- `aeko_update_ad_group(ad_group_id, idempotency_key, ...)` — preview or apply ad-group copy, Context hints, and maximum-bid changes with mandatory real-write ceiling and delta guards.
+- `aeko_update_ad_creative(ad_id, idempotency_key, ...)` — replace an existing ad creative only after the caller resends the complete creative returned by `aeko_list_ads`.
 
 The `action_plan` group includes a permanent, token-fenced execution claim for ActionItem executors:
 
@@ -106,6 +114,11 @@ The `reviews` group surfaces **Context Reviews** — classified customer reviews
 The `contexts` group surfaces curated **AEKO Context memories** saved in the Context tab:
 
 - `aeko_list_contexts(domain_id, scope=None, kind=None)` — list saved curated context memories for a domain, optionally filtered by scope (`brand`, `product`, `category`) or free-text kind (for example `브랜드 충성도`, `재구매`, `피부 고민`, `content angle`).
+- `aeko_list_context_opportunities(domain_id, market=None)` — compare Focus quota, ranked opportunity signals, recommendations, next actions, and reason codes.
+- `aeko_get_context_metrics(context_id, market=None)` — read one Context's opportunity-detail payload.
+- `aeko_list_focused_contexts(domain_id, market)` — list the scarce Focus slots currently claimed for a domain and market.
+- `aeko_focus_context(...)` / `aeko_unfocus_context(...)` — start or end a Context measurement period; Focus-slot conflicts retain the full occupant list for an explicit user decision.
+- `aeko_update_context_translation(context_id, language, text)` — replace one stored Context translation.
 
 All tools carry MCP `ToolAnnotations` (`readOnlyHint`, `destructiveHint`, `openWorldHint`) so clients can offer per-tool approval policy (e.g. "always allow" for read-only GETs, approval-per-call for writes).
 

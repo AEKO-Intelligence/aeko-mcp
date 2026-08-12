@@ -1,4 +1,4 @@
-"""MCP wrappers for owner-associated sources and snapshotted handoffs."""
+"""MCP wrappers for owner-associated sources."""
 from aeko_mcp.tools import action_plan, sources
 from aeko_mcp.server import mcp
 
@@ -6,7 +6,7 @@ from aeko_mcp.server import mcp
 def test_source_tools_are_registered_read_only():
     registered = {tool.name: tool for tool in mcp._tool_manager.list_tools()}
 
-    for name in ("aeko_fetch_source_content", "aeko_get_content_idea_handoff"):
+    for name in ("aeko_fetch_source_content",):
         assert registered[name].annotations.readOnlyHint is True
         assert registered[name].annotations.idempotentHint is True
         assert registered[name].annotations.openWorldHint is True
@@ -66,39 +66,6 @@ def test_fetch_source_content_preserves_unavailable_body_state(monkeypatch):
 
     assert "Stored body**: unavailable" in output
     assert "must not fetch the canonical URL as a fallback" in output
-
-
-def test_content_idea_handoff_preserves_full_backend_payload(monkeypatch):
-    payload = {
-        "handoff_id": "11111111-2222-3333-4444-555555555555",
-        "evidence_snapshot": {
-            "channel": "reddit",
-            "action": "reply",
-            "future_optional_field": {"nested": [1, 2, 3]},
-        },
-    }
-    calls = []
-
-    def fake_get(path, params=None):
-        calls.append((path, params))
-        return payload
-
-    monkeypatch.setattr(sources.client, "get", fake_get)
-    output = sources.aeko_get_content_idea_handoff(
-        "11111111-2222-3333-4444-555555555555"
-    )
-
-    assert calls == [
-        (
-            "/api/content-ideas/handoffs/11111111-2222-3333-4444-555555555555",
-            None,
-        )
-    ]
-    assert '"future_optional_field"' in output
-    assert '"nested"' in output
-    assert '"channel": "reddit"' in output
-
-
 def test_action_item_summary_keeps_product_and_created_time_with_target():
     lines = action_plan._render_item_summary(
         {
@@ -116,6 +83,22 @@ def test_action_item_summary_keeps_product_and_created_time_with_target():
     assert "https://shop.example/products/7" in output
     assert "**Product**: `7`" in output
     assert "**Created**: 2026-07-13T01:02:03Z" in output
+
+
+def test_action_item_summary_renders_channels_from_list_response():
+    lines = action_plan._render_item_summary(
+        {
+            "id": "itm_calendar",
+            "title": "Seed the content calendar",
+            "artifact_type": "own_store_markdown",
+            "execution_class": "local_content_artifact",
+            "status": "ready",
+            "channels": ["naver_blog", "aeko_shop"],
+        }
+    )
+
+    output = "\n".join(lines)
+    assert "**Channels**: `naver_blog`, `aeko_shop`" in output
 
 
 def test_action_item_list_pagination_is_offset_aware(monkeypatch):

@@ -150,7 +150,10 @@ def _format_cited_pages(cited_pages: list) -> str:
     return "\n".join(lines)
 
 
-def _format_tracked_metrics(data: dict) -> str:
+def _format_tracked_metrics(
+    data: dict,
+    requested_window: Optional[str] = None,
+) -> str:
     """7-day WoW metrics — used when scope='tracked_prompt_metrics'."""
     def _trend(value: Optional[float]) -> str:
         if value is None:
@@ -161,7 +164,15 @@ def _format_tracked_metrics(data: dict) -> str:
             return f"{value:.1f}% ↓"
         return "0% →"
 
-    lines = ["# Performance Metrics (Last 7 Days)", ""]
+    lines = []
+    if requested_window and requested_window != "7d":
+        lines.extend(
+            [
+                f"> Requested window `{requested_window}` ignored — this endpoint is fixed at 7 days by the backend.",
+                "",
+            ]
+        )
+    lines.extend(["# Performance Metrics (Last 7 Days)", ""])
     lines.append("| Metric | Value | vs Previous 7 Days |")
     lines.append("|--------|-------|--------------------|")
 
@@ -225,9 +236,10 @@ def aeko_get_visibility_summary(
           - `tracked_prompt_metrics` — 7-day performance across tracked
             prompts with week-over-week trends (mentions / citations /
             sentiment / visibility / mention share).
-        window: Optional time window hint. Currently only honored for the
-            `tracked_prompt_metrics` scope (backend fixed at 7d + 7d WoW);
-            reserved for future use on other scopes.
+        window: Compatibility-only time-window hint retained for lagging
+            callers. It is not sent to either backend endpoint. Tracked-prompt
+            metrics are fixed at 7 days plus the previous 7 days for comparison;
+            non-``7d`` requests are disclosed in that report.
     """
     selected_view = view or scope
     # Backwards-compatible escape hatch: if a caller accidentally passes a
@@ -242,7 +254,7 @@ def aeko_get_visibility_summary(
 
     if selected_view == "tracked_prompt_metrics":
         data = client.get("/api/tracked-prompts/metrics", params={"domain_id": domain_id})
-        return _format_tracked_metrics(data)
+        return _format_tracked_metrics(data, requested_window=window)
 
     params: dict[str, Any] = {"domain_id": domain_id}
     if vertical_scope:

@@ -1,6 +1,7 @@
 """Phase 2 MCP prompt-angle tools: payload contracts and parseable IDs."""
 
 import importlib
+import json
 
 import pytest
 
@@ -56,6 +57,69 @@ def test_track_prompt_forwards_only_settable_angles(monkeypatch):
     assert "priority" not in calls[0]["json"]
     assert "source_type" not in calls[0]["json"]
     assert "source_ref" not in calls[0]["json"]
+
+
+def test_research_prompt_output_keeps_full_track_payload_and_raw_platform_enum():
+    raw = "What is the best cream for a friend with sensitive skin? " + ("detail " * 20)
+    rendered = research._format_prompts(
+        {
+            "prompts": [
+                {
+                    "id": "library-1",
+                    "raw_prompt": raw,
+                    "prompt_en": raw,
+                    "ai_platform": "anthropic",
+                    "country": "KR",
+                }
+            ],
+            "total_count": 1,
+        }
+    )
+
+    assert "Claude (`anthropic`)" in rendered
+    assert json.dumps(raw, ensure_ascii=False) in rendered
+    assert '"raw_prompt"' in rendered
+
+
+def test_track_prompt_returns_all_fanout_rows_and_failure_summary(monkeypatch):
+    monkeypatch.setattr(
+        research.client,
+        "post",
+        lambda *args, **kwargs: {
+            "results": [
+                {
+                    "status": "tracked",
+                    "tracked_prompt_id": "tp-1",
+                    "ai_platform": "openai",
+                    "country": "US",
+                },
+                {
+                    "status": "failed",
+                    "tracked_prompt_id": None,
+                    "ai_platform": "google",
+                    "country": "US",
+                    "reason": "platform failure",
+                },
+            ],
+            "summary": {
+                "requested": 2,
+                "tracked": 1,
+                "failed": 1,
+                "view_assignment_failed": True,
+            },
+        },
+    )
+
+    out = research.aeko_track_prompt(
+        raw_prompt="friend gift cream",
+        ai_platforms=["openai", "google"],
+        countries=["US"],
+    )
+
+    assert "tp-1" in out
+    assert "platform failure" in out
+    assert '"failed": 1' in out
+    assert '"view_assignment_failed": true' in out
 
 
 def test_track_prompt_rejects_non_backend_metadata_kwargs():
@@ -119,6 +183,8 @@ def test_quota_tool_reads_tracked_prompt_quota(monkeypatch):
         calls.append({"path": path, "params": params})
         if path == "/api/users/limit-status":
             return {"tracked_prompts": {"current": 8, "limit": 20}}
+        if path == "/api/user":
+            return {"package_type": "pro", "selected_markets": ["US"]}
         return {
             "tracked_count": 8,
             "max_tracked_prompts": 20,
@@ -132,9 +198,11 @@ def test_quota_tool_reads_tracked_prompt_quota(monkeypatch):
     assert calls == [
         {"path": "/api/tracked-prompts/quota", "params": None},
         {"path": "/api/users/limit-status", "params": None},
+        {"path": "/api/user", "params": None},
     ]
     assert "tracked_count" in out
     assert "20" in out
+    assert '"package_type": "pro"' in out
 
 
 def test_context_write_tools_call_expected_routes(monkeypatch):
@@ -222,6 +290,20 @@ def test_context_write_tools_call_expected_routes(monkeypatch):
             },
         },
     ]
+
+
+def test_context_update_refuses_archive_status_before_patch(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        contexts.client,
+        "patch",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {},
+    )
+
+    out = contexts.aeko_update_context("ctx-1", status="archived")
+
+    assert "aeko_archive_context" in out
+    assert calls == []
 
 
 def test_list_contexts_renders_authoritative_prompt_text(monkeypatch):

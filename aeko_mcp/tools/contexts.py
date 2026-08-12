@@ -8,7 +8,7 @@ import json
 from typing import Any, Optional
 
 from ..server import mcp, client
-from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE
+from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
 
 
 def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
@@ -222,7 +222,7 @@ def aeko_create_context(
     return _json_block("Context created", result)
 
 
-@mcp.tool(title="Update AEKO context", annotations=WRITE)
+@mcp.tool(title="Update AEKO context", annotations=DESTRUCTIVE)
 def aeko_update_context(
     context_id: str,
     title: Optional[str] = None,
@@ -249,9 +249,17 @@ def aeko_update_context(
     """Update a curated Context memory. Omitted fields are left unchanged.
 
     ``context_for_prompt`` is the authoritative grounding text for converted and
-    review-derived contexts. Update that field when changing what prompt tracking
-    should inject; changing only ``summary`` does not override it.
+    review-derived contexts. The backend does not let PATCH create that field on
+    a Context that lacks it. ``status=archived`` is refused here; use
+    ``aeko_archive_context`` so archival cannot bypass its dedicated skill gate.
     """
+    if status == "archived":
+        return (
+            "# Context update refused\n\n"
+            "`status=archived` must use `aeko_archive_context` and its separate "
+            "typed confirmation gate."
+        )
+
     body = {
         "title": title,
         "context_for_prompt": context_for_prompt,
@@ -284,7 +292,7 @@ def aeko_update_context(
     return _json_block("Context updated", result)
 
 
-@mcp.tool(title="Archive AEKO context", annotations=DESTRUCTIVE)
+@mcp.tool(title="Archive AEKO context", annotations=WRITE)
 def aeko_archive_context(context_id: str) -> str:
     """Soft-archive a Context memory.
 
@@ -321,3 +329,270 @@ def aeko_create_contexts_from_reviews(
     if err:
         return f"# Failed to create contexts from reviews\n\n```\n{err}\n```"
     return _json_block("Contexts created from reviews", result)
+
+
+def _normalize_market(market: str) -> str:
+    return (market or "").strip().upper()
+
+
+def _market_refusal(market: str) -> Optional[str]:
+    normalized = _normalize_market(market)
+    if not 2 <= len(normalized) <= 8:
+        return "# `market` must contain 2 to 8 characters."
+    return None
+
+
+def _opportunity_table(title: str, items: Any) -> list[str]:
+    rows = items if isinstance(items, list) else []
+    lines = [
+        f"## {title} ({len(rows)})",
+        "",
+        "| Context | State | Market | Opportunity | Confidence | Stage | Recommendation / next action | Reason codes |",
+        "|---|---|---|---:|---|---|---|---|",
+    ]
+    if not rows:
+        lines.append("| None | — | — | — | — | — | — | — |")
+        return lines
+
+    for raw_item in rows:
+        item = raw_item if isinstance(raw_item, dict) else {}
+        context_id = item.get("context_id", "?")
+        context_title = _clean(item.get("title")) or "(untitled Context)"
+        state = _clean(item.get("state")) or "unknown"
+        rollup = item.get("rollup") if isinstance(item.get("rollup"), dict) else {}
+        market = (
+            _clean(rollup.get("market"))
+            or _clean(item.get("headline_market"))
+            or "—"
+        )
+        score = rollup.get("opportunity_score")
+        score_text = "—" if score is None else str(score)
+        confidence = rollup.get("confidence")
+        if isinstance(confidence, dict):
+            confidence = confidence.get("label") or confidence.get("score")
+        confidence_text = _clean(confidence) or "—"
+        stage = _clean(rollup.get("measurement_stage")) or "—"
+
+        recommendation = (
+            item.get("recommendation")
+            if isinstance(item.get("recommendation"), dict)
+            else {}
+        )
+        recommendation_type = _clean(recommendation.get("type"))
+        next_action = (
+            recommendation.get("next_action")
+            if isinstance(recommendation.get("next_action"), dict)
+            else {}
+        )
+        action_type = _clean(next_action.get("type"))
+        action_label = _clean(next_action.get("label"))
+        action_bits = [bit for bit in (recommendation_type, action_type, action_label) if bit]
+        action_text = " → ".join(dict.fromkeys(action_bits)) if action_bits else "—"
+        reason_codes = recommendation.get("reason_codes")
+        if not isinstance(reason_codes, list):
+            reason_codes = []
+        reasons_text = ", ".join(str(code) for code in reason_codes) or "—"
+
+        lines.append(
+            f"| `{context_id}` {context_title} | {state} | {market} | {score_text} | "
+            f"{confidence_text} | {stage} | {action_text} | {reasons_text} |"
+        )
+    return lines
+
+
+def _format_context_opportunities(domain_id: str, result: dict[str, Any]) -> str:
+    quota = result.get("focus_quota")
+    if not isinstance(quota, dict):
+        quota = {}
+    used = quota.get("used", 0)
+    limit = quota.get("limit", 5)
+    lines = [
+        "# Context opportunities",
+        "",
+        f"- **Domain ID**: `{domain_id}`",
+        f"- **Focus quota**: {used} of {limit} used",
+    ]
+    for title, field in (
+        ("Focused", "focused"),
+        ("Recommended", "recommended"),
+        ("All Contexts", "contexts"),
+    ):
+        lines.extend(["", *_opportunity_table(title, result.get(field))])
+    return "\n".join(lines)
+
+
+@mcp.tool(title="List Context opportunities", annotations=READ_ONLY)
+def aeko_list_context_opportunities(
+    domain_id: str,
+    market: Optional[str] = None,
+) -> str:
+    """Rank saved Contexts by opportunity and show Focus recommendations.
+
+    The Markdown decision surface includes Focus quota and the backend's
+    measured score, confidence, stage, recommendation, next action, and reason
+    codes. Read-only. Pro+ is enforced server-side.
+    """
+    params = {"domain_id": domain_id}
+    if market is not None:
+        refusal = _market_refusal(market)
+        if refusal:
+            return refusal
+        params["market"] = _normalize_market(market)
+    result, err = _safe(client.get, "/api/contexts/opportunities", params=params)
+    if err:
+        return f"# Failed to list Context opportunities\n\n```\n{err}\n```"
+    payload = result if isinstance(result, dict) else {}
+    return _format_context_opportunities(domain_id, payload)
+
+
+@mcp.tool(title="Get Context metrics", annotations=READ_ONLY)
+def aeko_get_context_metrics(
+    context_id: str,
+    market: Optional[str] = None,
+) -> str:
+    """Read the stored opportunity-detail payload for one Context.
+
+    Returns the rollup, Focus period, recommendation, and stored rendering as
+    JSON for later tool calls. Read-only. Pro+ is enforced server-side.
+    """
+    params: dict[str, Any] = {}
+    if market is not None:
+        refusal = _market_refusal(market)
+        if refusal:
+            return refusal
+        params["market"] = _normalize_market(market)
+    result, err = _safe(
+        client.get,
+        f"/api/contexts/{context_id}/metrics",
+        params=params,
+    )
+    if err:
+        return f"# Failed to get Context metrics\n\n```\n{err}\n```"
+    return _json_block("Context metrics", result)
+
+
+@mcp.tool(title="List focused Contexts", annotations=READ_ONLY)
+def aeko_list_focused_contexts(domain_id: str, market: str) -> str:
+    """List open Focus periods for one domain and market.
+
+    Read-only. Pro+ is enforced server-side.
+    """
+    refusal = _market_refusal(market)
+    if refusal:
+        return refusal
+    normalized_market = _normalize_market(market)
+    result, err = _safe(
+        client.get,
+        "/api/contexts/focus",
+        params={"domain_id": domain_id, "market": normalized_market},
+    )
+    if err:
+        return f"# Failed to list focused Contexts\n\n```\n{err}\n```"
+    return _json_block(f"Focused Contexts ({normalized_market})", result)
+
+
+@mcp.tool(title="Focus Context", annotations=WRITE_ONCE)
+def aeko_focus_context(
+    context_id: str,
+    market: str,
+    objective: str,
+    slot_number: Optional[int] = None,
+    reason: Optional[str] = None,
+) -> str:
+    """Claim a scarce Focus slot for one saved Context and market.
+
+    ``objective`` must be ``organic``, ``paid``, or ``both``. Do not retry a
+    ``focus_slots_full`` conflict or auto-pick a different slot; show the
+    returned occupants and ask the user what to unfocus. Pro+ is enforced
+    server-side, and this write requires an active subscription.
+    """
+    refusal = _market_refusal(market)
+    if refusal:
+        return refusal
+    normalized_objective = (objective or "").strip().lower()
+    if normalized_objective not in {"organic", "paid", "both"}:
+        return "# `objective` must be `organic`, `paid`, or `both`."
+    if slot_number is not None and not 1 <= int(slot_number) <= 5:
+        return "# `slot_number` must be between 1 and 5."
+    if reason is not None and len(reason) > 2000:
+        return "# `reason` must be at most 2000 characters."
+
+    body: dict[str, Any] = {
+        "market": _normalize_market(market),
+        "objective": normalized_objective,
+    }
+    if slot_number is not None:
+        body["slot_number"] = int(slot_number)
+    if reason is not None:
+        body["reason"] = reason
+    result, err = _safe(
+        client.post,
+        f"/api/contexts/{context_id}/focus",
+        json=body,
+    )
+    if err:
+        recovery = ""
+        if "focus_slots_full" in err or "CONTEXT_FOCUS_CAP_REACHED" in err:
+            recovery = (
+                "\n\nReview the returned focused Contexts with the user. Unfocus one "
+                "before retrying if all slots are full; do not retry or choose a slot automatically."
+            )
+        return f"# Failed to focus Context\n\n```\n{err}\n```{recovery}"
+    return _json_block("Context focused", result)
+
+
+@mcp.tool(title="Unfocus Context", annotations=DESTRUCTIVE)
+def aeko_unfocus_context(context_id: str, market: str, end_reason: str) -> str:
+    """End one Context's open Focus measurement period.
+
+    This is destructive because the stored baseline period cannot be reopened;
+    a later focus starts a new period. Pro+ is enforced server-side, and this
+    write requires an active subscription.
+    """
+    refusal = _market_refusal(market)
+    if refusal:
+        return refusal
+    normalized_reason = (end_reason or "").strip()
+    if not normalized_reason:
+        return "# `end_reason` must be a non-empty string."
+    if len(normalized_reason) > 2000:
+        return "# `end_reason` must be at most 2000 characters."
+    result, err = _safe(
+        client.post,
+        f"/api/contexts/{context_id}/unfocus",
+        json={
+            "market": _normalize_market(market),
+            "end_reason": normalized_reason,
+        },
+    )
+    if err:
+        return f"# Failed to unfocus Context\n\n```\n{err}\n```"
+    return _json_block("Context unfocused", result)
+
+
+@mcp.tool(title="Update Context translation", annotations=WRITE)
+def aeko_update_context_translation(
+    context_id: str,
+    language: str,
+    text: str,
+) -> str:
+    """Replace one stored language rendering for a Context.
+
+    The backend marks the rendering source as ``edited`` and returns the full
+    translations map. Pro+ is enforced server-side, and this write requires
+    an active subscription.
+    """
+    normalized_language = (language or "").strip().lower().replace("_", "-")
+    if not 2 <= len(normalized_language) <= 16:
+        return "# `language` must contain 2 to 16 characters."
+    normalized_text = (text or "").strip()
+    if not normalized_text:
+        return "# `text` must be a non-empty string."
+    result, err = _safe(
+        client.put,
+        f"/api/contexts/{context_id}/translations",
+        json={"language": normalized_language, "text": normalized_text},
+    )
+    if err:
+        return f"# Failed to update Context translation\n\n```\n{err}\n```"
+    return _json_block("Context translation updated", result)

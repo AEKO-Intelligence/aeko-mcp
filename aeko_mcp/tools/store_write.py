@@ -128,16 +128,19 @@ def aeko_connect_store(
     return _json_block("Store connected", result)
 
 
-@mcp.tool(title="Sync store products", annotations=WRITE)
+@mcp.tool(title="Sync store products", annotations=DESTRUCTIVE)
 def aeko_sync_store(integration_id: str) -> str:
-    """Sync products from a connected Cafe24/Shopify store.
+    """Sync products/reviews and replace the public aeko.shop catalog snapshot.
 
-    Manual stores are push-only; update them with `aeko_inject_products`.
+    This can remove public products that are absent from a partial upstream
+    response, so callers must confirm the public effect and inspect the
+    integration's post-sync status. Manual stores are push-only; update them
+    with `aeko_inject_products`.
     """
     result, err = _safe(client.post, f"/api/store-integrations/{integration_id}/sync")
     if err:
         return f"# Failed to sync store\n\n```\n{err}\n```"
-    return _json_block("Store products synced", result)
+    return _json_block("Public store catalog and reviews synced", result)
 
 
 @mcp.tool(title="Inject manual products", annotations=WRITE_ONCE)
@@ -328,6 +331,12 @@ def aeko_list_store_integrations() -> str:
         lines.append(f"- **Write-back**: {write_badge}")
         if item.get("last_synced_at"):
             lines.append(f"- **Last synced**: {item['last_synced_at']}")
+        if item.get("last_sync_status"):
+            lines.append(f"- **Last sync status**: {item['last_sync_status']}")
+        if item.get("last_sync_error_message"):
+            lines.append(
+                f"- **Last sync error**: {item['last_sync_error_message']}"
+            )
         lines.append("")
 
     lines.append(
