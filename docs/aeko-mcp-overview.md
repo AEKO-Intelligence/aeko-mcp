@@ -148,7 +148,7 @@ aeko-mcp ships tools across modules including `visibility`, `research`, `sources
 ### Visibility / citation forensics
 | Tool | Purpose |
 |---|---|
-| `aeko_get_visibility_summary(domain_id, scope?, window?)` | **Consolidated in v0.5.0** — `scope` selects one of `overview` (default), `cited_sources`, `tracked_prompt_metrics`. Optional `window` = `7d / 30d / 90d`. Absorbs the retired `aeko_get_metrics` and `aeko_get_cited_sources`. |
+| `aeko_get_visibility_summary(domain_id, scope?, window?)` | **Consolidated in v0.5.0** — `scope` selects one of `overview` (default), `cited_sources`, `tracked_prompt_metrics`. The compatibility-only `window` hint is not sent to the backend; tracked-prompt metrics are fixed at 7 days + the previous 7 days, and non-`7d` requests are disclosed in the report. Absorbs the retired `aeko_get_metrics` and `aeko_get_cited_sources`. |
 | `aeko_get_tracked_prompt(prompt_id, window?)` | **New in v0.5.0** — citation-forensics payload for one tracked prompt: responses per AI platform, per-response citation array, crawled source metadata (JSON-LD types, extracted text, source-analysis scores). Core primitive for the deep-dive + content skills. |
 
 ### Source evidence (1)

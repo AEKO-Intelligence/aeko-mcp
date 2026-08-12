@@ -15,6 +15,9 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 ### Changed
 
 - Moved `aeko_get_content_idea_handoff` into the new `content_ideas` tool group.
+- `aeko_get_visibility_summary(..., window=...)` now explicitly discloses when
+  a non-`7d` tracked-metrics window is ignored; the backend remains fixed at
+  7 days plus the previous 7 days for comparison.
 - Registered tool count is now 95 across 16 modules.
 
 ## [0.16.1] — 2026-08-07
