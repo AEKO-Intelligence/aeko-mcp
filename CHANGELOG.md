@@ -4,7 +4,19 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
-## [0.20.0] — Unreleased
+## [0.21.0] — Unreleased
+
+- Add six read-only tools for active/run-snapshot brand packages, exact release versions,
+  canonical package-member file reads, and Brand Wiki chapter/list/detail metadata.
+- Revalidate package version/digest, canonical slug, member document/version identity, and member
+  digest before every UTF-8 file chunk. All reads forward the exact `domain_id` and request bearer.
+- Keep metadata outputs under 32 KiB and file chunks under 16 KiB, omit wiki bodies/history from
+  discovery, and surface a specific backend-upgrade error when the auto06 routes are absent.
+- Registered tool count is 113 across 18 modules. These tools retrieve accepted bytes; OAuth does
+  not load them, and this release does not add a full Responses/MCP runner, contextual chat, or
+  GitHub App integration.
+
+## [0.20.0] — 2026-09-07
 
 - Add three read-only tools for visible brand skills/evals, immutable version manifests and
   UTF-8 byte-bounded file reads. Discovery and manifests omit file contents; exact-version

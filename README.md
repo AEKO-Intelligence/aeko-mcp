@@ -80,23 +80,31 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP registers 107 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, store-write actions, and versioned brand skills/evals.
+AEKO MCP registers 113 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, store-write actions, versioned brand documents, accepted whole-brand packages, and Brand Wiki reads.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
-Current groups: `visibility`, `research`, `sources`, `content_ideas`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, `setup`, and `automation_documents`.
+Current groups: `visibility`, `research`, `sources`, `content_ideas`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, `setup`, `automation_documents`, and `brand_packages`.
 
-The three `automation_documents` tools require the backend's `auto04` package migration and
-single-version/file read routes. List visible defaults and brand customizations with
-`aeko_list_brand_documents`, inspect an explicit active version with `aeko_get_document_package`,
-then use `aeko_read_document_file` for the required instructions and references. File reads return
-at most 16 KiB of UTF-8 content, with a continuation offset and immutable package digest. They
-forward the current request's OAuth or run credential; no credentials appear in tool output.
+The three `automation_documents` tools retain per-document compatibility with the backend's
+auto04 routes. The six `brand_packages` tools use the accepted auto06 whole-package and Brand Wiki
+routes. Start with `aeko_get_active_brand_package`, or use
+`aeko_get_brand_package_version` when a saved handoff already pins a version. Page through the
+member manifest, then call `aeko_read_brand_package_file` with the same package version/digest and
+the exact returned `package_slug`. Brand Wiki list/detail calls expose accepted authority and
+source metadata without returning bodies; load the matching wiki package member explicitly.
 
-These tools read packages; they do not activate updates or implement the hosted agent runner.
-Supporting files remain export-only for the current AEKO runner/preview. Backend authorization
-enforces ownership and entitlement, and run credentials must enforce their route/domain/read
-limits before they are attached to a model-provider request. See
+File reads return at most 16 KiB of UTF-8 content and a continuation offset. Before every chunk,
+the wrapper rechecks the release digest and member document/version/digest. Every route forwards
+the exact `domain_id` and current OAuth or run bearer; credentials never appear in tool output.
+OAuth authorizes access but does not load instructions, evals, wiki pages, or references.
+
+These tools retrieve packages; they do not activate updates or execute the selected instructions.
+The accepted backend runtime can materialize pinned support/wiki context for its existing hosted
+automation templates, but this MCP release does not add a full Responses/MCP runner or route all
+26 customer-plugin commands. Contextual chat and GitHub App provisioning/sync are separate work.
+Backend authorization enforces ownership and entitlement, and run credentials enforce their
+snapshot package, route, domain, and read limits. See
 [the package read contract](docs/contracts/automation-document-read-contract.md).
 
 The `sources` and `content_ideas` groups support the Content dashboard's AI workflow (Pro+):
