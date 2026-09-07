@@ -57,6 +57,7 @@ atexit.register(client.close)
 from .tools import (  # noqa: E402, F401
     action_plan,
     analytics,
+    automation_documents,
     content_ideas,
     content_variation,
     contexts,

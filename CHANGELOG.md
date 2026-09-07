@@ -4,6 +4,15 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.20.0] — Unreleased
+
+- Add three read-only tools for visible brand skills/evals, immutable version manifests and
+  UTF-8 byte-bounded file reads. Discovery and manifests omit file contents; exact-version
+  file reads never fall back to another version or local filesystem.
+- Requires backend `auto04` package routes and request-level run-credential enforcement.
+  This release does not provide automatic updater activation or hosted support-file execution.
+- Registered tool count is 107 across 17 modules.
+
 ## [0.19.0] — 2026-08-12
 
 ### Added

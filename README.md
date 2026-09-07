@@ -80,11 +80,24 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP exposes 104 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, and store-write actions.
+AEKO MCP registers 107 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, store-write actions, and versioned brand skills/evals.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
-Current groups: `visibility`, `research`, `sources`, `content_ideas`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, and `setup`.
+Current groups: `visibility`, `research`, `sources`, `content_ideas`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, `setup`, and `automation_documents`.
+
+The three `automation_documents` tools require the backend's `auto04` package migration and
+single-version/file read routes. List visible defaults and brand customizations with
+`aeko_list_brand_documents`, inspect an explicit active version with `aeko_get_document_package`,
+then use `aeko_read_document_file` for the required instructions and references. File reads return
+at most 16 KiB of UTF-8 content, with a continuation offset and immutable package digest. They
+forward the current request's OAuth or run credential; no credentials appear in tool output.
+
+These tools read packages; they do not activate updates or implement the hosted agent runner.
+Supporting files remain export-only for the current AEKO runner/preview. Backend authorization
+enforces ownership and entitlement, and run credentials must enforce their route/domain/read
+limits before they are attached to a model-provider request. See
+[the package read contract](docs/contracts/automation-document-read-contract.md).
 
 The `sources` and `content_ideas` groups support the Content dashboard's AI workflow (Pro+):
 
