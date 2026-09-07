@@ -88,6 +88,38 @@ def test_manifest_fetches_one_version_without_emitting_content(monkeypatch):
     assert "brand-only rule" not in text and "unused metadata" not in text and "브랜드" not in text
 
 
+def test_discovery_byte_pages_large_unicode_metadata_without_losing_rows(monkeypatch):
+    rows = [{"id": f"{index:03}", "name": "브랜드" * 30,
+             "declared_inputs": ["제품" * 30] * 20} for index in range(40)]
+    monkeypatch.setattr(tools.client, "get", lambda *a, **kw: {"documents": rows})
+    offset, seen = 0, []
+    while True:
+        output = tools.aeko_list_brand_documents(DOMAIN, offset=offset, limit=100)
+        assert len(output.encode("utf-8")) <= tools.METADATA_PAGE_BYTES
+        data = json.loads(output)
+        seen.extend(row["id"] for row in data["documents"])
+        assert data["total"] == len(rows)
+        if data["next_offset"] is None:
+            break
+        assert data["next_offset"] > offset
+        offset = data["next_offset"]
+    assert seen == [row["id"] for row in rows]
+
+
+def test_oversized_backend_metadata_never_reaches_model(monkeypatch):
+    monkeypatch.setattr(tools.client, "get", lambda *a, **kw: {
+        "documents": [{"id": DOCUMENT, "name": "x" * tools.METADATA_PAGE_BYTES}],
+    })
+    with pytest.raises(RuntimeError, match="metadata exceeding"):
+        tools.aeko_list_brand_documents(DOMAIN)
+    data = package()
+    data["support_files"] = [{"path": "x" * tools.METADATA_PAGE_BYTES,
+                              "size_bytes": 1, "editable": True, "hosted": False}]
+    monkeypatch.setattr(tools.client, "get", lambda *a, **kw: data)
+    with pytest.raises(RuntimeError, match="manifest exceeding"):
+        tools.aeko_get_document_package(DOMAIN, DOCUMENT, 3)
+
+
 def test_utf8_chunks_round_trip_without_loss_or_version_drift(monkeypatch):
     data = package()
     expected = "가을 컬렉션 😊.\n" * 100

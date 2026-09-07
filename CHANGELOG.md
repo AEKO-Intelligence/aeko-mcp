@@ -9,6 +9,7 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 - Add three read-only tools for visible brand skills/evals, immutable version manifests and
   UTF-8 byte-bounded file reads. Discovery and manifests omit file contents; exact-version
   file reads never fall back to another version or local filesystem.
+- Bound discovery/manifest responses to 32 KiB encoded JSON, with byte-aware discovery pagination.
 - Requires backend `auto04` package routes and request-level run-credential enforcement.
   This release does not provide automatic updater activation or hosted support-file execution.
 - Registered tool count is 107 across 17 modules.

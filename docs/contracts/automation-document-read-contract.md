@@ -6,7 +6,7 @@ depend on a local checkout or ask an AI platform to read another machine's files
 
 | Tool | Backend request | Model-visible result |
 | --- | --- | --- |
-| `aeko_list_brand_documents` | GET `/api/automations/documents?domain_id=…&kind=…` | Selected metadata, default/brand ownership, active/draft version, paginated up to 100 rows |
+| `aeko_list_brand_documents` | GET `/api/automations/documents?domain_id=…&kind=…` | Selected metadata, default/brand ownership, active/draft version, paginated up to 100 rows and 32 KiB encoded JSON |
 | `aeko_get_document_package` | GET `/api/automations/documents/{id}/versions/{version}?domain_id=…` | Version ID/digest and file manifest; no body or arbitrary metadata |
 | `aeko_read_document_file` | GET `/api/automations/documents/{id}/versions/{version}/files?domain_id=…&path=…` | One UTF-8 chunk, default 8 KiB, maximum 16 KiB, with byte continuation offset |
 
@@ -20,6 +20,10 @@ UUID validation prevents path interpolation from redirecting a request. The back
 canonical package path rules, visibility, entitlement and file-size limits. The wrapper checks
 returned document/version/path identity, caps file size and refuses mid-codepoint offsets.
 JSON escaping and the response envelope add wire bytes beyond the content chunk budget.
+Discovery stops at its encoded metadata-page byte limit and returns the exact next row offset.
+The version manifest also has a 32 KiB encoded-response guard. Unexpected oversized backend
+metadata fails before it can be returned to the model; valid package metadata and the maximum
+64-file manifest fit this bound.
 
 Authentication is forwarded through the existing request ContextVar. Normal clients use
 their own OAuth session. A hosted run uses the narrow run credential, with backend request

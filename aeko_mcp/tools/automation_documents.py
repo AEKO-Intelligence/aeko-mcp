@@ -6,6 +6,8 @@ from uuid import UUID
 from ..server import client, mcp
 from ._annotations import READ_ONLY
 
+METADATA_PAGE_BYTES = 32 * 1024
+
 
 def _uuid(value: str) -> str:
     return str(UUID(str(value)))
@@ -47,7 +49,8 @@ def aeko_list_brand_documents(
     aeko_get_document_package. A draft is not the active brand policy. Prefer
     the applicable brand customization over its upstream default; do not merge
     contradictory eval variants. The backend enforces ownership and entitlement.
-    No file contents or credentials are returned by this discovery tool.
+    No file contents or credentials are returned. Pages stop at 32 KiB of
+    encoded metadata as well as limit; continue with the returned next_offset.
     """
     _integer(offset, 0, 2**31 - 1)
     _integer(limit, 1, 100)
@@ -64,12 +67,18 @@ def aeko_list_brand_documents(
               "owner", "parent_document_id", "status", "active_version", "draft_version",
               "applies_to", "declared_inputs", "updated_at", "newer_default_version")
     rows = sorted(documents, key=lambda row: str(row.get("id", "")))
-    end = min(offset + limit, len(rows))
-    return _json({
-        "domain_id": params["domain_id"], "total": len(rows),
-        "documents": [{key: row.get(key) for key in fields} for row in rows[offset:end]],
-        "next_offset": end if end < len(rows) else None,
-    })
+    payload = {"domain_id": params["domain_id"], "total": len(rows),
+               "documents": [], "next_offset": None}
+    for index in range(offset, min(offset + limit, len(rows))):
+        page = [*payload["documents"], {key: rows[index].get(key) for key in fields}]
+        candidate = {**payload, "documents": page,
+                     "next_offset": index + 1 if index + 1 < len(rows) else None}
+        if len(_json(candidate).encode("utf-8")) > METADATA_PAGE_BYTES:
+            if not payload["documents"]:
+                raise RuntimeError("AEKO returned document metadata exceeding the page byte limit.")
+            break
+        payload = candidate
+    return _json(payload)
 
 
 @mcp.tool(title="Inspect a pinned skill or eval package", annotations=READ_ONLY)
@@ -92,13 +101,16 @@ def aeko_get_document_package(domain_id: str, document_id: str, version: int) ->
         files.append({key: file[key] for key in ("path", "size_bytes", "editable", "hosted")})
     # Exclude all content and free-form metadata; callers retrieve the full
     # frontmatter in byte-bounded SKILL.md reads when they need it.
-    return _json({
+    result = _json({
         "domain_id": _uuid(domain_id), "document_id": _uuid(document_id),
         "version_id": data["id"], "version": version,
         "package_digest": data["package_digest"], "files": files,
         "hosted_support_files": data["hosted_support_files"],
         "created_by": data["created_by"], "promoted_at": data["promoted_at"],
     })
+    if len(result.encode("utf-8")) > METADATA_PAGE_BYTES:
+        raise RuntimeError("AEKO returned a file manifest exceeding the page byte limit.")
+    return result
 
 
 @mcp.tool(title="Read a pinned skill or eval file", annotations=READ_ONLY)
