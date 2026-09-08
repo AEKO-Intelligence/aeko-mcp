@@ -4,7 +4,18 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
-## [0.21.0] — Unreleased
+## [0.21.1] — 2026-09-08
+
+### Fixed
+
+- Restore embedded-server startup with `mcp==1.12.4` by keeping the six new
+  brand-package and Brand Wiki tool annotations as runtime types. MCP 1.12.x
+  inspects tool annotations with `issubclass` before schema generation and
+  cannot register functions whose annotations were postponed into strings.
+- Exercise a full server import and schemas for all nine versioned-document,
+  brand-package, and Brand Wiki tools against the backend's MCP dependency.
+
+## [0.21.0] — 2026-09-08
 
 - Add six read-only tools for active/run-snapshot brand packages, exact release versions,
   canonical package-member file reads, and Brand Wiki chapter/list/detail metadata.
