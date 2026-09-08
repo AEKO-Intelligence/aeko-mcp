@@ -45,7 +45,9 @@ def _build_mcp() -> FastMCP:
     )
     # Default to "/" so an embedding ASGI app's own mount prefix (e.g. app.mount("/mcp", ...))
     # is not doubled. Override via AEKO_MCP_STREAMABLE_HTTP_PATH when running standalone.
-    server.settings.streamable_http_path = os.environ.get("AEKO_MCP_STREAMABLE_HTTP_PATH", "/")
+    server.settings.streamable_http_path = os.environ.get(
+        "AEKO_MCP_STREAMABLE_HTTP_PATH", "/"
+    )
     return server
 
 
@@ -57,6 +59,8 @@ atexit.register(client.close)
 from .tools import (  # noqa: E402, F401
     action_plan,
     analytics,
+    automation_documents,
+    brand_packages,
     content_ideas,
     content_variation,
     contexts,
@@ -98,9 +102,13 @@ def create_streamable_http_app(
     app = mcp.streamable_http_app()
 
     challenge_value = (
-        f'Bearer realm="aeko", resource_metadata="{issuer_url.rstrip("/")}'
-        f'/.well-known/oauth-protected-resource"'
-    ).encode() if issuer_url else None
+        (
+            f'Bearer realm="aeko", resource_metadata="{issuer_url.rstrip("/")}'
+            f'/.well-known/oauth-protected-resource"'
+        ).encode()
+        if issuer_url
+        else None
+    )
 
     async def asgi_app(scope, receive, send):
         if scope["type"] != "http":
@@ -110,7 +118,9 @@ def create_streamable_http_app(
         method = scope.get("method", "").upper()
         headers = dict(scope.get("headers", []))
         raw_auth = headers.get(b"authorization", b"").decode()
-        token_value = raw_auth[7:].strip() if raw_auth.lower().startswith("bearer ") else None
+        token_value = (
+            raw_auth[7:].strip() if raw_auth.lower().startswith("bearer ") else None
+        )
 
         # Pre-flight gate: without a bearer, return 401 + WWW-Authenticate
         # so MCP clients can discover the OAuth AS via RFC 9728 and start
@@ -120,23 +130,23 @@ def create_streamable_http_app(
         #
         # OPTIONS requests (CORS preflight) are allowed through unauth so
         # browser-based MCP clients can still negotiate headers.
-        if (
-            challenge_value is not None
-            and method != "OPTIONS"
-            and not token_value
-        ):
-            await send({
-                "type": "http.response.start",
-                "status": 401,
-                "headers": [
-                    (b"content-type", b"application/json"),
-                    (b"www-authenticate", challenge_value),
-                ],
-            })
-            await send({
-                "type": "http.response.body",
-                "body": b'{"error":"unauthorized","error_description":"Bearer token required for MCP access"}',
-            })
+        if challenge_value is not None and method != "OPTIONS" and not token_value:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"www-authenticate", challenge_value),
+                    ],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": b'{"error":"unauthorized","error_description":"Bearer token required for MCP access"}',
+                }
+            )
             return
 
         ctx_token = client.set_request_auth_token(token_value or None)
@@ -148,7 +158,9 @@ def create_streamable_http_app(
                 and message.get("status") == 401
             ):
                 response_headers = list(message.get("headers", []))
-                if not any(h[0].lower() == b"www-authenticate" for h in response_headers):
+                if not any(
+                    h[0].lower() == b"www-authenticate" for h in response_headers
+                ):
                     response_headers.append((b"www-authenticate", challenge_value))
                     message = {**message, "headers": response_headers}
             await send(message)
@@ -193,7 +205,11 @@ def main() -> None:
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ["AEKO_MCP_PORT"]) if os.environ.get("AEKO_MCP_PORT") else None,
+        default=(
+            int(os.environ["AEKO_MCP_PORT"])
+            if os.environ.get("AEKO_MCP_PORT")
+            else None
+        ),
         help="Port for streamable HTTP transport.",
     )
     parser.add_argument(
