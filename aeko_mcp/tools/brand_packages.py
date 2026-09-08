@@ -1,6 +1,10 @@
-"""Bounded reads for accepted whole-brand packages and Brand Wiki pages."""
+"""Bounded reads for accepted whole-brand packages and Brand Wiki pages.
 
-from __future__ import annotations
+Keep annotations as runtime types in this module. MCP 1.12.x inspects every
+registered function with ``issubclass`` before it builds the tool schema and
+does not resolve annotations postponed by ``from __future__ import
+annotations``.
+"""
 
 import json
 import re
