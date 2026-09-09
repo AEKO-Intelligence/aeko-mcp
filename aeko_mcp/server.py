@@ -58,6 +58,7 @@ atexit.register(client.close)
 # Import tool modules to register all tools with the mcp instance
 from .tools import (  # noqa: E402, F401
     action_plan,
+    fact_check,
     analytics,
     automation_documents,
     brand_packages,

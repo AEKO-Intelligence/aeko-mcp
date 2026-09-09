@@ -80,11 +80,18 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP registers 113 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, store-write actions, versioned brand documents, accepted whole-brand packages, and Brand Wiki reads.
+AEKO MCP registers 115 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, store-write actions, versioned brand documents, accepted whole-brand packages, Brand Wiki reads, and Fact Check findings.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
-Current groups: `visibility`, `research`, `sources`, `content_ideas`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, `setup`, `automation_documents`, and `brand_packages`.
+Current groups: `visibility`, `research`, `sources`, `content_ideas`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, `setup`, `automation_documents`, `brand_packages`, and `fact_check`.
+
+Saved `content-v2` plans retain their selected context evidence, format, destination,
+market and language for external execution. Claim the action item before drafting;
+complete it with the claim token and actual artifact paths. The two Fact Check
+tools are read-only. A correction executor must recheck the finding revision and
+both source/Wiki freshness flags before preparing its saved correction plan.
+Wiki approval remains in AEKO's shared review workflow.
 
 The three `automation_documents` tools retain per-document compatibility with the backend's
 auto04 routes. The six `brand_packages` tools use the accepted auto06 whole-package and Brand Wiki

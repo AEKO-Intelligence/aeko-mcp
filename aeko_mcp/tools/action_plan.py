@@ -286,8 +286,18 @@ def aeko_create_action_item(
     selected_product_ids: Optional[list[str]] = None,
     context_ids: Optional[list[str]] = None,
     additional_instructions: Optional[str] = None,
+    content_format: Optional[str] = None,
+    content_task: Optional[str] = None,
+    finding_id: Optional[str] = None,
+    finding_revision: Optional[str] = None,
+    recommendation_id: Optional[str] = None,
+    product_store_ids: Optional[list[str]] = None,
 ) -> str:
-    """Create a backend action item and enqueue Plan.md generation.
+    """Save a ready Plan.md for external execution; creation makes no AI call.
+
+    For content-v2, supply format, topic, destination, market and language. A
+    correction also requires the current reviewed finding ID and revision.
+    product_store_ids are exact AEKO store product UUIDs, not reusable store SKUs.
 
     Pass a stable `idempotency_key` such as `domain:type:target` so agent
     retries return the existing row instead of minting duplicate action items.
@@ -313,6 +323,12 @@ def aeko_create_action_item(
         "selected_product_ids": selected_product_ids,
         "context_ids": context_ids,
         "additional_instructions": additional_instructions,
+        "content_format": content_format,
+        "content_task": content_task,
+        "finding_id": finding_id,
+        "finding_revision": finding_revision,
+        "recommendation_id": recommendation_id,
+        "product_store_ids": product_store_ids,
     }
     payload = {k: v for k, v in fields.items() if v is not None}
     result = client.post(
