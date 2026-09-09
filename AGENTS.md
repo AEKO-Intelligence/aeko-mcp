@@ -2,13 +2,13 @@
 
 Python MCP (Model Context Protocol) server bridging Claude and other AI assistants to the AEKO backend for AI engine optimization (AEO): brand visibility across ChatGPT/Claude/Gemini/Perplexity, AI-readiness audits, AEO-optimized content drafting, and store-write workflows (Cafe24, Shopify).
 
-- **Version:** 0.21.1 (`pyproject.toml`) · **Framework:** FastMCP (mcp SDK >=1.11.0,<1.16.0), httpx, pydantic, Pillow
+- **Version:** 0.22.0 (`pyproject.toml`) · **Framework:** FastMCP (mcp SDK >=1.11.0,<1.16.0), httpx, pydantic, Pillow
 - **Hosted endpoint:** `https://aeko-intelligence.com/mcp` (clients connect here; no self-hosting needed)
 - **Auth:** OAuth 2.1 + PKCE — Dynamic Client Registration (RFC 7591) for all clients including Claude Desktop (`_validate_redirect_uri` accepts hosted `https://` callbacks, not just loopback); pre-registered public client `aeko-mcp-v1` retained as a fallback only, and deliberately kept out of user-facing setup docs. Opaque bearer tokens (`aeko_ot1_`, 1h TTL) + 30-day refresh tokens.
 - **Transport:** streamable-http, stateless, JSON responses by default (`aeko_mcp/server.py`)
 - **Backend (prod default):** `https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io` (override with `AEKO_API_URL`)
 
-## Registered tool groups — 113 tools across 18 modules (`aeko_mcp/tools/`)
+## Registered tool groups — 115 tools across 19 modules (`aeko_mcp/tools/`)
 
 | Module | Tools | Covers |
 |---|---|---|
@@ -16,6 +16,7 @@ Python MCP (Model Context Protocol) server bridging Claude and other AI assistan
 | `research` | 7 | Research prompts, tracked-prompt angles, quota, prompt detail, untrack |
 | `store_write` | 12 | Store connect/sync, manual product inject, claim-fenced product writes, audit trail, revert |
 | `action_plan` | 8 | Action items, technical items, atomic claim/release, create/dismiss/complete lifecycle |
+| `fact_check` | 2 | Owner-scoped findings, exact source/Wiki references, current evidence freshness and decision history |
 | `content_variation` | 5 | Save/publish/unpublish/list/update content variations |
 | `own_content` | 1 | `aeko_list_own_content` |
 | `media_upload` | 1 | `aeko_request_media_upload` |

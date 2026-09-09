@@ -4,6 +4,11 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.22.0] — 2026-09-09
+
+- Add read-only Fact Check list/detail tools for the shared source/Wiki reviews.
+- Extend content plan creation with selected format/task, exact product UUIDs, and reviewed finding revision; creation renders and saves the plan without an AI call.
+
 ## [0.21.1] — 2026-09-08
 
 ### Fixed
