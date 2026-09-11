@@ -4,6 +4,23 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.23.0] — 2026-09-11
+
+### Added
+
+- Add account-scoped conversion-event and location discovery tools for selecting verified oCPC
+  events and provider targeting IDs.
+- Extend context-based campaign creation with impression, click, and conversion goals, the official
+  plural conversion-event field, targeting, and schedules while retaining the existing CPM default.
+
+### Changed
+
+- Resolve existing campaign goals before deriving child ad-group billing, and preserve the current
+  ad group's billing event during guarded bid edits.
+- Accept explicit ad account selection on campaign, insights, account/feed status, feed sync, and
+  context-based campaign composition tools.
+- Registered tool count is now 117 across 19 modules.
+
 ## [0.22.0] — 2026-09-09
 
 - Add read-only Fact Check list/detail tools for the shared source/Wiki reviews.

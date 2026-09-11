@@ -167,7 +167,10 @@ aeko-mcp ships tools across modules including `visibility`, `research`, `sources
 ### OpenAI Ads updates
 | Tool | Purpose |
 |---|---|
-| `aeko_update_ad_group(ad_group_id, idempotency_key, ...)` | Dry-run or apply ad-group copy, Context-hint, and maximum-bid changes; real bid writes require current value, ceiling, and delta guards. |
+| `aeko_list_conversion_event_settings(domain_id, ad_account_id?, ...)` | Discover current-account conversion events and backend-derived oCPC eligibility. |
+| `aeko_lookup_ad_locations(domain_id, q, ad_account_id?, ...)` | Resolve provider location IDs for campaign targeting. |
+| `aeko_create_ad_group_from_context(..., bidding_type?, conversion_event_setting_ids?, targeting?, start_time?, end_time?)` | Create paused CPM, CPC, or oCPC campaign/ad-group placements; existing campaign placement reads the immutable goal before deriving billing. |
+| `aeko_update_ad_group(ad_group_id, idempotency_key, ...)` | Dry-run or apply ad-group copy, Context-hint, and maximum-bid changes; real bid writes require current value, ceiling, and delta guards, and preserve current billing. |
 | `aeko_update_ad_creative(ad_id, idempotency_key, ...)` | Replace an existing ad's complete creative after reading and resending every field that must be kept. |
 
 ### Context opportunity / Focus (6)
@@ -231,7 +234,10 @@ aeko-mcp holds no state. Every tool maps to one or more backend HTTP calls.
 | `/api/content-ideas/{fingerprint}/handoff` | POST | `aeko_start_content_idea` |
 | `/api/content-ideas/{fingerprint}/dismiss` | POST | `aeko_dismiss_content_idea` |
 | `/api/content-ideas/handoffs/{handoff_id}` | GET | `aeko_get_content_idea_handoff` |
-| `/api/marketing/ad-groups/{ad_group_id}` | POST | `aeko_update_ad_group` |
+| `/api/marketing/conversions/event-settings` | GET | `aeko_list_conversion_event_settings` |
+| `/api/marketing/geo-lookup` | GET | `aeko_lookup_ad_locations` |
+| `/api/marketing/ad-groups/from-context` | POST | `aeko_create_ad_group_from_context` |
+| `/api/marketing/ad-groups/{ad_group_id}` | GET/POST | `aeko_update_ad_group` |
 | `/api/marketing/ads/{ad_id}` | POST | `aeko_update_ad_creative` |
 | `/api/contexts/opportunities` | GET | `aeko_list_context_opportunities` |
 | `/api/contexts/{context_id}/metrics` | GET | `aeko_get_context_metrics` |

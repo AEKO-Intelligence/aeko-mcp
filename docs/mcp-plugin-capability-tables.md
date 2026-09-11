@@ -96,7 +96,9 @@ Tier shorthand:
 | `aeko_get_ad_account_status` | Read OpenAI Ads account status. | No | Pro+ |
 | `aeko_get_feed_status` | Read OpenAI Ads feed readiness. | No | Pro+ |
 | `aeko_sync_feed` | Queue OpenAI Ads product-feed sync. | No | Pro+ |
-| `aeko_create_ad_group_from_context` | Create a paused context-grounded ad group and ads. | No | Pro+ |
+| `aeko_list_conversion_event_settings` | List account-scoped conversion events with optimization eligibility. | No | Pro+ |
+| `aeko_lookup_ad_locations` | Resolve account-scoped OpenAI Ads location IDs for targeting. | No | Pro+ |
+| `aeko_create_ad_group_from_context` | Create a paused CPM, CPC, or oCPC context-grounded campaign/ad group and ads. | No | Pro+ |
 | `aeko_update_campaign_budget` | Guarded campaign budget update. | No | Pro+ |
 | `aeko_update_ad_group` | Preview or apply guarded ad-group copy, Context-hint, and maximum-bid changes. | No | Pro+ |
 | `aeko_update_ad_creative` | Replace an existing ad's complete creative after a read-before-write. | No | Pro+ |

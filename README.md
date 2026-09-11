@@ -80,7 +80,7 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP registers 115 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, store-write actions, versioned brand documents, accepted whole-brand packages, Brand Wiki reads, and Fact Check findings.
+AEKO MCP registers 117 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, store-write actions, versioned brand documents, accepted whole-brand packages, Brand Wiki reads, and Fact Check findings.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
@@ -124,6 +124,9 @@ The `sources` and `content_ideas` groups support the Content dashboard's AI work
 
 The `marketing` group includes guarded updates for existing OpenAI Ads entities (Pro+):
 
+- `aeko_list_conversion_event_settings(domain_id, ad_account_id, ...)` — discover current-account conversion events and their backend-derived optimization eligibility before selecting one for oCPC.
+- `aeko_lookup_ad_locations(domain_id, q, ad_account_id, ...)` — resolve account-scoped provider location IDs for campaign targeting.
+- `aeko_create_ad_group_from_context(..., bidding_type, conversion_event_setting_ids, targeting, start_time, end_time)` — create a paused campaign/ad group with matching CPM, CPC, or oCPC billing, or resolve an existing campaign's goal before adding a child group.
 - `aeko_update_ad_group(ad_group_id, idempotency_key, ...)` — preview or apply ad-group copy, Context hints, and maximum-bid changes with mandatory real-write ceiling and delta guards.
 - `aeko_update_ad_creative(ad_id, idempotency_key, ...)` — replace an existing ad creative only after the caller resends the complete creative returned by `aeko_list_ads`.
 

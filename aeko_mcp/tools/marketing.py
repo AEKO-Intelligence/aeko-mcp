@@ -34,7 +34,7 @@ from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
 
 # Backend enforces this floor on campaign budgets (schemas/marketing.py MarketingBudget).
 MIN_BUDGET_MICROS = 1_000_000
-# Backend bidding schema accepts 1..100_000_000 micros per impression.
+# Backend bidding schema accepts 1..100_000_000 micros per billing event.
 MIN_BID_MICROS = 1
 MAX_BID_MICROS = 100_000_000
 # Backend caps one inject request at 200 reviews (schemas/review.py ReviewInjectRequest).
@@ -43,6 +43,11 @@ INJECT_REVIEWS_BATCH_SIZE = 200
 MAX_ADS_PER_AD_GROUP = 100
 # Backend requires >= 3 chars for new campaign / ad-group names (schemas/marketing.py).
 MIN_NAME_LENGTH = 3
+CAMPAIGN_BILLING_EVENT = {
+    "impressions": "impression",
+    "clicks": "click",
+    "conversions": "click",
+}
 
 
 def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
@@ -211,10 +216,14 @@ def aeko_inject_reviews(domain_id: str, reviews: list[dict]) -> str:
 
 
 @mcp.tool(title="List ad campaigns", annotations=READ_ONLY)
-def aeko_list_campaigns(domain_id: str) -> str:
-    """List a domain's OpenAI-Ads campaigns (id, name, status, budget). Use the returned
-    ``id`` as ``campaign_id`` for ad-group listing, budget updates, or pausing."""
-    result, err = _safe(client.get, "/api/marketing/campaigns", params={"domain_id": domain_id})
+def aeko_list_campaigns(domain_id: str, ad_account_id: Optional[str] = None) -> str:
+    """List a domain's OpenAI-Ads campaigns, including each campaign's ``bidding_type``,
+    ``conversion_event_setting_ids``, and ``product_feed_id``. Pass ``ad_account_id`` when the
+    domain has more than one ad account. Use the returned ``id`` for child reads or updates."""
+    params = {"domain_id": domain_id}
+    if ad_account_id:
+        params["ad_account_id"] = ad_account_id
+    result, err = _safe(client.get, "/api/marketing/campaigns", params=params)
     if err:
         return f"# Failed to list campaigns\n\n```\n{err}\n```"
     items = result if isinstance(result, list) else []
@@ -251,6 +260,7 @@ def aeko_get_ad_insights(
     scope_id: Optional[str] = None,
     segment: Optional[str] = None,
     limit: int = 200,
+    ad_account_id: Optional[str] = None,
 ) -> str:
     """Pull performance metrics (impressions, clicks, spend_micros, ctr, cpc_micros, cpm_micros) for
     reporting or budget decisions. ``scope`` = account | campaign | ad_group | ad (non-account needs
@@ -269,6 +279,8 @@ def aeko_get_ad_insights(
         params["scope_id"] = scope_id
     if segment:
         params["segment"] = segment
+    if ad_account_id:
+        params["ad_account_id"] = ad_account_id
     result, err = _safe(client.get, "/api/marketing/insights", params=params)
     if err:
         return f"# Failed to get insights\n\n```\n{err}\n```"
@@ -276,46 +288,120 @@ def aeko_get_ad_insights(
 
 
 @mcp.tool(title="Get ad account status", annotations=READ_ONLY)
-def aeko_get_ad_account_status(domain_id: str) -> str:
+def aeko_get_ad_account_status(
+    domain_id: str, ad_account_id: Optional[str] = None
+) -> str:
     """Read OpenAI Ads account connection/feed credential status for a domain.
 
     Pro+ gated server-side. Secrets are never returned by the backend.
     """
-    result, err = _safe(
-        client.get,
-        "/api/marketing/ad-account",
-        params={"domain_id": domain_id},
-    )
+    params = {"domain_id": domain_id}
+    if ad_account_id:
+        params["ad_account_id"] = ad_account_id
+    result, err = _safe(client.get, "/api/marketing/ad-account", params=params)
     if err:
         return f"# Failed to get ad account status\n\n```\n{err}\n```"
     return _json_block("Ad account status", result)
 
 
 @mcp.tool(title="Get feed status", annotations=READ_ONLY)
-def aeko_get_feed_status(domain_id: str) -> str:
+def aeko_get_feed_status(domain_id: str, ad_account_id: Optional[str] = None) -> str:
     """Read OpenAI Ads product-feed readiness and latest sync status."""
-    result, err = _safe(
-        client.get,
-        "/api/marketing/feed",
-        params={"domain_id": domain_id},
-    )
+    params = {"domain_id": domain_id}
+    if ad_account_id:
+        params["ad_account_id"] = ad_account_id
+    result, err = _safe(client.get, "/api/marketing/feed", params=params)
     if err:
         return f"# Failed to get feed status\n\n```\n{err}\n```"
     return _json_block("Feed status", result)
 
 
 @mcp.tool(title="Sync product feed", annotations=WRITE)
-def aeko_sync_feed(domain_id: str, idempotency_key: str) -> str:
+def aeko_sync_feed(
+    domain_id: str,
+    idempotency_key: str,
+    ad_account_id: Optional[str] = None,
+) -> str:
     """Queue an OpenAI Ads product-feed sync for a connected ad account."""
+    params = {"domain_id": domain_id}
+    if ad_account_id:
+        params["ad_account_id"] = ad_account_id
     result, err = _safe(
         client.post,
         "/api/marketing/feed/sync",
-        params={"domain_id": domain_id},
+        params=params,
         headers=_idem_headers(idempotency_key),
     )
     if err:
         return f"# Failed to sync feed\n\n```\n{err}\n```"
     return _json_block("Feed sync queued", result)
+
+
+@mcp.tool(title="List OpenAI Ads conversion event settings", annotations=READ_ONLY)
+def aeko_list_conversion_event_settings(
+    domain_id: str,
+    ad_account_id: Optional[str] = None,
+    limit: int = 20,
+    after: Optional[str] = None,
+    before: Optional[str] = None,
+    order: str = "desc",
+) -> str:
+    """List the current ad account's conversion event settings before creating an oCPC campaign.
+
+    Choose one row where ``eligible_for_optimization`` is true and pass its ``id`` as the sole item
+    in ``conversion_event_setting_ids``. Rows include event type, source, attribution window, and a
+    reason when ineligible. Pass ``ad_account_id`` for an explicit account. Pagination accepts one
+    of ``after`` or ``before`` and an ``order`` of ``asc`` or ``desc``.
+    """
+    if after and before:
+        return "# Choose either `after` or `before` pagination, not both."
+    normalized_order = (order or "").strip().lower()
+    if normalized_order not in {"asc", "desc"}:
+        return "# `order` must be `asc` or `desc`."
+    params: dict[str, Any] = {
+        "domain_id": domain_id,
+        "limit": max(1, min(int(limit), 500)),
+        "order": normalized_order,
+    }
+    if ad_account_id:
+        params["ad_account_id"] = ad_account_id
+    if after:
+        params["after"] = after
+    if before:
+        params["before"] = before
+    result, err = _safe(
+        client.get, "/api/marketing/conversions/event-settings", params=params
+    )
+    if err:
+        return f"# Failed to list conversion event settings\n\n```\n{err}\n```"
+    return _json_block("Conversion event settings", result)
+
+
+@mcp.tool(title="Look up OpenAI Ads locations", annotations=READ_ONLY)
+def aeko_lookup_ad_locations(
+    domain_id: str,
+    q: str,
+    ad_account_id: Optional[str] = None,
+    limit: int = 10,
+) -> str:
+    """Search the current ad account's location catalog. Use returned location ``id`` values in
+    campaign ``targeting.locations.include`` entries such as ``[{\"id\": \"geo_123\"}]``.
+    Pass ``ad_account_id`` for an explicit account. The search text must contain at least 2 chars.
+    """
+    query = (q or "").strip()
+    if len(query) < 2:
+        return "# `q` must contain at least 2 characters."
+    params: dict[str, Any] = {
+        "domain_id": domain_id,
+        "q": query,
+        "limit": max(1, min(int(limit), 50)),
+    }
+    if ad_account_id:
+        params["ad_account_id"] = ad_account_id
+    result, err = _safe(client.get, "/api/marketing/geo-lookup", params=params)
+    if err:
+        return f"# Failed to look up ad locations\n\n```\n{err}\n```"
+    return _json_block(f"Ad locations matching `{query}`", result)
 
 
 # --- Automated pacing / guardrail rules -------------------------------------------
@@ -688,6 +774,12 @@ def aeko_create_ad_group_from_context(
     campaign_id: Optional[str] = None,
     new_campaign_name: Optional[str] = None,
     new_campaign_budget_micros: Optional[int] = None,
+    ad_account_id: Optional[str] = None,
+    bidding_type: Optional[str] = None,
+    conversion_event_setting_ids: Optional[list[str]] = None,
+    targeting: Optional[dict] = None,
+    start_time: Optional[int] = None,
+    end_time: Optional[int] = None,
 ) -> str:
     """Create ONE ad group with a broader, agent-composed ``context_hints`` set and MULTIPLE product
     ads under it (created PAUSED for review). This is how a cluster of reviews across products becomes
@@ -695,7 +787,16 @@ def aeko_create_ad_group_from_context(
     ['민감성 피부에 좋은 제품'] with one ad per product.
 
     Placement: pass EITHER ``campaign_id`` (existing) OR both ``new_campaign_name`` +
-    ``new_campaign_budget_micros`` (>= 1_000_000). ``ads`` = list of dicts (max 100 per ad group —
+    ``new_campaign_budget_micros`` (>= 1_000_000). New campaigns may set ``bidding_type`` to
+    ``impressions`` (default), ``clicks``, or ``conversions``. A conversions campaign requires
+    exactly one eligible event ID from ``aeko_list_conversion_event_settings``. ``targeting`` uses
+    provider location IDs from ``aeko_lookup_ad_locations``; ``start_time`` and ``end_time`` are
+    epoch seconds. These campaign fields are rejected with an existing ``campaign_id`` because a
+    campaign's goal and conversion event are immutable.
+
+    ``max_bid_micros`` is per billing event: 60,000 means $0.06 per impression ($60 CPM) for an
+    impressions campaign, per click for a clicks campaign, and the target CPA bid for a conversions
+    campaign (whose ad group is click-billed). ``ads`` = list of dicts (max 100 per ad group —
     OpenAI Ads cap; split a larger cluster into multiple ad groups), each:
     ``store_product_id`` (required), and optional ``source_review_id``, ``title``, ``body``,
     ``target_language`` (if title/body omitted, the backend composes clean creative from the review).
@@ -716,6 +817,29 @@ def aeko_create_ad_group_from_context(
             "# Provide exactly one placement — either `campaign_id` (existing) OR "
             "`new_campaign_name` + `new_campaign_budget_micros` (new)."
         )
+    if max_bid_micros < MIN_BID_MICROS or max_bid_micros > MAX_BID_MICROS:
+        return (
+            f"# Rejected — bid {max_bid_micros} must be between {MIN_BID_MICROS} and "
+            f"{MAX_BID_MICROS} micros."
+        )
+
+    goal_fields_supplied = any(
+        value is not None
+        for value in (
+            bidding_type,
+            conversion_event_setting_ids,
+            targeting,
+            start_time,
+            end_time,
+        )
+    )
+    if campaign_id and goal_fields_supplied:
+        return (
+            "# `bidding_type`, `conversion_event_setting_ids`, `targeting`, `start_time`, and "
+            "`end_time` apply only when creating a new campaign. Read the existing campaign's "
+            "immutable goal instead."
+        )
+
     if new_campaign_name:
         if len(new_campaign_name.strip()) < MIN_NAME_LENGTH:
             return (
@@ -724,14 +848,45 @@ def aeko_create_ad_group_from_context(
             )
         if not new_campaign_budget_micros or new_campaign_budget_micros < MIN_BUDGET_MICROS:
             return f"# `new_campaign_budget_micros` is required and must be >= {MIN_BUDGET_MICROS}."
-        placement = {
-            "new_campaign": {
-                "name": new_campaign_name,
-                "budget": {"lifetime_spend_limit_micros": int(new_campaign_budget_micros)},
-            }
+        normalized_goal = (bidding_type or "impressions").strip().lower()
+        if normalized_goal not in CAMPAIGN_BILLING_EVENT:
+            return "# `bidding_type` must be `impressions`, `clicks`, or `conversions`."
+        event_ids = [item.strip() for item in (conversion_event_setting_ids or [])]
+        if any(not item for item in event_ids):
+            return "# `conversion_event_setting_ids` must not contain blank values."
+        if normalized_goal == "conversions" and len(event_ids) != 1:
+            return "# Conversions campaigns require exactly one `conversion_event_setting_ids` item."
+        if normalized_goal != "conversions" and event_ids:
+            return "# `conversion_event_setting_ids` are only valid for conversions campaigns."
+        if start_time is not None and end_time is not None and int(end_time) <= int(start_time):
+            return "# `end_time` must be later than `start_time`."
+        new_campaign: dict[str, Any] = {
+            "name": new_campaign_name,
+            "budget": {"lifetime_spend_limit_micros": int(new_campaign_budget_micros)},
+            "bidding_type": normalized_goal,
         }
+        if conversion_event_setting_ids is not None:
+            new_campaign["conversion_event_setting_ids"] = event_ids
+        if targeting is not None:
+            new_campaign["targeting"] = targeting
+        if start_time is not None:
+            new_campaign["start_time"] = int(start_time)
+        if end_time is not None:
+            new_campaign["end_time"] = int(end_time)
+        placement = {"new_campaign": new_campaign}
     else:
         placement = {"campaign_id": campaign_id}
+        campaign, err = _safe(client.get, f"/api/marketing/campaigns/{campaign_id}")
+        if err:
+            return f"# Failed to read existing campaign goal\n\n```\n{err}\n```"
+        if not isinstance(campaign, dict):
+            return "# Failed to read existing campaign goal — AEKO returned malformed campaign data."
+        normalized_goal = str(campaign.get("bidding_type") or "").strip().lower()
+        if normalized_goal not in CAMPAIGN_BILLING_EVENT:
+            return (
+                "# Failed to read existing campaign goal — AEKO did not return a supported "
+                "`bidding_type`."
+            )
 
     payload = {
         "domain_id": domain_id,
@@ -740,7 +895,7 @@ def aeko_create_ad_group_from_context(
             "new": {
                 "name": ad_group_name,
                 "bidding_config": {
-                    "billing_event_type": "impression",
+                    "billing_event_type": CAMPAIGN_BILLING_EVENT[normalized_goal],
                     "max_bid_micros": int(max_bid_micros),
                 },
                 "context_hints": [h for h in (context_hints or []) if h and h.strip()] or None,
@@ -748,6 +903,8 @@ def aeko_create_ad_group_from_context(
         },
         "ads": ads,
     }
+    if ad_account_id:
+        payload["ad_account_id"] = ad_account_id
     result, err = _safe(
         client.post,
         "/api/marketing/ad-groups/from-context",
@@ -840,7 +997,7 @@ def aeko_update_ad_group(
     max_bid_ceiling_micros: Optional[int] = None,
     max_delta_pct: float = 25.0,
 ) -> str:
-    """Update ad-group copy, Context hints, or the maximum impression bid.
+    """Update ad-group copy, Context hints, or the maximum bid while preserving its billing event.
 
     Bid is spend, so the same tool-level safety pattern as campaign budgets is
     enforced: the call defaults to ``dry_run=True``; a real bid write requires
@@ -851,7 +1008,10 @@ def aeko_update_ad_group(
     Status and product-set changes are deliberately excluded. Use
     ``aeko_set_ad_group_state`` for pause/resume/archive so its confirmation
     gates cannot be bypassed. Read the current bidding value from
-    ``aeko_list_ad_groups`` before changing it. Pro+ is enforced server-side.
+    ``aeko_list_ad_groups`` before changing it. The tool also fetches the exact ad group before a
+    bid preview or write and reuses its ``impression`` or ``click`` billing event. Bid micros are per
+    impression for CPM (60,000 = $0.06 per impression = $60 CPM), per click for clicks campaigns,
+    and the target CPA bid for conversions campaigns. Pro+ is enforced server-side.
     """
     payload: dict[str, Any] = {}
     if name is not None:
@@ -906,8 +1066,22 @@ def aeko_update_ad_group(
                     f"# Rejected — bid change {delta_note} exceeds max_delta_pct "
                     f"{max_delta_pct}%. Split into smaller steps or raise the cap deliberately."
                 )
+        current_group, err = _safe(
+            client.get, f"/api/marketing/ad-groups/{ad_group_id}"
+        )
+        if err:
+            return f"# Failed to read current ad-group billing\n\n```\n{err}\n```"
+        bidding = current_group.get("bidding") if isinstance(current_group, dict) else None
+        billing_event_type = (
+            bidding.get("billing_event_type") if isinstance(bidding, dict) else None
+        )
+        if billing_event_type not in {"impression", "click"}:
+            return (
+                "# Failed to read current ad-group billing — AEKO did not return a supported "
+                "`billing_event_type`."
+            )
         payload["bidding_config"] = {
-            "billing_event_type": "impression",
+            "billing_event_type": billing_event_type,
             "max_bid_micros": new_bid,
         }
 
