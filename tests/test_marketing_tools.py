@@ -62,6 +62,23 @@ def _no_write(monkeypatch):
     return flag
 
 
+def _mock_ad_group_billing(monkeypatch, billing_event_type="impression"):
+    calls = []
+
+    def fake_get(path, params=None):
+        calls.append({"path": path, "params": params})
+        return {
+            "id": "ag1",
+            "bidding": {
+                "billing_event_type": billing_event_type,
+                "max_bid_micros": 1_000_000,
+            },
+        }
+
+    monkeypatch.setattr(marketing.client, "get", fake_get)
+    return calls
+
+
 def test_budget_dry_run_default_writes_nothing(monkeypatch):
     flag = _no_write(monkeypatch)
     out = marketing.aeko_update_campaign_budget(
@@ -116,6 +133,7 @@ def test_ad_update_tools_are_registered_as_idempotent_writes():
 
 def test_ad_group_bid_defaults_to_dry_run_with_full_bidding_object(monkeypatch):
     flag = _no_write(monkeypatch)
+    gets = _mock_ad_group_billing(monkeypatch)
     out = marketing.aeko_update_ad_group(
         "ag1",
         "idem",
@@ -128,6 +146,7 @@ def test_ad_group_bid_defaults_to_dry_run_with_full_bidding_object(monkeypatch):
     assert '"billing_event_type": "impression"' in out
     assert '"max_bid_micros": 1200000' in out
     assert flag["posted"] is False
+    assert gets == [{"path": "/api/marketing/ad-groups/ag1", "params": None}]
 
 
 def test_ad_group_bid_rejects_outside_backend_bounds(monkeypatch):
@@ -183,6 +202,7 @@ def test_ad_group_bid_rejects_ceiling_and_delta(monkeypatch):
 
 def test_ad_group_real_bid_write_posts_guarded_payload(monkeypatch):
     calls = []
+    gets = _mock_ad_group_billing(monkeypatch, "click")
 
     def fake_post(path, json=None, headers=None):
         calls.append({"path": path, "json": json, "headers": headers})
@@ -205,13 +225,26 @@ def test_ad_group_real_bid_write_posts_guarded_payload(monkeypatch):
             "path": "/api/marketing/ad-groups/ag1",
             "json": {
                 "bidding_config": {
-                    "billing_event_type": "impression",
+                    "billing_event_type": "click",
                     "max_bid_micros": 900_000,
                 }
             },
             "headers": {"Idempotency-Key": "idem-bid"},
         }
     ]
+    assert gets == [{"path": "/api/marketing/ad-groups/ag1", "params": None}]
+
+
+def test_ad_group_bid_rejects_missing_or_unknown_current_billing(monkeypatch):
+    flag = _no_write(monkeypatch)
+    monkeypatch.setattr(marketing.client, "get", lambda *a, **k: {"id": "ag1"})
+
+    out = marketing.aeko_update_ad_group(
+        "ag1", "idem", max_bid_micros=900_000, current_max_bid_micros=1_000_000
+    )
+
+    assert "supported `billing_event_type`" in out
+    assert flag["posted"] is False
 
 
 def test_ad_group_non_bid_write_skips_bid_caps_but_honors_dry_run(monkeypatch):
@@ -392,6 +425,162 @@ def test_create_ad_group_rejects_too_many_ads():
     assert "at most 100 ads" in out
 
 
+def test_create_new_conversion_campaign_forwards_goal_targeting_and_schedule(monkeypatch):
+    calls = []
+
+    def fake_post(path, json=None, headers=None):
+        calls.append({"path": path, "json": json, "headers": headers})
+        return {"campaign": {"bidding_type": "conversions"}}
+
+    monkeypatch.setattr(marketing.client, "post", fake_post)
+    out = marketing.aeko_create_ad_group_from_context(
+        "d1",
+        "Conversion group",
+        ["ready to buy"],
+        [{"store_product_id": "p1"}],
+        "idem-conversion",
+        max_bid_micros=3_000_000,
+        new_campaign_name="Conversion campaign",
+        new_campaign_budget_micros=20_000_000,
+        ad_account_id="account-1",
+        bidding_type="conversions",
+        conversion_event_setting_ids=["event-1"],
+        targeting={"locations": {"include": [{"id": "geo-1"}]}},
+        start_time=1_800_000_000,
+        end_time=1_800_086_400,
+    )
+
+    assert "Ad group created" in out
+    body = calls[0]["json"]
+    assert body["ad_account_id"] == "account-1"
+    assert body["placement"]["new_campaign"] == {
+        "name": "Conversion campaign",
+        "budget": {"lifetime_spend_limit_micros": 20_000_000},
+        "bidding_type": "conversions",
+        "conversion_event_setting_ids": ["event-1"],
+        "targeting": {"locations": {"include": [{"id": "geo-1"}]}},
+        "start_time": 1_800_000_000,
+        "end_time": 1_800_086_400,
+    }
+    assert body["ad_group"]["new"]["bidding_config"] == {
+        "billing_event_type": "click",
+        "max_bid_micros": 3_000_000,
+    }
+    assert calls[0]["headers"] == {"Idempotency-Key": "idem-conversion"}
+
+
+def test_create_new_campaign_preserves_legacy_impression_default(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        marketing.client,
+        "post",
+        lambda path, json=None, headers=None: calls.append(json) or {"ok": True},
+    )
+
+    marketing.aeko_create_ad_group_from_context(
+        "d1",
+        "Legacy CPM group",
+        ["hint"],
+        [{"store_product_id": "p1"}],
+        "idem-cpm",
+        new_campaign_name="Legacy CPM campaign",
+        new_campaign_budget_micros=10_000_000,
+    )
+
+    assert calls[0]["placement"]["new_campaign"]["bidding_type"] == "impressions"
+    assert calls[0]["ad_group"]["new"]["bidding_config"]["billing_event_type"] == "impression"
+
+
+def test_create_in_existing_campaign_reads_goal_before_write(monkeypatch):
+    gets = []
+    posts = []
+
+    def fake_get(path, params=None):
+        gets.append(path)
+        return {"id": "c1", "bidding_type": "clicks"}
+
+    monkeypatch.setattr(marketing.client, "get", fake_get)
+    monkeypatch.setattr(
+        marketing.client,
+        "post",
+        lambda path, json=None, headers=None: posts.append(json) or {"ok": True},
+    )
+
+    out = marketing.aeko_create_ad_group_from_context(
+        "d1",
+        "Existing CPC group",
+        ["hint"],
+        [{"store_product_id": "p1"}],
+        "idem-cpc",
+        campaign_id="c1",
+    )
+
+    assert "Ad group created" in out
+    assert gets == ["/api/marketing/campaigns/c1"]
+    assert posts[0]["ad_group"]["new"]["bidding_config"]["billing_event_type"] == "click"
+
+
+def test_existing_campaign_rejects_new_campaign_fields_without_io(monkeypatch):
+    posts = _no_write(monkeypatch)
+    reads = {"called": False}
+    monkeypatch.setattr(
+        marketing.client,
+        "get",
+        lambda *a, **k: reads.__setitem__("called", True) or {},
+    )
+
+    out = marketing.aeko_create_ad_group_from_context(
+        "d1",
+        "Existing group",
+        ["hint"],
+        [{"store_product_id": "p1"}],
+        "idem",
+        campaign_id="c1",
+        bidding_type="clicks",
+    )
+
+    assert "apply only when creating a new campaign" in out
+    assert reads["called"] is False
+    assert posts["posted"] is False
+
+
+def test_new_campaign_goal_and_schedule_validation_happens_before_write(monkeypatch):
+    flag = _no_write(monkeypatch)
+    base = (
+        "d1",
+        "New campaign group",
+        ["hint"],
+        [{"store_product_id": "p1"}],
+        "idem",
+    )
+
+    missing_event = marketing.aeko_create_ad_group_from_context(
+        *base,
+        new_campaign_name="Conversion campaign",
+        new_campaign_budget_micros=10_000_000,
+        bidding_type="conversions",
+    )
+    wrong_event = marketing.aeko_create_ad_group_from_context(
+        *base,
+        new_campaign_name="Clicks campaign",
+        new_campaign_budget_micros=10_000_000,
+        bidding_type="clicks",
+        conversion_event_setting_ids=["event-1"],
+    )
+    bad_schedule = marketing.aeko_create_ad_group_from_context(
+        *base,
+        new_campaign_name="Scheduled campaign",
+        new_campaign_budget_micros=10_000_000,
+        start_time=1_800_000_000,
+        end_time=1_700_000_000,
+    )
+
+    assert "exactly one" in missing_event
+    assert "only valid for conversions" in wrong_event
+    assert "later than" in bad_schedule
+    assert flag["posted"] is False
+
+
 def test_inject_reviews_chunks_over_200(monkeypatch):
     calls = {"n": 0, "sizes": []}
 
@@ -473,25 +662,137 @@ def test_marketing_setup_tools_call_expected_routes(monkeypatch):
     monkeypatch.setattr(marketing.client, "get", fake_get)
     monkeypatch.setattr(marketing.client, "post", fake_post)
 
-    account = marketing.aeko_get_ad_account_status("domain-1")
-    feed = marketing.aeko_get_feed_status("domain-1")
-    sync = marketing.aeko_sync_feed("domain-1", "idem-feed")
+    account = marketing.aeko_get_ad_account_status("domain-1", "account-1")
+    feed = marketing.aeko_get_feed_status("domain-1", "account-1")
+    sync = marketing.aeko_sync_feed("domain-1", "idem-feed", "account-1")
 
     assert "Ad account status" in account
     assert "Feed status" in feed
     assert "Feed sync queued" in sync
     assert gets == [
-        {"path": "/api/marketing/ad-account", "params": {"domain_id": "domain-1"}},
-        {"path": "/api/marketing/feed", "params": {"domain_id": "domain-1"}},
+        {
+            "path": "/api/marketing/ad-account",
+            "params": {"domain_id": "domain-1", "ad_account_id": "account-1"},
+        },
+        {
+            "path": "/api/marketing/feed",
+            "params": {"domain_id": "domain-1", "ad_account_id": "account-1"},
+        },
     ]
     assert posts == [
         {
             "path": "/api/marketing/feed/sync",
             "json": None,
-            "params": {"domain_id": "domain-1"},
+            "params": {"domain_id": "domain-1", "ad_account_id": "account-1"},
             "headers": {"Idempotency-Key": "idem-feed"},
         }
     ]
+
+
+def test_account_scoped_campaign_and_insight_reads(monkeypatch):
+    calls = []
+
+    def fake_get(path, params=None):
+        calls.append({"path": path, "params": params})
+        return [] if path.endswith("campaigns") else {"rows": []}
+
+    monkeypatch.setattr(marketing.client, "get", fake_get)
+    marketing.aeko_list_campaigns("domain-1", "account-1")
+    marketing.aeko_get_ad_insights(
+        "domain-1", "2026-09-01", "2026-09-10", ad_account_id="account-1"
+    )
+
+    assert calls[0] == {
+        "path": "/api/marketing/campaigns",
+        "params": {"domain_id": "domain-1", "ad_account_id": "account-1"},
+    }
+    assert calls[1]["params"]["ad_account_id"] == "account-1"
+
+
+def test_conversion_event_and_geo_discovery_are_account_scoped(monkeypatch):
+    calls = []
+
+    def fake_get(path, params=None):
+        calls.append({"path": path, "params": params})
+        return {"data": [], "count": 0}
+
+    monkeypatch.setattr(marketing.client, "get", fake_get)
+    events = marketing.aeko_list_conversion_event_settings(
+        "domain-1", "account-1", limit=999, after="cursor-1", order="ASC"
+    )
+    locations = marketing.aeko_lookup_ad_locations(
+        "domain-1", "  Korea  ", "account-1", limit=999
+    )
+
+    assert "Conversion event settings" in events
+    assert "Ad locations matching" in locations
+    assert calls == [
+        {
+            "path": "/api/marketing/conversions/event-settings",
+            "params": {
+                "domain_id": "domain-1",
+                "ad_account_id": "account-1",
+                "limit": 500,
+                "after": "cursor-1",
+                "order": "asc",
+            },
+        },
+        {
+            "path": "/api/marketing/geo-lookup",
+            "params": {
+                "domain_id": "domain-1",
+                "ad_account_id": "account-1",
+                "q": "Korea",
+                "limit": 50,
+            },
+        },
+    ]
+
+
+def test_discovery_rejects_invalid_inputs_without_read(monkeypatch):
+    called = {"read": False}
+    monkeypatch.setattr(
+        marketing.client,
+        "get",
+        lambda *a, **k: called.__setitem__("read", True) or {},
+    )
+
+    cursors = marketing.aeko_list_conversion_event_settings(
+        "domain-1", after="next", before="previous"
+    )
+    order = marketing.aeko_list_conversion_event_settings("domain-1", order="newest")
+    query = marketing.aeko_lookup_ad_locations("domain-1", " ")
+
+    assert "either `after` or `before`" in cursors
+    assert "must be `asc` or `desc`" in order
+    assert "at least 2 characters" in query
+    assert called["read"] is False
+
+
+def test_campaign_discovery_tools_register_with_runtime_schemas():
+    registered = {
+        tool.name: tool for tool in marketing.mcp._tool_manager.list_tools()
+    }
+    for name in (
+        "aeko_list_conversion_event_settings",
+        "aeko_lookup_ad_locations",
+    ):
+        tool = registered[name]
+        assert tool.annotations.readOnlyHint is True
+        assert tool.annotations.idempotentHint is True
+        assert tool.parameters["type"] == "object"
+        assert "domain_id" in tool.parameters["properties"]
+        assert "ad_account_id" in tool.parameters["properties"]
+
+    create_schema = registered["aeko_create_ad_group_from_context"].parameters["properties"]
+    assert {
+        "ad_account_id",
+        "bidding_type",
+        "conversion_event_setting_ids",
+        "targeting",
+        "start_time",
+        "end_time",
+    } <= create_schema.keys()
 
 
 # --- OpenAI Ads pacing rules -------------------------------------------------------
