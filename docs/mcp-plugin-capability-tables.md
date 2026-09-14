@@ -92,7 +92,10 @@ Tier shorthand:
 | `aeko_list_campaigns` | List OpenAI Ads campaigns. | No | Pro+ |
 | `aeko_list_ad_groups` | List OpenAI Ads ad groups. | No | Pro+ |
 | `aeko_list_ads` | List OpenAI Ads ads. | No | Pro+ |
-| `aeko_get_ad_insights` | Read OpenAI Ads performance metrics. | No | Pro+ |
+| `aeko_get_ad_insights` | Read OpenAI Ads delivery metrics. | No | Pro+ |
+| `aeko_list_ad_accounts` | List a domain's OpenAI Ads accounts for explicit selection. | No | Pro+ |
+| `aeko_get_product_insights` | Read one explicit-account page of product delivery rows. | No | Pro+ |
+| `aeko_get_conversion_insights` | Read the stored campaign conversion report with coverage and freshness. | No | Pro+ |
 | `aeko_get_ad_account_status` | Read OpenAI Ads account status. | No | Pro+ |
 | `aeko_get_feed_status` | Read OpenAI Ads feed readiness. | No | Pro+ |
 | `aeko_sync_feed` | Queue OpenAI Ads product-feed sync. | No | Pro+ |
