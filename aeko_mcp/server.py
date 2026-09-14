@@ -67,6 +67,7 @@ from .tools import (  # noqa: E402, F401
     contexts,
     ga4,
     marketing,
+    marketing_reporting,
     media_upload,
     own_content,
     research,

@@ -267,7 +267,8 @@ def aeko_get_ad_insights(
     ``scope_id``); ``segment`` = product | country | device (optional). ``date_from``/``date_to`` are
     ISO dates (YYYY-MM-DD). The API does NOT rank — sort/aggregate in the skill.
 
-    NOTE: conversions/ROAS are not yet ingested; rank on efficiency proxies (CTR, CPC, spend, clicks)."""
+    NOTE: this tool reads delivery metrics only. Stored campaign conversions are a separate read,
+    ``aeko_get_conversion_insights``; neither tool provides revenue or ROAS."""
     params: dict[str, Any] = {
         "domain_id": domain_id,
         "scope": scope,

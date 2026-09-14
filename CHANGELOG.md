@@ -4,6 +4,21 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## Unreleased
+
+### Added
+
+- Add read-only `aeko_list_ad_accounts`, `aeko_get_product_insights`, and
+  `aeko_get_conversion_insights` in `marketing_reporting`. Product and conversion reads require an
+  explicit `domain_id` and `ad_account_id`, send one bounded GET, validate scope/date/limit/cursor
+  locally, and return backend page, carousel, coverage, freshness, and attribution metadata verbatim.
+
+### Changed
+
+- `aeko_get_ad_insights` documentation now points to stored conversions instead of saying
+  conversions are not ingested; its signature and behavior are unchanged.
+- Registered tool count is now 120 across 20 modules.
+
 ## [0.23.0] — 2026-09-11
 
 ### Added

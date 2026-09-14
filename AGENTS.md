@@ -8,7 +8,7 @@ Python MCP (Model Context Protocol) server bridging Claude and other AI assistan
 - **Transport:** streamable-http, stateless, JSON responses by default (`aeko_mcp/server.py`)
 - **Backend (prod default):** `https://aeko-backend.purplehill-6906b42f.koreacentral.azurecontainerapps.io` (override with `AEKO_API_URL`)
 
-## Registered tool groups — 117 tools across 19 modules (`aeko_mcp/tools/`)
+## Registered tool groups — 120 tools across 20 modules (`aeko_mcp/tools/`)
 
 | Module | Tools | Covers |
 |---|---|---|
@@ -23,6 +23,7 @@ Python MCP (Model Context Protocol) server bridging Claude and other AI assistan
 | `reviews` | 7 | Review integrations/products, Context Reviews, suggested prompts |
 | `contexts` | 11 | Curated AEKO Context memories, CRUD, opportunity/Focus workflows, metrics, translations |
 | `marketing` | 30 | Contextual reviews, review injection, OpenAI Ads setup/discovery/compose/edit/report/optimize/state, pacing rules |
+| `marketing_reporting` | 3 | Read-only OpenAI Ads account list, explicit-account product insight pages, stored conversion reports ([contract](docs/contracts/ads-reporting-read-contract.md)) |
 | `analytics` | 3 | SOV, drift, Measure |
 | `ga4` | 4 | GA4 status, property selection, sync |
 | `views` | 3 | Prompt view list/create/add prompts |
