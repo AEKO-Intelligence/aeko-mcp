@@ -4,6 +4,10 @@ Keep annotations as runtime types in this module. MCP 1.12.x inspects every
 registered function with ``issubclass`` before it builds the tool schema and
 does not resolve annotations postponed by ``from __future__ import
 annotations``.
+
+The three package tools return structured results and raise ``aeko.error.v1``
+failures (see ``_structured``). The Brand Wiki tools keep their JSON text and
+legacy error messages.
 """
 
 import json
@@ -13,6 +17,15 @@ from uuid import UUID
 
 from ..server import client, mcp
 from ._annotations import READ_ONLY
+from ._structured import (
+    BrandPackageFileChunk,
+    BrandPackageMember,
+    BrandPackagePage,
+    CodedRuntimeError,
+    CodedValueError,
+    read_boundary,
+    text_bytes,
+)
 
 METADATA_PAGE_BYTES = 32 * 1024
 MAX_PACKAGE_MEMBERS = 128
@@ -27,8 +40,26 @@ def _uuid(value: str) -> str:
 
 def _integer(value: int, minimum: int, maximum: int) -> int:
     if type(value) is not int or not minimum <= value <= maximum:
-        raise ValueError(f"Expected an integer between {minimum} and {maximum}.")
+        raise CodedValueError(
+            "INVALID_ARGUMENT", f"Expected an integer between {minimum} and {maximum}."
+        )
     return value
+
+
+def _integer_arg(value: int, name: str, minimum: int, maximum: int) -> int:
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise CodedValueError(
+            "INVALID_ARGUMENT",
+            f"{name} must be an integer between {minimum} and {maximum}.",
+        )
+    return value
+
+
+def _domain_arg(domain_id: str) -> str:
+    try:
+        return _uuid(domain_id)
+    except (TypeError, ValueError):
+        raise CodedValueError("INVALID_ARGUMENT", "domain_id must be a UUID.") from None
 
 
 def _json(payload: dict) -> str:
@@ -37,7 +68,9 @@ def _json(payload: dict) -> str:
 
 def _digest(value: str, label: str = "digest") -> str:
     if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
-        raise ValueError(f"{label} must be a lowercase SHA-256 digest.")
+        raise CodedValueError(
+            "INVALID_ARGUMENT", f"{label} must be a lowercase SHA-256 digest."
+        )
     return value
 
 
@@ -50,7 +83,9 @@ def _relative_path(path: str) -> str:
         or "\x00" in path
         or any(part in {"", ".", ".."} for part in path.split("/"))
     ):
-        raise ValueError("Use an exact relative path from the package manifest.")
+        raise CodedValueError(
+            "INVALID_ARGUMENT", "Use an exact relative path from the package manifest."
+        )
     return path
 
 
@@ -62,16 +97,21 @@ def _get_capability(path: str, *, params: dict, capability: str) -> dict:
         # A FastAPI router that is absent returns the plain detail "Not Found".
         # Preserve typed resource errors such as BRAND_PACKAGE_NOT_INITIALIZED.
         if message == "Not Found" or message.endswith(" — Not Found"):
-            raise RuntimeError(
+            raise CodedRuntimeError(
+                "CAPABILITY_UNAVAILABLE",
                 f"This AEKO backend does not provide {capability} yet. "
-                "Update the deployed backend before using this tool."
+                "Update the deployed backend before using this tool.",
             ) from None
         raise
 
 
+def _invalid_package(message: str) -> CodedRuntimeError:
+    return CodedRuntimeError("INVALID_BACKEND_RESPONSE", message)
+
+
 def _member(value: object) -> dict:
     if not isinstance(value, dict):
-        raise RuntimeError("AEKO returned an invalid brand package member.")
+        raise _invalid_package("AEKO returned an invalid brand package member.")
     try:
         result = {
             "document_id": _uuid(value["document_id"]),
@@ -90,27 +130,27 @@ def _member(value: object) -> dict:
             ),
         }
     except (KeyError, TypeError, ValueError):
-        raise RuntimeError("AEKO returned an invalid brand package member.") from None
+        raise _invalid_package("AEKO returned an invalid brand package member.") from None
     if result["kind"] not in {"skill", "eval", "wiki"}:
-        raise RuntimeError("AEKO returned an invalid brand package member kind.")
+        raise _invalid_package("AEKO returned an invalid brand package member kind.")
     if result["origin"] not in {"aeko_default", "brand"}:
-        raise RuntimeError("AEKO returned an invalid brand package member origin.")
+        raise _invalid_package("AEKO returned an invalid brand package member origin.")
     if (
         not isinstance(result["subkind"], str)
         or not isinstance(result["key"], str)
         or not isinstance(result["package_slug"], str)
         or _PACKAGE_SLUG.fullmatch(result["package_slug"]) is None
     ):
-        raise RuntimeError("AEKO returned an invalid brand package member identity.")
+        raise _invalid_package("AEKO returned an invalid brand package member identity.")
     return result
 
 
 def _package(domain_id: str, version: int | None = None) -> dict:
-    domain_id = _uuid(domain_id)
+    domain_id = _domain_arg(domain_id)
     if version is None:
         path = "/api/automations/brand-package"
     else:
-        _integer(version, 1, 2**31 - 1)
+        _integer_arg(version, "version", 1, 2**31 - 1)
         path = f"/api/automations/brand-package/versions/{version}"
     data = _get_capability(
         path,
@@ -118,9 +158,9 @@ def _package(domain_id: str, version: int | None = None) -> dict:
         capability="the Brand Package read API",
     )
     if not isinstance(data, dict) or not isinstance(data.get("members"), list):
-        raise RuntimeError("AEKO returned an unexpected brand package.")
+        raise _invalid_package("AEKO returned an unexpected brand package.")
     if len(data["members"]) > MAX_PACKAGE_MEMBERS:
-        raise RuntimeError("AEKO returned a brand package exceeding the member limit.")
+        raise _invalid_package("AEKO returned a brand package exceeding the member limit.")
     try:
         normalized = {
             "id": _uuid(data["id"]),
@@ -143,76 +183,93 @@ def _package(domain_id: str, version: int | None = None) -> dict:
             "export": data["export"],
         }
     except (KeyError, TypeError, ValueError):
-        raise RuntimeError("AEKO returned an unexpected brand package.") from None
+        raise _invalid_package("AEKO returned an unexpected brand package.") from None
     if type(normalized["active"]) is not bool:
-        raise RuntimeError("AEKO returned an invalid brand package state.")
+        raise _invalid_package("AEKO returned an invalid brand package state.")
     if normalized["base_version"] is not None:
         try:
             normalized["base_version"] = _integer(
                 normalized["base_version"], 1, 2**31 - 1
             )
         except ValueError:
-            raise RuntimeError(
-                "AEKO returned an invalid base package version."
-            ) from None
+            raise _invalid_package("AEKO returned an invalid base package version.") from None
     if (
         not isinstance(normalized["counts"], dict)
         or any(
-            type(normalized["counts"].get(kind)) is not int
-            or normalized["counts"][kind] < 0
-            for kind in ("skill", "eval", "wiki")
+            not isinstance(kind, str) or type(count) is not int or count < 0
+            for kind, count in normalized["counts"].items()
         )
+        or any(kind not in normalized["counts"] for kind in ("skill", "eval", "wiki"))
         or sum(normalized["counts"][kind] for kind in ("skill", "eval", "wiki"))
         != len(normalized["members"])
     ):
-        raise RuntimeError("AEKO returned invalid brand package counts.")
+        raise _invalid_package("AEKO returned invalid brand package counts.")
     if (
         type(normalized["pending_decisions"]) is not int
         or normalized["pending_decisions"] < 0
         or not isinstance(normalized["export"], dict)
+        or not isinstance(normalized["created_by"], str)
+        or not isinstance(normalized["created_at"], str)
+        or not (normalized["note"] is None or isinstance(normalized["note"], str))
+        or not (
+            normalized["activated_at"] is None
+            or isinstance(normalized["activated_at"], str)
+        )
     ):
-        raise RuntimeError("AEKO returned invalid brand package metadata.")
+        raise _invalid_package("AEKO returned invalid brand package metadata.")
     if version is not None and normalized["version"] != version:
-        raise RuntimeError("AEKO returned an unexpected brand package version.")
+        raise CodedRuntimeError(
+            "PACKAGE_VERSION_MISMATCH",
+            "AEKO returned an unexpected brand package version.",
+        )
     return normalized
 
 
-def _package_page(data: dict, *, domain_id: str, offset: int, limit: int) -> str:
-    _integer(offset, 0, 2**31 - 1)
-    _integer(limit, 1, 100)
-    members = data.pop("members")
-    payload = {
-        "domain_id": _uuid(domain_id),
-        **data,
-        "total_members": len(members),
-        "members": [],
-        "next_offset": None,
-    }
-    if len(_json(payload).encode("utf-8")) > METADATA_PAGE_BYTES:
-        raise RuntimeError(
-            "AEKO returned package metadata exceeding the page byte limit."
+def _package_page(
+    data: dict, *, domain_id: str, offset: int, limit: int
+) -> BrandPackagePage:
+    """Page members so FastMCP's JSON text rendering stays within 32 KiB."""
+    members = [BrandPackageMember(**value) for value in data.pop("members")]
+    fields = {"domain_id": _uuid(domain_id), **data, "total_members": len(members)}
+    page = BrandPackagePage(**fields, members=[], next_offset=None)
+    if text_bytes(page) > METADATA_PAGE_BYTES:
+        raise CodedRuntimeError(
+            "PACKAGE_METADATA_TOO_LARGE",
+            "AEKO returned package metadata exceeding the page byte limit.",
         )
+    selected: list = []
     for index in range(offset, min(offset + limit, len(members))):
-        candidate = {
-            **payload,
-            "members": [*payload["members"], members[index]],
-            "next_offset": index + 1 if index + 1 < len(members) else None,
-        }
-        if len(_json(candidate).encode("utf-8")) > METADATA_PAGE_BYTES:
-            if not payload["members"]:
-                raise RuntimeError(
-                    "AEKO returned member metadata exceeding the page byte limit."
+        candidate = BrandPackagePage(
+            **fields,
+            members=[*selected, members[index]],
+            next_offset=index + 1 if index + 1 < len(members) else None,
+        )
+        if text_bytes(candidate) > METADATA_PAGE_BYTES:
+            if not selected:
+                raise CodedRuntimeError(
+                    "PACKAGE_METADATA_TOO_LARGE",
+                    "AEKO returned member metadata exceeding the page byte limit.",
                 )
-            payload["next_offset"] = index
+            page = BrandPackagePage(**fields, members=selected, next_offset=index)
             break
-        payload = candidate
-    return _json(payload)
+        selected.append(members[index])
+        page = candidate
+    return page
 
 
-@mcp.tool(title="Get the accepted brand package", annotations=READ_ONLY)
+def _page_bounds(offset: int, limit: int) -> None:
+    _integer_arg(offset, "offset", 0, 2**31 - 1)
+    _integer_arg(limit, "limit", 1, 100)
+
+
+@mcp.tool(
+    title="Get the accepted brand package",
+    annotations=READ_ONLY,
+    structured_output=True,
+)
 def aeko_get_active_brand_package(
     domain_id: str, offset: int = 0, limit: int = 50
-) -> str:
+) -> BrandPackagePage:
     """Discover the immutable package accepted for this brand and credential.
 
     Normal OAuth selects the tenant's active package. A hosted run credential
@@ -220,31 +277,45 @@ def aeko_get_active_brand_package(
     has since changed. Authentication grants access but does not load any skill,
     eval, wiki page, or supporting file. Page through every member, retain the
     returned package id/version/digest, and load only the files the task needs.
+    A failure is an MCP error carrying one aeko.error.v1 JSON object.
     """
-    return _package_page(
-        _package(domain_id), domain_id=domain_id, offset=offset, limit=limit
-    )
+    with read_boundary():
+        _page_bounds(offset, limit)
+        return _package_page(
+            _package(domain_id), domain_id=domain_id, offset=offset, limit=limit
+        )
 
 
-@mcp.tool(title="Get an exact brand package version", annotations=READ_ONLY)
+@mcp.tool(
+    title="Get an exact brand package version",
+    annotations=READ_ONLY,
+    structured_output=True,
+)
 def aeko_get_brand_package_version(
     domain_id: str, version: int, offset: int = 0, limit: int = 50
-) -> str:
+) -> BrandPackagePage:
     """Discover one immutable package version without falling back to latest.
 
     Use this for a saved handoff that already pins a package version. A hosted
     run credential can read only its own pinned version. Keep the returned
     digest with the version and pass both to aeko_read_brand_package_file.
+    A failure is an MCP error carrying one aeko.error.v1 JSON object.
     """
-    return _package_page(
-        _package(domain_id, version),
-        domain_id=domain_id,
-        offset=offset,
-        limit=limit,
-    )
+    with read_boundary():
+        _page_bounds(offset, limit)
+        return _package_page(
+            _package(domain_id, version),
+            domain_id=domain_id,
+            offset=offset,
+            limit=limit,
+        )
 
 
-@mcp.tool(title="Read a file from an accepted brand package", annotations=READ_ONLY)
+@mcp.tool(
+    title="Read a file from an accepted brand package",
+    annotations=READ_ONLY,
+    structured_output=True,
+)
 def aeko_read_brand_package_file(
     domain_id: str,
     package_version: int,
@@ -253,7 +324,7 @@ def aeko_read_brand_package_file(
     path: str = "SKILL.md",
     offset: int = 0,
     max_bytes: int = 8192,
-) -> str:
+) -> BrandPackageFileChunk:
     """Read one UTF-8 chunk after revalidating its exact release member.
 
     package_slug must come from the accepted release manifest. The tool checks
@@ -261,23 +332,43 @@ def aeko_read_brand_package_file(
     digest before returning bytes. Use the next_offset unchanged. Read the full
     selected SKILL.md, required evals, and declared wiki/support references
     before execution; OAuth or a run token only authorizes these reads.
+    A failure is an MCP error carrying one aeko.error.v1 JSON object.
     """
-    _integer(package_version, 1, 2**31 - 1)
-    _integer(offset, 0, 2 * 1024 * 1024)
-    _integer(max_bytes, 256, 16384)
+    with read_boundary():
+        return _read_package_file(
+            domain_id, package_version, package_digest, package_slug, path, offset, max_bytes
+        )
+
+
+def _read_package_file(
+    domain_id: str,
+    package_version: int,
+    package_digest: str,
+    package_slug: str,
+    path: str,
+    offset: int,
+    max_bytes: int,
+) -> BrandPackageFileChunk:
+    _integer_arg(package_version, "package_version", 1, 2**31 - 1)
+    _integer_arg(offset, "offset", 0, 2 * 1024 * 1024)
+    _integer_arg(max_bytes, "max_bytes", 256, 16384)
     package_digest = _digest(package_digest, "package_digest")
     if (
         not isinstance(package_slug, str)
         or _PACKAGE_SLUG.fullmatch(package_slug) is None
     ):
-        raise ValueError("Use an exact package_slug from the brand package manifest.")
+        raise CodedValueError(
+            "INVALID_ARGUMENT",
+            "Use an exact package_slug from the brand package manifest.",
+        )
     path = _relative_path(path)
 
     package = _package(domain_id, package_version)
     if package["digest"] != package_digest:
-        raise RuntimeError(
+        raise CodedRuntimeError(
+            "PACKAGE_DIGEST_MISMATCH",
             "Brand package digest mismatch. Rediscover the exact accepted package; "
-            "do not continue with mixed release bytes."
+            "do not continue with mixed release bytes.",
         )
     matches = [
         member
@@ -285,9 +376,15 @@ def aeko_read_brand_package_file(
         if member["package_slug"] == package_slug
     ]
     if not matches:
-        raise RuntimeError("The canonical package_slug is not present in this release.")
+        raise CodedRuntimeError(
+            "PACKAGE_MEMBER_NOT_FOUND",
+            "The canonical package_slug is not present in this release.",
+        )
     if len(matches) != 1:
-        raise RuntimeError("AEKO returned duplicate canonical package slugs.")
+        raise CodedRuntimeError(
+            "PACKAGE_MEMBER_DUPLICATE",
+            "AEKO returned duplicate canonical package slugs.",
+        )
     member = matches[0]
     data = _get_capability(
         (
@@ -306,32 +403,46 @@ def aeko_read_brand_package_file(
         or data.get("path") != path
         or not isinstance(data.get("content"), str)
     ):
-        raise RuntimeError(
-            "AEKO returned a file outside the accepted package member pin."
+        raise CodedRuntimeError(
+            "PACKAGE_MEMBER_PIN_MISMATCH",
+            "AEKO returned a file outside the accepted package member pin.",
         )
-    raw = data["content"].encode("utf-8")
+    if any(
+        data.get(flag) is not None and type(data.get(flag)) is not bool
+        for flag in ("hosted", "editable")
+    ):
+        raise _invalid_package("AEKO returned invalid package file metadata.")
+    try:
+        raw = data["content"].encode("utf-8")
+    except UnicodeError:
+        raise _invalid_package(
+            "AEKO returned package file content that is not valid UTF-8."
+        ) from None
     if len(raw) > (128 * 1024 if path == "SKILL.md" else MAX_FILE_BYTES):
-        raise RuntimeError("AEKO returned a file exceeding the package byte limit.")
+        raise CodedRuntimeError(
+            "PACKAGE_FILE_TOO_LARGE",
+            "AEKO returned a file exceeding the package byte limit.",
+        )
     if offset > len(raw) or (offset < len(raw) and raw[offset] & 0xC0 == 0x80):
-        raise ValueError("offset must be a UTF-8 boundary within the file.")
+        raise CodedValueError(
+            "INVALID_ARGUMENT", "offset must be a UTF-8 boundary within the file."
+        )
     chunk = raw[offset : offset + max_bytes].decode("utf-8", errors="ignore")
     end = offset + len(chunk.encode("utf-8"))
-    return _json(
-        {
-            "domain_id": _uuid(domain_id),
-            "package_id": package["id"],
-            "package_version": package["version"],
-            "package_digest": package["digest"],
-            "member": member,
-            "path": path,
-            "hosted": data.get("hosted"),
-            "editable": data.get("editable"),
-            "size_bytes": len(raw),
-            "offset": offset,
-            "next_offset": end if end < len(raw) else None,
-            "complete": end == len(raw),
-            "content": chunk,
-        }
+    return BrandPackageFileChunk(
+        domain_id=_uuid(domain_id),
+        package_id=package["id"],
+        package_version=package["version"],
+        package_digest=package["digest"],
+        member=BrandPackageMember(**member),
+        path=path,
+        hosted=data.get("hosted"),
+        editable=data.get("editable"),
+        size_bytes=len(raw),
+        offset=offset,
+        next_offset=end if end < len(raw) else None,
+        complete=end == len(raw),
+        content=chunk,
     )
 
 

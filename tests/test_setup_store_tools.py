@@ -128,11 +128,14 @@ def test_inject_products_chunks_over_200(monkeypatch):
 
 def test_atomic_product_page_update_sends_one_fenced_patch(monkeypatch):
     calls = []
+    integration_id = "6f9b2c4e-2a1d-4d8e-9b7a-1c2d3e4f5a6b"
+    claim_id = "0c7e1a52-8d6f-4b1e-a3c9-5e2d7f8a9b10"
+    audit_id = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
 
     def fake_post(path, json=None, headers=None):
         calls.append({"path": path, "json": json, "headers": headers})
         return {
-            "audit_id": "audit-1",
+            "audit_id": audit_id,
             "platform": "shopify",
             "external_product_id": "sku-1",
             "status": "success",
@@ -140,11 +143,11 @@ def test_atomic_product_page_update_sends_one_fenced_patch(monkeypatch):
 
     monkeypatch.setattr(store_write.client, "post", fake_post)
 
-    out = store_write.aeko_update_product_page(
-        integration_id="store-1",
+    receipt = store_write.aeko_update_product_page(
+        integration_id=integration_id,
         external_product_id="sku-1",
         action_item_id="itm_1",
-        execution_claim_id="claim-1",
+        execution_claim_id=claim_id,
         description_html="<section>Evidence</section>",
         json_ld={"@context": "https://schema.org", "@type": "Product"},
         tags=["gift"],
@@ -153,10 +156,13 @@ def test_atomic_product_page_update_sends_one_fenced_patch(monkeypatch):
         skip_aeko_shop=True,
     )
 
-    assert "audit-1" in out
+    assert receipt.audit_id == audit_id
+    assert receipt.store_integration_id == integration_id
+    assert receipt.external_product_id == "sku-1"
+    assert (receipt.status, receipt.store_updated, receipt.admin_url) == ("success", True, None)
     assert calls == [
         {
-            "path": "/api/store-integrations/store-1/products/sku-1",
+            "path": f"/api/store-integrations/{integration_id}/products/sku-1",
             "json": {
                 "skip_aeko_shop": True,
                 "description": "<section>Evidence</section>",
@@ -167,7 +173,7 @@ def test_atomic_product_page_update_sends_one_fenced_patch(monkeypatch):
                     "description": "Evidence-backed gift cream",
                 },
                 "action_item_id": "itm_1",
-                "execution_claim_id": "claim-1",
+                "execution_claim_id": claim_id,
             },
             "headers": None,
         }

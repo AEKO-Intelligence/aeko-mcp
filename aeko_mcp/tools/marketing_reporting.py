@@ -14,6 +14,7 @@ import re
 import uuid
 from typing import Any, Optional
 
+from ..client import legacy_error_name
 from ..server import client, mcp
 from ._annotations import READ_ONLY
 
@@ -53,7 +54,7 @@ def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
     try:
         return method(*args, **kwargs), None
     except Exception as e:  # noqa: BLE001
-        return None, f"{type(e).__name__}: {e}"
+        return None, f"{legacy_error_name(e)}: {e}"
 
 
 def _json_block(title: str, payload: Any, notes: list[str] | None = None) -> str:

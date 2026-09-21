@@ -29,6 +29,7 @@ All routes are Pro+ gated server-side; an under-tier account surfaces the backen
 import json
 from typing import Any, Optional
 
+from ..client import legacy_error_name
 from ..server import client, mcp
 from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
 
@@ -55,7 +56,7 @@ def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
     try:
         return method(*args, **kwargs), None
     except Exception as e:  # noqa: BLE001
-        return None, f"{type(e).__name__}: {e}"
+        return None, f"{legacy_error_name(e)}: {e}"
 
 
 def _json_block(title: str, payload: Any) -> str:
