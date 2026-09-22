@@ -7,6 +7,7 @@ ground tracked prompts and content plans.
 import json
 from typing import Any, Optional
 
+from ..client import legacy_error_name
 from ..server import mcp, client
 from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
 
@@ -16,7 +17,7 @@ def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
     try:
         return method(*args, **kwargs), None
     except Exception as e:  # noqa: BLE001
-        return None, f"{type(e).__name__}: {e}"
+        return None, f"{legacy_error_name(e)}: {e}"
 
 
 def _clean(value: Any) -> Optional[str]:

@@ -4,6 +4,30 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.25.0] — 2026-09-22
+
+### Changed
+
+- Six `/update-pdp` path tools now return structured results with field-level output schemas:
+  `aeko_get_active_brand_package`, `aeko_get_brand_package_version`,
+  `aeko_read_brand_package_file`, `aeko_get_product_description`, `aeko_update_product_page`, and
+  `aeko_list_store_writes`. Clients receive `structuredContent` plus the same object as JSON text.
+  This replaces those tools' earlier Markdown and compact-JSON text; direct Python callers receive
+  models.
+- Failures of those six tools are MCP errors carrying one bounded `aeko.error.v1` object with a
+  stable `code`, `http_status`, any backend `audit_id`, and `mutation_state`
+  (`not_attempted`, `rejected`, or `unknown`). Timeouts, indeterminate claims, and malformed or
+  empty success receipts after a store write is sent are `unknown` and are never retried. An empty
+  PDP patch is now an `INVALID_ARGUMENT` error, not a successful "Nothing to update" text.
+- The description result keeps the exact store HTML, including `null`. The write receipt returns
+  the real `audit_id`, target `store_integration_id`, echoed product, and `success` or `dry_run`
+  (`store_updated=false` for dry runs). `admin_url` is optional and null because the backend does
+  not supply one. History items keep `store_integration_id` and a `next_offset`; stored upstream
+  error text is replaced with a bounded authored explanation.
+- `AekoClient` raises `AekoAPIError(RuntimeError)`, which keeps HTTP status, backend code, audit ID,
+  and whether the request was sent. Error strings from unmigrated tools are unchanged.
+  See `docs/contracts/structured-tool-results.md`.
+
 ## [0.24.0] — 2026-09-14
 
 ### Added

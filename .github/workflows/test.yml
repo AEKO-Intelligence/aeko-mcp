@@ -1,0 +1,32 @@
+name: Test MCP compatibility
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mcp-version: ["1.11.0", "1.12.4", "1.15.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install supported SDK and backend-compatible transport
+        run: >-
+          python -m pip install -e .
+          'mcp==${{ matrix.mcp-version }}'
+          'starlette<0.42' 'sse-starlette<3'
+          pytest pytest-asyncio
+      - name: Check dependencies
+        run: python -m pip check
+      - name: Test tool contracts and regressions
+        run: python -m pytest -q

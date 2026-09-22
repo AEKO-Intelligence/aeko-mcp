@@ -3,11 +3,13 @@ from copy import deepcopy
 from uuid import uuid4
 
 import httpx
+import pydantic_core
 import pytest
 
 from aeko_mcp.client import AekoClient
 from aeko_mcp.server import mcp
 from aeko_mcp.tools import brand_packages as tools
+from aeko_mcp.tools._structured import AekoToolError, AekoToolInputError, text_bytes
 
 DOMAIN = str(uuid4())
 PACKAGE_ID = str(uuid4())
@@ -120,6 +122,10 @@ def wiki_page():
     }
 
 
+def error_code(error):
+    return json.loads(str(error))["code"]
+
+
 def test_tools_are_registered_read_only():
     registered = {tool.name: tool for tool in mcp._tool_manager.list_tools()}
     names = {
@@ -144,8 +150,8 @@ def test_active_and_exact_package_forward_tenant_and_preserve_identity(monkeypat
         return package(active=False)
 
     monkeypatch.setattr(tools.client, "get", get)
-    active = json.loads(tools.aeko_get_active_brand_package(DOMAIN))
-    exact = json.loads(tools.aeko_get_brand_package_version(DOMAIN, 7))
+    active = tools.aeko_get_active_brand_package(DOMAIN).model_dump()
+    exact = tools.aeko_get_brand_package_version(DOMAIN, 7).model_dump()
 
     assert calls == [
         ("/api/automations/brand-package", {"domain_id": DOMAIN}),
@@ -174,9 +180,10 @@ def test_package_metadata_pages_are_utf8_bounded_without_losing_members(monkeypa
     monkeypatch.setattr(tools.client, "get", lambda *args, **kwargs: package(members))
     offset, seen = 0, []
     while True:
-        output = tools.aeko_get_active_brand_package(DOMAIN, offset=offset, limit=100)
-        assert len(output.encode("utf-8")) <= tools.METADATA_PAGE_BYTES
-        data = json.loads(output)
+        result = tools.aeko_get_active_brand_package(DOMAIN, offset=offset, limit=100)
+        # The bound applies to FastMCP's JSON text rendering of the result.
+        assert text_bytes(result) <= tools.METADATA_PAGE_BYTES
+        data = result.model_dump()
         seen.extend(row["document_id"] for row in data["members"])
         if data["next_offset"] is None:
             break
@@ -222,11 +229,9 @@ def test_member_file_read_uses_canonical_slug_and_exact_release_pin(monkeypatch)
     monkeypatch.setattr(tools.client, "get", get)
     offset, chunks = 0, []
     while True:
-        data = json.loads(
-            tools.aeko_read_brand_package_file(
-                DOMAIN, 7, PACKAGE_DIGEST, SKILL_SLUG, offset=offset, max_bytes=256
-            )
-        )
+        data = tools.aeko_read_brand_package_file(
+            DOMAIN, 7, PACKAGE_DIGEST, SKILL_SLUG, offset=offset, max_bytes=256
+        ).model_dump()
         assert data["package_id"] == PACKAGE_ID
         assert data["member"]["version_id"] == VERSION_ID
         assert data["member"]["digest"] == MEMBER_DIGEST
@@ -247,10 +252,12 @@ def test_release_digest_or_slug_mismatch_never_reads_a_document(monkeypatch):
         return package()
 
     monkeypatch.setattr(tools.client, "get", get)
-    with pytest.raises(RuntimeError, match="digest mismatch"):
+    with pytest.raises(RuntimeError, match="digest mismatch") as mismatch:
         tools.aeko_read_brand_package_file(DOMAIN, 7, "d" * 64, SKILL_SLUG)
-    with pytest.raises(RuntimeError, match="not present"):
+    with pytest.raises(RuntimeError, match="not present") as missing:
         tools.aeko_read_brand_package_file(DOMAIN, 7, PACKAGE_DIGEST, "aeko-missing")
+    assert error_code(mismatch.value) == "PACKAGE_DIGEST_MISMATCH"
+    assert error_code(missing.value) == "PACKAGE_MEMBER_NOT_FOUND"
     assert calls == [
         "/api/automations/brand-package/versions/7",
         "/api/automations/brand-package/versions/7",
@@ -262,8 +269,9 @@ def test_duplicate_canonical_slug_is_rejected(monkeypatch):
     monkeypatch.setattr(
         tools.client, "get", lambda *args, **kwargs: package([member(), duplicate])
     )
-    with pytest.raises(RuntimeError, match="duplicate canonical"):
+    with pytest.raises(RuntimeError, match="duplicate canonical") as caught:
         tools.aeko_read_brand_package_file(DOMAIN, 7, PACKAGE_DIGEST, SKILL_SLUG)
+    assert error_code(caught.value) == "PACKAGE_MEMBER_DUPLICATE"
 
 
 @pytest.mark.parametrize(
@@ -272,12 +280,14 @@ def test_duplicate_canonical_slug_is_rejected(monkeypatch):
         package([member(kind="unknown")]),
         package([member(version_id="not-a-uuid")]),
         package(counts={"skill": 2, "eval": 0, "wiki": 0}),
+        package(created_at=1),
     ],
 )
 def test_malformed_release_manifest_is_rejected(monkeypatch, payload):
     monkeypatch.setattr(tools.client, "get", lambda *args, **kwargs: payload)
-    with pytest.raises(RuntimeError, match="invalid|unexpected"):
+    with pytest.raises(RuntimeError, match="invalid|unexpected") as caught:
         tools.aeko_get_active_brand_package(DOMAIN)
+    assert error_code(caught.value) == "INVALID_BACKEND_RESPONSE"
 
 
 def test_member_version_drift_is_rejected(monkeypatch):
@@ -296,8 +306,9 @@ def test_member_version_drift_is_rejected(monkeypatch):
         }
 
     monkeypatch.setattr(tools.client, "get", get)
-    with pytest.raises(RuntimeError, match="outside the accepted package member pin"):
+    with pytest.raises(RuntimeError, match="outside the accepted package member pin") as caught:
         tools.aeko_read_brand_package_file(DOMAIN, 7, PACKAGE_DIGEST, SKILL_SLUG)
+    assert error_code(caught.value) == "PACKAGE_MEMBER_PIN_MISMATCH"
 
 
 def test_required_wiki_is_loaded_from_the_same_pinned_package(monkeypatch):
@@ -345,12 +356,12 @@ def test_required_wiki_is_loaded_from_the_same_pinned_package(monkeypatch):
         }
 
     monkeypatch.setattr(tools.client, "get", get)
-    skill = json.loads(
-        tools.aeko_read_brand_package_file(DOMAIN, 7, PACKAGE_DIGEST, SKILL_SLUG)
-    )
-    wiki = json.loads(
-        tools.aeko_read_brand_package_file(DOMAIN, 7, PACKAGE_DIGEST, WIKI_SLUG)
-    )
+    skill = tools.aeko_read_brand_package_file(
+        DOMAIN, 7, PACKAGE_DIGEST, SKILL_SLUG
+    ).model_dump()
+    wiki = tools.aeko_read_brand_package_file(
+        DOMAIN, 7, PACKAGE_DIGEST, WIKI_SLUG
+    ).model_dump()
     assert skill["package_id"] == wiki["package_id"] == PACKAGE_ID
     assert skill["package_digest"] == wiki["package_digest"] == PACKAGE_DIGEST
     assert "voice/brand-voice" in skill["content"]
@@ -463,11 +474,15 @@ def test_missing_backend_capability_is_actionable(monkeypatch, path):
             message = "Brand Package read API"
         else:
             message = "Brand Wiki read API"
-        with pytest.raises(RuntimeError, match=message):
+        with pytest.raises(RuntimeError, match=message) as caught:
             if path.endswith("brand-package"):
                 tools.aeko_get_active_brand_package(DOMAIN)
             else:
                 tools.aeko_list_brand_wiki_pages(DOMAIN)
+        if path.endswith("brand-package"):
+            assert error_code(caught.value) == "CAPABILITY_UNAVAILABLE"
+        else:
+            assert not isinstance(caught.value, AekoToolError)
     finally:
         client.close()
 
@@ -488,7 +503,7 @@ def test_oauth_or_run_bearer_is_forwarded_but_never_returned(monkeypatch):
     monkeypatch.setattr(tools, "client", client)
     context = client.set_request_auth_token(token)
     try:
-        output = tools.aeko_get_active_brand_package(DOMAIN)
+        output = pydantic_core.to_json(tools.aeko_get_active_brand_package(DOMAIN)).decode()
     finally:
         client.reset_request_auth_token(context)
         client.close()
@@ -503,19 +518,22 @@ def test_invalid_ids_versions_digests_paths_and_budgets_fail_before_io(monkeypat
         "get",
         lambda *args, **kwargs: pytest.fail("invalid input reached backend"),
     )
-    with pytest.raises(ValueError):
-        tools.aeko_get_active_brand_package("not-a-uuid")
-    with pytest.raises(ValueError):
-        tools.aeko_get_brand_package_version(DOMAIN, 0)
-    with pytest.raises(ValueError):
-        tools.aeko_read_brand_package_file(DOMAIN, 7, "bad", SKILL_SLUG)
-    with pytest.raises(ValueError):
-        tools.aeko_read_brand_package_file(DOMAIN, 7, PACKAGE_DIGEST, "../slug")
-    with pytest.raises(ValueError):
-        tools.aeko_read_brand_package_file(
+    invalid_calls = [
+        lambda: tools.aeko_get_active_brand_package("not-a-uuid"),
+        lambda: tools.aeko_get_active_brand_package(DOMAIN, limit=0),
+        lambda: tools.aeko_get_brand_package_version(DOMAIN, 0),
+        lambda: tools.aeko_read_brand_package_file(DOMAIN, 7, "bad", SKILL_SLUG),
+        lambda: tools.aeko_read_brand_package_file(DOMAIN, 7, PACKAGE_DIGEST, "../slug"),
+        lambda: tools.aeko_read_brand_package_file(
             DOMAIN, 7, PACKAGE_DIGEST, SKILL_SLUG, path="../rules.md"
-        )
-    with pytest.raises(ValueError):
-        tools.aeko_read_brand_package_file(
+        ),
+        lambda: tools.aeko_read_brand_package_file(
             DOMAIN, 7, PACKAGE_DIGEST, SKILL_SLUG, max_bytes=16385
-        )
+        ),
+    ]
+    for invalid in invalid_calls:
+        with pytest.raises(ValueError) as caught:
+            invalid()
+        assert isinstance(caught.value, AekoToolInputError)
+        payload = json.loads(str(caught.value))
+        assert (payload["code"], payload["mutation_state"]) == ("INVALID_ARGUMENT", "not_attempted")

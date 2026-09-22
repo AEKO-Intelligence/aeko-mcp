@@ -21,6 +21,40 @@ ERROR_MESSAGES = {
     503: "Service unavailable (HTTP 503).",
 }
 
+CONNECT_ERROR_MESSAGE = "Cannot connect to AEKO API. Check AEKO_API_URL."
+
+
+class AekoAPIError(RuntimeError):
+    """A failed AEKO backend call with its machine-readable details retained.
+
+    ``str(error)`` is exactly the message this client has always raised, so
+    tools that render errors as text keep their output. Structured tool
+    boundaries read the attributes instead of parsing that message.
+
+    ``request_sent`` is False only when the connection could not be
+    established, so the backend cannot have received the request.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        http_status: int | None = None,
+        code: str | None = None,
+        audit_id: str | None = None,
+        request_sent: bool = True,
+    ):
+        super().__init__(message)
+        self.http_status = http_status
+        self.code = code
+        self.audit_id = audit_id
+        self.request_sent = request_sent
+
+
+def legacy_error_name(exc: BaseException) -> str:
+    """Return the class label that text-rendering tools have always printed."""
+    return "RuntimeError" if isinstance(exc, AekoAPIError) else type(exc).__name__
+
 
 _request_auth_token: ContextVar[str | None] = ContextVar("aeko_request_auth_token", default=None)
 _request_auth_active: ContextVar[bool] = ContextVar("aeko_request_auth_active", default=False)
@@ -69,6 +103,23 @@ def _extract_detail_message(resp: httpx.Response) -> str | None:
     return str(detail)
 
 
+def _extract_detail_fields(resp: httpx.Response) -> tuple[str | None, str | None]:
+    """Return the typed ``detail.code`` and ``detail.audit_id``, when present."""
+    try:
+        body = resp.json()
+    except Exception:
+        return None, None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if not isinstance(detail, dict):
+        return None, None
+    code = detail.get("code")
+    audit_id = detail.get("audit_id")
+    return (
+        code if isinstance(code, str) else None,
+        audit_id if isinstance(audit_id, str) else None,
+    )
+
+
 def _format_http_error(e: httpx.HTTPStatusError) -> str:
     """Build the best available error string for a failed HTTP call.
 
@@ -80,6 +131,20 @@ def _format_http_error(e: httpx.HTTPStatusError) -> str:
     if backend_msg:
         return f"{fallback} — {backend_msg}" if code in ERROR_MESSAGES and backend_msg != fallback else backend_msg
     return fallback
+
+
+def _http_error(e: httpx.HTTPStatusError) -> AekoAPIError:
+    code, audit_id = _extract_detail_fields(e.response)
+    return AekoAPIError(
+        _format_http_error(e),
+        http_status=e.response.status_code,
+        code=code,
+        audit_id=audit_id,
+    )
+
+
+def _connect_error() -> AekoAPIError:
+    return AekoAPIError(CONNECT_ERROR_MESSAGE, request_sent=False)
 
 
 class AekoClient:
@@ -107,9 +172,9 @@ class AekoClient:
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as e:
-            raise RuntimeError(_format_http_error(e)) from None
+            raise _http_error(e) from None
         except httpx.ConnectError:
-            raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
+            raise _connect_error() from None
 
     def get_text(
         self,
@@ -124,9 +189,9 @@ class AekoClient:
             resp.raise_for_status()
             return resp.text
         except httpx.HTTPStatusError as e:
-            raise RuntimeError(_format_http_error(e)) from None
+            raise _http_error(e) from None
         except httpx.ConnectError:
-            raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
+            raise _connect_error() from None
 
     def _merged_headers(self, extra: dict | None) -> dict[str, str]:
         """Auth headers plus any per-call extras (e.g. an Idempotency-Key for
@@ -142,9 +207,9 @@ class AekoClient:
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         except httpx.HTTPStatusError as e:
-            raise RuntimeError(_format_http_error(e)) from None
+            raise _http_error(e) from None
         except httpx.ConnectError:
-            raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
+            raise _connect_error() from None
 
     def post(
         self,
@@ -158,9 +223,9 @@ class AekoClient:
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         except httpx.HTTPStatusError as e:
-            raise RuntimeError(_format_http_error(e)) from None
+            raise _http_error(e) from None
         except httpx.ConnectError:
-            raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
+            raise _connect_error() from None
 
     def put(self, path: str, json: dict | None = None, headers: dict | None = None) -> dict:
         try:
@@ -168,9 +233,9 @@ class AekoClient:
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         except httpx.HTTPStatusError as e:
-            raise RuntimeError(_format_http_error(e)) from None
+            raise _http_error(e) from None
         except httpx.ConnectError:
-            raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
+            raise _connect_error() from None
 
     def delete(self, path: str, params: dict | None = None) -> dict:
         try:
@@ -178,9 +243,9 @@ class AekoClient:
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         except httpx.HTTPStatusError as e:
-            raise RuntimeError(_format_http_error(e)) from None
+            raise _http_error(e) from None
         except httpx.ConnectError:
-            raise RuntimeError("Cannot connect to AEKO API. Check AEKO_API_URL.") from None
+            raise _connect_error() from None
 
     def close(self):
         self._client.close()
