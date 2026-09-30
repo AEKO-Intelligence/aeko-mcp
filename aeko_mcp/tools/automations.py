@@ -60,6 +60,7 @@ class ContextFilter(BaseModel):
 
 class ReviewBasedAdsParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    creative_strategy: Literal["auto", "context", "conversational"] = "context"
     filter: ContextFilter = Field(default_factory=ContextFilter)
     filter_text: str | None = None
     ad_account_id: UUID
@@ -150,6 +151,17 @@ def _run_view(data: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(item, dict):
             continue
         row = {key: item.get(key) for key in ("id", "item_type", "item_id", "state", "summary", "output", "verdicts")}
+        strategy = item.get("creative_strategy")
+        if isinstance(strategy, dict) and isinstance(strategy.get("key"), str) and isinstance(strategy.get("reason"), str):
+            reference_keys = ("document_id", "version_id", "version", "key", "subkind", "package_digest", "package_slug", "applies_to")
+            if all(isinstance(strategy.get(kind), dict) for kind in ("skill_ref", "eval_ref")):
+                row["creative_strategy"] = {
+                    "key": strategy["key"][:160], "reason": strategy["reason"][:240],
+                    **{kind: {key: strategy[kind][key] for key in reference_keys
+                              if key in strategy[kind] and isinstance(strategy[kind][key], (str, int))
+                              and not isinstance(strategy[kind][key], bool)}
+                       for kind in ("skill_ref", "eval_ref")},
+                }
         snapshot = item.get("snapshot")
         if isinstance(snapshot, dict):
             row["snapshot"] = {key: value for key, value in snapshot.items() if key in allowed_snapshot}

@@ -107,3 +107,51 @@ def test_run_result_keeps_safe_shortlist_details_and_drops_snapshot_secrets(monk
     assert result["stages"][0]["details"]["currency"] == "KRW"
     assert result["stages"][0]["details"]["exclusions"][0]["reason"] == "STALE_REPORTING"
     assert "secret" not in text and "review_body" not in text
+
+
+@pytest.mark.parametrize("strategy", ["context", "conversational", "auto"])
+def test_ad_strategy_is_preserved_in_resolve_and_create(monkeypatch, strategy):
+    calls = []
+    monkeypatch.setattr(tools.client, "post", lambda *args, **kwargs: calls.append(kwargs) or {
+        "ready": True, "id": INSTANCE, "automation_key": "review_based_ads",
+    })
+    params = {
+        "ad_account_id": ACCOUNT, "target_language": "ko", "target_market": "KR",
+        "ad_group_name": "Review context", "max_bid_micros": 500000,
+        "creative_strategy": strategy,
+    }
+    tools.aeko_resolve_automation_contract(DOMAIN, "review_based_ads", params)
+    tools.aeko_create_automation_instance(DOMAIN, "review_based_ads", "Drafts", params)
+    assert all(call["json"]["params"]["creative_strategy"] == strategy for call in calls)
+    assert all(call["json"]["destination"] == {"policy": "hold"} for call in calls)
+
+
+def test_response_informed_requires_plugin_evidence_flow_not_context_template(monkeypatch):
+    calls = []
+    monkeypatch.setattr(tools.client, "post", lambda *args, **kwargs: calls.append(kwargs))
+    params = {
+        "ad_account_id": ACCOUNT, "target_language": "ko", "target_market": "KR",
+        "ad_group_name": "Review context", "max_bid_micros": 500000,
+        "creative_strategy": "response_informed",
+    }
+    with pytest.raises(tools.AekoToolInputError):
+        tools.aeko_create_automation_instance(DOMAIN, "review_based_ads", "Drafts", params)
+    assert not calls
+
+
+def test_run_result_exposes_bounded_strategy_provenance_without_document_bodies(monkeypatch):
+    payload = {
+        "automation_key": "review_based_ads", "status": "ok", "output_refs": [], "removed": [],
+        "items": [{"id": "item-1", "creative_strategy": {
+            "key": "conversational", "reason": "Natural phrasing fits this supplied customer situation.",
+            "skill_ref": {"document_id": "s1", "version_id": "sv1", "version": 3, "key": "conversational", "text": "private skill body"},
+            "eval_ref": {"document_id": "e1", "version_id": "ev1", "version": 2, "key": "conversational", "text": "private eval body"},
+        }}],
+    }
+    monkeypatch.setattr(tools.client, "get", lambda *args, **kwargs: payload)
+    rendered = tools.aeko_get_automation_run(DOMAIN, RUN)
+    result = json.loads(rendered)["items"][0]["creative_strategy"]
+    assert result["key"] == "conversational"
+    assert result["skill_ref"]["version_id"] == "sv1"
+    assert result["eval_ref"]["version_id"] == "ev1"
+    assert "private" not in rendered

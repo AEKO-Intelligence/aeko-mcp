@@ -154,3 +154,14 @@ The platform validates ownership, tier, setup, and run eligibility.
 - Starter can create basic action items for Starter-tier artifacts and execute eligible content/technical workflows when those items exist. PDP AI improvement is Pro+.
 - Starter cannot use Context Reviews, Context library, OpenAI Ads, or aeko.shop live publishing.
 - Publishing to aeko.shop is Pro+ only. Saving a variation or producing an own-store draft is separate from live aeko.shop publish.
+
+
+### Ad creative strategies
+
+The review-based ad starter accepts `creative_strategy`: `context` (the compatible default),
+`conversational`, or `auto`. The backend freezes eligible skill/eval versions for the run;
+`auto` selects an eligible approach per item during the existing generation call. This is
+creative fit, not a forecast of ROAS or a promise of improved performance. Explicit skill
+selection in the dashboard takes precedence. Response-informed creative uses the customer
+plugin's evidence intake; the review-context automation does not accept an observed response
+as an input or control where a platform places an ad.
