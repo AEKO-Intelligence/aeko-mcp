@@ -109,6 +109,20 @@ Tier shorthand:
 | `aeko_set_ad_group_state` | Pause, resume, or archive an ad group. | No | Pro+ |
 | `aeko_set_ad_state` | Pause, resume, or archive an ad. | No | Pro+ |
 
+## Automation starter tools
+
+| Tool | Capability | Behavior |
+|---|---|---|
+| `aeko_list_automations` | List supported template definitions and domain instances. | Read-only for MCP OAuth/agent-token discovery; managed default instances are provisioned by the dashboard. Backend owner/domain authorization applies. |
+| `aeko_resolve_automation_contract` | Validate one supported setup without saving or running it. | Manual cadence/basic model only; validates template-specific params and returns readiness/job contract. |
+| `aeko_create_automation_instance` | Save a starter instance. | Disabled and manual; `review_based_ads` is always held for review. Create does not run. |
+| `aeko_run_automation_instance` | Queue one existing supported manual instance. | Requires caller-supplied stable `idempotency_key`; no hidden retries; ad delivery must be held. |
+| `aeko_get_automation_run` | Read run status, stages, and bounded result fields. | Owner/domain scoped; provider credentials and unrestricted snapshots are omitted. |
+
+Supported keys: `review_context_workflow`, `ad_performance_shortlist`, `review_based_ads`. Ads account and
+entity selection remains explicit; use the existing account/campaign/ad-group discovery tools first.
+The platform validates ownership, tier, setup, and run eligibility.
+
 ## aeko-plugin Skills
 
 | Skill | Expected behavior and outcome | Possible today | Beyond / gated |
