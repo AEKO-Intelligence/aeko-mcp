@@ -80,11 +80,11 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP registers 120 tools covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, store-write actions, versioned brand documents, accepted whole-brand packages, Brand Wiki reads, and Fact Check findings.
+AEKO MCP registers 125 tools across 21 modules, covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, manual automation starters, store-write actions, versioned brand documents, accepted whole-brand packages, Brand Wiki reads, and Fact Check findings.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
-Current groups: `visibility`, `research`, `sources`, `content_ideas`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, `setup`, `automation_documents`, `brand_packages`, and `fact_check`.
+Current groups: `visibility`, `research`, `sources`, `content_ideas`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, `setup`, `automation_documents`, `automations`, `brand_packages`, and `fact_check`.
 
 Saved `content-v2` plans retain their selected context evidence, format, destination,
 market and language for external execution. Claim the action item before drafting;

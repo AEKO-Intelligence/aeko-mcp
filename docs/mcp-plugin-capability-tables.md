@@ -109,6 +109,20 @@ Tier shorthand:
 | `aeko_set_ad_group_state` | Pause, resume, or archive an ad group. | No | Pro+ |
 | `aeko_set_ad_state` | Pause, resume, or archive an ad. | No | Pro+ |
 
+## Automation starter tools
+
+| Tool | Capability | Behavior |
+|---|---|---|
+| `aeko_list_automations` | List supported template definitions and domain instances. | Read-only for MCP OAuth/agent-token discovery; managed default instances are provisioned by the dashboard. Backend owner/domain authorization applies. |
+| `aeko_resolve_automation_contract` | Validate one supported setup without saving or running it. | Manual cadence/basic model only; validates template-specific params and returns readiness/job contract. |
+| `aeko_create_automation_instance` | Save a starter instance. | Disabled and manual; `review_based_ads` is always held for review. Create does not run. |
+| `aeko_run_automation_instance` | Queue one existing supported manual instance. | Requires caller-supplied stable `idempotency_key`; no hidden retries; ad delivery must be held. |
+| `aeko_get_automation_run` | Read run status, stages, and bounded result fields. | Owner/domain scoped; provider credentials and unrestricted snapshots are omitted. |
+
+Supported keys: `review_context_workflow`, `ad_performance_shortlist`, `review_based_ads`. Ads account and
+entity selection remains explicit; use the existing account/campaign/ad-group discovery tools first.
+The platform validates ownership, tier, setup, and run eligibility.
+
 ## aeko-plugin Skills
 
 | Skill | Expected behavior and outcome | Possible today | Beyond / gated |
@@ -140,3 +154,14 @@ Tier shorthand:
 - Starter can create basic action items for Starter-tier artifacts and execute eligible content/technical workflows when those items exist. PDP AI improvement is Pro+.
 - Starter cannot use Context Reviews, Context library, OpenAI Ads, or aeko.shop live publishing.
 - Publishing to aeko.shop is Pro+ only. Saving a variation or producing an own-store draft is separate from live aeko.shop publish.
+
+
+### Ad creative strategies
+
+The review-based ad starter accepts `creative_strategy`: `context` (the compatible default),
+`conversational`, or `auto`. The backend freezes eligible skill/eval versions for the run;
+`auto` selects an eligible approach per item during the existing generation call. This is
+creative fit, not a forecast of ROAS or a promise of improved performance. Explicit skill
+selection in the dashboard takes precedence. Response-informed creative uses the customer
+plugin's evidence intake; the review-context automation does not accept an observed response
+as an input or control where a platform places an ad.

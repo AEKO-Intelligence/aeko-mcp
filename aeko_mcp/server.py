@@ -61,6 +61,7 @@ from .tools import (  # noqa: E402, F401
     fact_check,
     analytics,
     automation_documents,
+    automations,
     brand_packages,
     content_ideas,
     content_variation,

@@ -4,6 +4,16 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.26.0] — 2026-09-30
+
+### Added
+
+- Add five bounded automation tools for template/instance discovery, transient contract resolution,
+  manual starter creation, caller-keyed manual runs, and safe run-result reads. The supported keys are
+  `review_context_workflow`, `ad_performance_shortlist`, and `review_based_ads`; creation is disabled
+  and manual, with review-based ads held for review. The guarded starter-run route enforces those limits with the instance snapshot. No hidden execution retry is performed.
+- Registered tool count is now 125 across 21 modules.
+
 ## [0.25.0] — 2026-09-22
 
 ### Changed
