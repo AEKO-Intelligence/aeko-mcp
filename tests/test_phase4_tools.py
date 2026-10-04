@@ -93,7 +93,8 @@ def test_analytics_tools_call_expected_routes(monkeypatch):
     drift = analytics.aeko_get_answer_drift("domain-1", days=14, prompt_ids=["p1"])
     measure = analytics.aeko_get_measure("domain-1", view="readiness")
 
-    assert "monitoring/sov" in sov
+    # SOV is shaped (Task 2); drift and measure are asserted on their own routes below.
+    assert sov.startswith("# Share of Voice")
     assert "monitoring/drift" in drift
     assert "measure/readiness" in measure
     assert calls == [
@@ -102,13 +103,192 @@ def test_analytics_tools_call_expected_routes(monkeypatch):
             "params": {
                 "domain_id": "domain-1",
                 "prompt_ids": "p1",
-                "start_date": "2026-01-01",
-                "end_date": "2026-01-31",
+                "from": "2026-01-01",
+                "to": "2026-01-31",
+                "limit": 25,
+                "per_prompt_limit": 1,
             },
         },
         {"path": "/api/monitoring/drift", "params": {"domain_id": "domain-1", "days": 14, "prompt_ids": "p1"}},
         {"path": "/api/measure/readiness", "params": {"domain_id": "domain-1"}},
     ]
+
+
+def _capture_get(monkeypatch, module, response):
+    calls = []
+
+    def fake_get(path, params=None):
+        calls.append({"path": path, "params": params})
+        return response
+
+    monkeypatch.setattr(module.client, "get", fake_get)
+    return calls
+
+
+def _sov_brand(name, mentions, *, own=False, position=2.5):
+    return {
+        "name": name,
+        "total_mentions": mentions,
+        "avg_visibility": 41.237,
+        "avg_position": position,
+        "cited_response_count": 4,
+        "response_count": 9,
+        "mention_share_pct": 12.345,
+        "is_own_brand": own,
+    }
+
+
+def test_share_of_voice_defaults_send_no_range_and_render_all_time(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    calls = _capture_get(
+        monkeypatch,
+        analytics,
+        {"brands": [_sov_brand("Acme", 10)], "brands_total": 1, "per_prompt": [], "per_prompt_total": 0, "range": None},
+    )
+
+    rendered = analytics.aeko_get_share_of_voice("domain-1")
+
+    assert calls == [
+        {"path": "/api/monitoring/sov", "params": {"domain_id": "domain-1", "limit": 25, "per_prompt_limit": 1}}
+    ]
+    assert "Range: all time" in rendered
+    assert "| 1 | Acme | 12.3 | 10 | 41.24 | 2.50 | 4 / 9 |" in rendered
+    assert "showing 1 of 1 brands" in rendered
+
+
+def test_share_of_voice_maps_date_aliases_and_clamps_limit(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    calls = _capture_get(
+        monkeypatch, analytics, {"brands": [], "brands_total": 0, "range": {"from": "2026-09-01", "to": "2026-09-30"}}
+    )
+
+    rendered = analytics.aeko_get_share_of_voice(
+        "domain-1", start_date="2026-09-01", end_date="2026-09-30", limit=500
+    )
+    analytics.aeko_get_share_of_voice("domain-1", from_date="2026-08-01", to_date="2026-08-31", limit=0)
+
+    assert calls[0]["params"] == {
+        "domain_id": "domain-1",
+        "from": "2026-09-01",
+        "to": "2026-09-30",
+        "limit": 50,
+        "per_prompt_limit": 1,
+    }
+    assert calls[1]["params"] == {
+        "domain_id": "domain-1",
+        "from": "2026-08-01",
+        "to": "2026-08-31",
+        "limit": 1,
+        "per_prompt_limit": 1,
+    }
+    assert "Range: 2026-09-01 ~ 2026-09-30" in rendered
+    assert "showing 0 of 0 brands" in rendered
+
+
+def test_share_of_voice_renders_per_prompt_block_for_small_views(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    calls = _capture_get(
+        monkeypatch,
+        analytics,
+        {
+            "brands": [_sov_brand("Acme", 10)],
+            "brands_total": 1,
+            "per_prompt": [
+                {
+                    "prompt_id": "p1",
+                    "prompt_text": "best sunscreen | for oily skin that does not leave a white cast on darker skin tones",
+                    "country": "US",
+                    "ai_platform": "openai",
+                    "top_brands": [
+                        {"name": "A", "visibility_score": 80.0, "mention_count": 12},
+                        {"name": "B", "visibility_score": 60.0, "mention_count": 7},
+                        {"name": "C", "visibility_score": 20.0, "mention_count": 3},
+                    ],
+                    "brands_total": 5,
+                },
+                {
+                    "prompt_id": "p2",
+                    "prompt_text": "quiet prompt",
+                    "country": "KR",
+                    "ai_platform": "google",
+                    "top_brands": [],
+                    "brands_total": 0,
+                },
+            ],
+            "per_prompt_total": 2,
+            "range": None,
+        },
+    )
+
+    rendered = analytics.aeko_get_share_of_voice("domain-1", prompt_ids=["p1", "p2", "p3"])
+
+    assert calls[0]["params"] == {
+        "domain_id": "domain-1",
+        "prompt_ids": "p1,p2,p3",
+        "limit": 25,
+        "per_prompt_limit": 3,
+    }
+    assert (
+        "- best sunscreen / for oily skin that does not leave a whit... · openai · US"
+        " → A (12), B (7), C (3) (+2 more)"
+    ) in rendered
+    assert "- quiet prompt · google · KR → no brands" in rendered
+
+
+def test_share_of_voice_omits_per_prompt_block_above_ten_prompts(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    ids = [f"p{i}" for i in range(1, 12)]
+    calls = _capture_get(
+        monkeypatch,
+        analytics,
+        {
+            "brands": [_sov_brand("Acme", 10)],
+            "brands_total": 1,
+            "per_prompt": [
+                {"prompt_id": "p1", "prompt_text": "should not render", "top_brands": [], "brands_total": 0}
+            ],
+            "per_prompt_total": 11,
+            "range": None,
+        },
+    )
+
+    rendered = analytics.aeko_get_share_of_voice("domain-1", prompt_ids=ids)
+
+    assert calls[0]["params"]["prompt_ids"] == ",".join(ids)
+    assert calls[0]["params"]["per_prompt_limit"] == 1
+    assert "per-prompt detail is shown for views of 10 prompts or fewer" in rendered.lower()
+    assert "should not render" not in rendered
+
+
+def test_share_of_voice_marks_own_brand_and_reports_totals(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    brands = [_sov_brand(f"Brand {i}", 100 - i) for i in range(1, 25)]
+    brands.insert(4, _sov_brand("Mine|Co", 96, own=True, position=None))
+    _capture_get(
+        monkeypatch,
+        analytics,
+        {"brands": brands, "brands_total": 61, "brands_cursor": "abc", "per_prompt": [], "range": None},
+    )
+
+    rendered = analytics.aeko_get_share_of_voice("domain-1")
+
+    assert "| 5 | ★ Mine/Co | 12.3 | 96 | 41.24 | - | 4 / 9 |" in rendered
+    assert rendered.count("| ★ ") == 1
+    assert "showing 25 of 61 brands" in rendered
+
+
+def test_share_of_voice_leaves_appended_brands_unranked(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    # The backend's first page is the top `limit` brands plus the own brand and configured
+    # competitors that rank below it, appended in rank order: their position is not their rank.
+    brands = [_sov_brand("Top", 50), _sov_brand("Mine", 2, own=True)]
+    _capture_get(monkeypatch, analytics, {"brands": brands, "brands_total": 40, "range": None})
+
+    rendered = analytics.aeko_get_share_of_voice("domain-1", limit=1)
+
+    assert "| 1 | Top |" in rendered
+    assert "| - | ★ Mine |" in rendered
+    assert "showing 2 of 40 brands" in rendered
 
 
 # aeko_connect_review_source / aeko_sync_review_source were removed: connecting or syncing a
