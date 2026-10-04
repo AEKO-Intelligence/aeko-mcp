@@ -140,22 +140,117 @@ def aeko_get_share_of_voice(
     return _format_share_of_voice(data, limit, show_per_prompt)
 
 
+DRIFT_EVENT_TYPES = ("appear", "disappear", "position_change")
+
+
+def _format_answer_drift(data: dict, events_limit: int, note: Optional[str]) -> str:
+    lines = ["# Answer drift", "", _range_line(data.get("range"))]
+    if note:
+        lines.append(note)
+    summary = data.get("position_summary")
+    if summary:
+        lines.append(
+            f"Position: current {_num(summary.get('current_avg'), 2)} → previous {_num(summary.get('previous_avg'), 2)}"
+            f" (change {_num(summary.get('change'), 2)}; lower is better)"
+        )
+    lines.append("")
+
+    trend = data.get("trend") or []
+    lines.append("## Trend")
+    lines.append("")
+    if trend:
+        sampled = trend[::7]
+        if (len(trend) - 1) % 7:
+            sampled.append(trend[-1])
+        # Without brand keywords the backend's trend covers every brand in scope.
+        lines.append(
+            f"Your brand's daily averages (every brand when the domain has no brand keywords):"
+            f" every 7th of {len(trend):,} days, plus the last."
+        )
+        lines.append("")
+        lines.append("| date | avg visibility | avg position |")
+        lines.append("|---|---|---|")
+        for row in sampled:
+            lines.append(
+                f"| {_cell(row.get('date'))} | {_num(row.get('avg_visibility'), 2)} | {_num(row.get('avg_position'), 2)} |"
+            )
+    else:
+        lines.append("No trend data in this range.")
+    lines.append("")
+
+    events = data.get("events") or []
+    events_total = data.get("events_total") or 0
+    counts = {event_type: 0 for event_type in DRIFT_EVENT_TYPES}
+    for event in events:
+        if event.get("is_own_brand") and event.get("type") in counts:
+            counts[event["type"]] += 1
+    lines.append("## Events")
+    lines.append("")
+    lines.append("Your brand: " + " · ".join(f"{event_type} {counts[event_type]:,}" for event_type in DRIFT_EVENT_TYPES))
+    if len(events) < events_total:
+        lines.append(f"Counted over the newest {len(events):,} of {events_total:,} events.")
+    else:
+        lines.append(f"Counted over all {events_total:,} events.")
+    lines.append("")
+    if events:
+        lines.append("| date | type | brand | prompt | platform | position (Δ) |")
+        lines.append("|---|---|---|---|---|---|")
+        for event in events:
+            brand = _cell(event.get("entity_name"))
+            if event.get("is_own_brand"):
+                brand = f"★ {brand}"
+            position = "-" if event.get("position") is None else str(event["position"])
+            if event.get("position_change") is not None:
+                position += f" ({int(event['position_change']):+d})"
+            lines.append(
+                f"| {_cell(event.get('date'))} | {_cell(event.get('type'))} | {brand} | {_cell(event.get('prompt_text'), 60)}"
+                f" | {_cell(event.get('ai_platform'))} | {position} |"
+            )
+        lines.append("")
+        lines.append("★ = your brand. Δ = position change; negative = moved up.")
+    else:
+        lines.append("No drift events in this range.")
+    showing = f"showing {len(events):,} of {events_total:,} events"
+    if len(events) < events_total and events_limit < 200:
+        showing += " (raise `events_limit`, max 200, to see more)"
+    lines.extend(["", showing])
+    return "\n".join(lines)
+
+
 @mcp.tool(title="Get answer drift", annotations=READ_ONLY)
 def aeko_get_answer_drift(
     domain_id: str,
     days: int = 30,
     prompt_ids: Optional[list[str]] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    events_limit: int = 50,
 ) -> str:
-    """Read answer drift for a domain over a recent lookback window."""
-    params: dict[str, Any] = {
-        "domain_id": domain_id,
-        "days": max(1, min(int(days), 365)),
-    }
+    """Read answer drift for a domain: your brand's trend and appear/disappear/position events.
+
+    Reads the last `days` (1-365, default 30), or `from_date`..`to_date`
+    (`YYYY-MM-DD`, inclusive, both required) instead. Returns the range, your
+    brand's average position now vs before, a weekly-sampled visibility and
+    position trend, your brand's event counts, and the newest `events_limit`
+    events (1-200, default 50) with "showing N of M events".
+    """
+    params: dict[str, Any] = {"domain_id": domain_id}
+    note = None
+    if from_date and to_date:
+        params["from"] = from_date
+        params["to"] = to_date
+    else:
+        params["days"] = max(1, min(int(days), 365))
+        if from_date or to_date:
+            note = f"Read the last {params['days']} days: pass both `from_date` and `to_date` for a date range."
     encoded_prompt_ids = _prompt_ids_param(prompt_ids)
     if encoded_prompt_ids:
         params["prompt_ids"] = encoded_prompt_ids
+    params["events_limit"] = max(1, min(int(events_limit), 200))
+    # The position heatmap is not rendered; one row keeps the read light.
+    params["heatmap_limit"] = 1
     data = client.get("/api/monitoring/drift", params=params)
-    return _json_block("GET /api/monitoring/drift", data)
+    return _format_answer_drift(data, params["events_limit"], note)
 
 
 @mcp.tool(title="Get measure dashboard", annotations=READ_ONLY)

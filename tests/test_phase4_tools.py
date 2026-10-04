@@ -93,9 +93,9 @@ def test_analytics_tools_call_expected_routes(monkeypatch):
     drift = analytics.aeko_get_answer_drift("domain-1", days=14, prompt_ids=["p1"])
     measure = analytics.aeko_get_measure("domain-1", view="readiness")
 
-    # SOV is shaped (Task 2); drift and measure are asserted on their own routes below.
+    # SOV and drift are shaped; measure still returns the raw JSON block.
     assert sov.startswith("# Share of Voice")
-    assert "monitoring/drift" in drift
+    assert drift.startswith("# Answer drift")
     assert "measure/readiness" in measure
     assert calls == [
         {
@@ -109,7 +109,16 @@ def test_analytics_tools_call_expected_routes(monkeypatch):
                 "per_prompt_limit": 1,
             },
         },
-        {"path": "/api/monitoring/drift", "params": {"domain_id": "domain-1", "days": 14, "prompt_ids": "p1"}},
+        {
+            "path": "/api/monitoring/drift",
+            "params": {
+                "domain_id": "domain-1",
+                "days": 14,
+                "prompt_ids": "p1",
+                "events_limit": 50,
+                "heatmap_limit": 1,
+            },
+        },
         {"path": "/api/measure/readiness", "params": {"domain_id": "domain-1"}},
     ]
 
@@ -289,6 +298,108 @@ def test_share_of_voice_leaves_appended_brands_unranked(monkeypatch):
     assert "| 1 | Top |" in rendered
     assert "| - | ★ Mine |" in rendered
     assert "showing 2 of 40 brands" in rendered
+
+
+def _drift_event(day, type_, *, own=False, position=None, change=None, name="Other"):
+    return {
+        "date": day,
+        "type": type_,
+        "prompt_text": "best serum | for dry skin",
+        "entity_name": name,
+        "position": position,
+        "position_change": change,
+        "is_own_brand": own,
+        "ai_platform": "openai",
+    }
+
+
+def _drift_response(events, events_total, *, trend_days=30, position_summary=None):
+    trend = [
+        {"date": f"2026-09-{d:02d}" if d <= 30 else f"2026-10-{d - 30:02d}", "avg_visibility": 40 + i, "avg_position": 2.5}
+        for i, d in enumerate(range(5, 5 + trend_days))
+    ]
+    return {
+        "trend": trend,
+        "events": events,
+        "events_total": events_total,
+        "position_summary": position_summary,
+        "heatmap": [],
+        "heatmap_total": 0,
+        "heatmap_cursor": None,
+        "range": {"from": "2026-09-05", "to": "2026-10-04"},
+    }
+
+
+def test_answer_drift_defaults_send_days_and_limits(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    calls = _capture_get(monkeypatch, analytics, _drift_response([], 0))
+
+    analytics.aeko_get_answer_drift("domain-1")
+    analytics.aeko_get_answer_drift("domain-1", days=900, events_limit=900)
+
+    assert calls[0]["params"] == {"domain_id": "domain-1", "days": 30, "events_limit": 50, "heatmap_limit": 1}
+    assert calls[1]["params"] == {"domain_id": "domain-1", "days": 365, "events_limit": 200, "heatmap_limit": 1}
+
+
+def test_answer_drift_explicit_range_replaces_days(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    calls = _capture_get(monkeypatch, analytics, _drift_response([], 0))
+
+    analytics.aeko_get_answer_drift("domain-1", days=7, from_date="2026-09-05", to_date="2026-10-04", events_limit=0)
+    one_sided = analytics.aeko_get_answer_drift("domain-1", days=14, from_date="2026-09-05")
+
+    assert calls[0]["params"] == {
+        "domain_id": "domain-1",
+        "from": "2026-09-05",
+        "to": "2026-10-04",
+        "events_limit": 1,
+        "heatmap_limit": 1,
+    }
+    # One date alone is not a range: the read falls back to `days` and says so.
+    assert calls[1]["params"] == {"domain_id": "domain-1", "days": 14, "events_limit": 50, "heatmap_limit": 1}
+    assert "pass both `from_date` and `to_date`" in one_sided
+
+
+def test_answer_drift_renders_summary_trend_counts_and_events(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    events = (
+        [_drift_event("2026-10-04", "appear", own=True, name="Mine")] * 3
+        + [_drift_event("2026-10-03", "disappear", own=True, name="Mine")] * 2
+        + [_drift_event("2026-10-02", "position_change", own=True, position=2, change=-1, name="Mine")] * 4
+        + [_drift_event("2026-10-01", "appear")] * 41
+    )
+    _capture_get(
+        monkeypatch,
+        analytics,
+        _drift_response(events, 1234, position_summary={"current_avg": 2.8, "previous_avg": 3.2, "change": -0.4}),
+    )
+
+    rendered = analytics.aeko_get_answer_drift("domain-1")
+
+    assert "Range: 2026-09-05 ~ 2026-10-04" in rendered
+    assert "Position: current 2.80 → previous 3.20 (change -0.40" in rendered
+    # weekly sample: every 7th day from the first, plus the last
+    for day in ("2026-09-05", "2026-09-12", "2026-09-19", "2026-09-26", "2026-10-03", "2026-10-04"):
+        assert f"| {day} | " in rendered
+    assert "| 2026-09-06 | " not in rendered
+    assert "appear 3 · disappear 2 · position_change 4" in rendered
+    assert "newest 50 of 1,234 events" in rendered
+    assert "| 2026-10-02 | position_change | ★ Mine | best serum / for dry skin | openai | 2 (-1) |" in rendered
+    assert "| 2026-10-01 | appear | Other | best serum / for dry skin | openai | - |" in rendered
+    assert "showing 50 of 1,234 events" in rendered
+
+
+def test_answer_drift_reports_complete_event_lists(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    events = [_drift_event("2026-10-01", "appear", own=True, name="Mine")] * 12
+    _capture_get(monkeypatch, analytics, _drift_response(events, 12, trend_days=0))
+
+    rendered = analytics.aeko_get_answer_drift("domain-1")
+
+    assert "showing 12 of 12 events" in rendered
+    assert "appear 12 · disappear 0 · position_change 0" in rendered
+    assert "Position:" not in rendered
+    assert "No trend data in this range." in rendered
 
 
 # aeko_connect_review_source / aeko_sync_review_source were removed: connecting or syncing a
