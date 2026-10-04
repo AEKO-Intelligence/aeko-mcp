@@ -65,3 +65,34 @@ def test_overview_keeps_window_out_of_backend_params(monkeypatch):
     assert calls == [
         ("/api/visibility/summary", {"domain_id": "domain-1"})
     ]
+
+
+def _cited_pages(count):
+    return [
+        {"url": f"/page-{i}", "count": 1, "prompts": []} for i in range(count)
+    ]
+
+
+def test_cited_sources_says_how_many_pages_are_shown(monkeypatch):
+    monkeypatch.setattr(
+        visibility.client,
+        "get",
+        lambda *args, **kwargs: {"cited_pages": _cited_pages(25)},
+    )
+    output = visibility.aeko_get_visibility_summary("domain-1", view="cited_sources")
+
+    assert "# Cited Pages (25) - showing 20 of 25" in output
+    assert "/page-19" in output
+    assert "/page-20" not in output
+
+
+def test_cited_sources_has_no_showing_note_when_nothing_is_clipped(monkeypatch):
+    monkeypatch.setattr(
+        visibility.client,
+        "get",
+        lambda *args, **kwargs: {"cited_pages": _cited_pages(20)},
+    )
+    output = visibility.aeko_get_visibility_summary("domain-1", view="cited_sources")
+
+    assert "# Cited Pages (20)" in output
+    assert "showing" not in output

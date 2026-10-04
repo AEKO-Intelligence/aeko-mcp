@@ -129,3 +129,39 @@ def test_action_item_list_pagination_is_offset_aware(monkeypatch):
     assert "(201-201 of 201)" in output
     assert "`has_more=false`" in output
     assert "more not shown" not in output
+
+
+def _source_payload(prompt_count):
+    return {
+        "source_id": "source-1",
+        "crawl_id": "crawl-1",
+        "canonical_url": "https://example.com/thread",
+        "title": "Example thread",
+        "body_available": True,
+        "extracted_text": "Stored source body",
+        "associated_prompts": [
+            {"prompt_id": f"prompt-{i}", "text": f"Prompt {i}"}
+            for i in range(prompt_count)
+        ],
+    }
+
+
+def test_fetch_source_content_says_how_many_prompts_are_shown(monkeypatch):
+    monkeypatch.setattr(
+        sources.client, "get", lambda path, params=None: _source_payload(7)
+    )
+    output = sources.aeko_fetch_source_content("domain-1", "source-1")
+
+    assert "## Associated tracked prompts (7) - showing 5 of 7" in output
+    assert "prompt-4" in output
+    assert "prompt-5" not in output
+
+
+def test_fetch_source_content_has_no_showing_note_when_nothing_is_clipped(monkeypatch):
+    monkeypatch.setattr(
+        sources.client, "get", lambda path, params=None: _source_payload(5)
+    )
+    output = sources.aeko_fetch_source_content("domain-1", "source-1")
+
+    assert "## Associated tracked prompts (5)" in output
+    assert "showing" not in output

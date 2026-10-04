@@ -133,7 +133,10 @@ def _format_cited_pages(cited_pages: list) -> str:
             "pages in the responses AEKO has collected."
         )
 
-    lines = [f"# Cited Pages ({len(cited_pages)})", ""]
+    heading = f"# Cited Pages ({len(cited_pages)})"
+    if len(cited_pages) > 20:
+        heading += f" - showing 20 of {len(cited_pages)}"
+    lines = [heading, ""]
     lines.append("| Page | Citations | AI Engines | Top Prompt |")
     lines.append("|------|-----------|------------|------------|")
     for p in cited_pages[:20]:
@@ -240,6 +243,9 @@ def aeko_get_visibility_summary(
             callers. It is not sent to either backend endpoint. Tracked-prompt
             metrics are fixed at 7 days plus the previous 7 days for comparison;
             non-``7d`` requests are disclosed in that report.
+
+    The summary is scoped to your tracked prompts. The sentiment in the trend
+    is the share of positive mentions. 7-day windows are UTC days.
     """
     selected_view = view or scope
     # Backwards-compatible escape hatch: if a caller accidentally passes a
