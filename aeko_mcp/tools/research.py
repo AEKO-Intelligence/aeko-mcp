@@ -214,8 +214,8 @@ def _format_tracked_prompts(data: list) -> str:
     lines.append(f"Tracked prompts: {len(data)}")
     lines.append("")
 
-    lines.append("| # | id | prompt | platform | country | context | funnel | type |")
-    lines.append("|---|----|--------|----------|---------|---------|--------|------|")
+    lines.append("| # | id | prompt | platform | country | context | funnel | type | status |")
+    lines.append("|---|----|--------|----------|---------|---------|--------|------|--------|")
 
     for i, p in enumerate(data, 1):
         prompt_id = p.get("id", "N/A")
@@ -226,14 +226,14 @@ def _format_tracked_prompts(data: list) -> str:
         funnel = p.get("funnel_stage") or "-"
         query_type = p.get("query_type") or "-"
         lines.append(
-            f"| {i} | `{prompt_id}` | {prompt_text} | {platform} | {country} | {context} | {funnel} | {query_type} |"
+            f"| {i} | `{prompt_id}` | {prompt_text} | {platform} | {country} | {context} | {funnel} | {query_type} | tracked |"
         )
         prompt_ko = p.get("prompt_ko")
         if prompt_ko:
-            lines.append(f"|   |   | *{_clip(prompt_ko)}* |   |   |   |   |   |")
+            lines.append(f"|   |   | *{_clip(prompt_ko)}* |   |   |   |   |   |   |")
         tags = p.get("tags") or []
         if tags:
-            lines.append(f"|   |   | _Tags_: {', '.join(str(x) for x in tags)} |   |   |   |   |   |")
+            lines.append(f"|   |   | _Tags_: {', '.join(str(x) for x in tags)} |   |   |   |   |   |   |")
 
     lines.append("")
     lines.append("## Reconciliation payload")
@@ -251,6 +251,7 @@ def _format_tracked_prompts(data: list) -> str:
                     "ai_platform": p.get("ai_platform"),
                     "country": p.get("country"),
                     "context_id": p.get("context_id"),
+                    "status": "tracked",
                     "context_title": p.get("context_title"),
                     "funnel_stage": p.get("funnel_stage"),
                     "query_type": p.get("query_type"),

@@ -179,7 +179,7 @@ def test_tracked_prompt_list_renders_index_rows():
     rendered = research._format_tracked_prompts(INDEX_ROWS)
 
     assert "Tracked prompts: 3" in rendered
-    assert "| # | id | prompt | platform | country | context | funnel | type |" in rendered
+    assert "| # | id | prompt | platform | country | context | funnel | type | status |" in rendered
     assert rendered.count("| `tp-") == 3
     assert "Friend gift situation" in rendered
     assert "consideration" in rendered
@@ -191,6 +191,8 @@ def test_tracked_prompt_list_renders_index_rows():
     assert payload[0]["tags"] == ["gift", "cream"]
     assert payload[0]["context_title"] == "Friend gift situation"
     assert payload[1]["tags"] is None
+    assert {r["status"] for r in payload} == {"tracked"}
+    assert rendered.count("| tracked |") == 3
 
 
 def test_tracked_prompt_list_does_not_cap_rows():
