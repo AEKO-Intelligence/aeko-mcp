@@ -17,7 +17,7 @@ Tier shorthand:
 | `aeko_get_visibility_summary` | Read visibility overview, cited pages, or tracked-prompt metrics with filters. | Yes | No |
 | `aeko_get_citability` | Read page or domain AI citability scoring. | Yes | No |
 | `aeko_search_research_prompts` | Search prompt library candidates. | Yes | No |
-| `aeko_get_tracked_prompts` | List tracked prompts and angle metadata. | Yes | No |
+| `aeko_get_tracked_prompts` | List all tracked prompts and angle metadata (light index). | Yes | No |
 | `aeko_resolve_prompts_by_text` | Resolve prompt text to prompt ids. | Yes | No |
 | `aeko_track_prompt` | Track a prompt with platform, country, view, and context angles. | Starter limited | Context angle requires Pro+ |
 | `aeko_get_quota` | Read tracked-prompt and account limit status. | Yes | No |
@@ -81,8 +81,9 @@ Tier shorthand:
 | `aeko_unpublish_content` | Unpublish an aeko.shop post. | No | Pro+ |
 | `aeko_list_own_content` | List owned content records. | Yes | No |
 | `aeko_request_media_upload` | Request backend media upload/presign flow. | Yes | No |
-| `aeko_get_share_of_voice` | Read share-of-voice analytics. | Yes | No |
-| `aeko_get_answer_drift` | Read answer drift analytics. | Yes | No |
+| `aeko_get_share_of_voice` | Read share-of-voice as a shaped brand table (`from`/`to`/`limit`, `brands_total`). | Yes | No |
+| `aeko_get_source_share` | Read citation share by platform and domain, with change vs the previous period, or the top URLs of one domain. | Yes | No |
+| `aeko_get_answer_drift` | Read answer drift as a shaped trend, own-brand event counts and the newest events. | Yes | No |
 | `aeko_get_measure` | Read Measure readiness, discovery, or impact. | Yes | No |
 | `aeko_get_ga4_status` | Read GA4 connection/property status. | Yes | No |
 | `aeko_list_ga4_properties` | List GA4 properties after browser OAuth connection. | Yes | No |
