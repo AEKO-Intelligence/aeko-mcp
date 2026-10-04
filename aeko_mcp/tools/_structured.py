@@ -1,6 +1,6 @@
 """Structured results and truthful errors for the migrated PDP-path tools.
 
-Six tools return these Pydantic models with ``structured_output=True``:
+Migrated tools return these Pydantic models with ``structured_output=True``:
 FastMCP then publishes a field-level ``outputSchema`` and sends
 ``structuredContent`` together with its JSON text rendering.
 
@@ -238,6 +238,22 @@ def text_bytes(result: BaseModel) -> int:
 
 class _Result(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class ActionEvidenceChunk(_Result):
+    """A character-bounded slice of evidence frozen into an owned saved plan."""
+
+    item_id: str
+    evidence_id: str
+    kind: str = Field(min_length=1, max_length=40)
+    original_text: str = Field(max_length=8000)
+    source_revision: str = Field(min_length=1, max_length=255)
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    metadata: dict[str, Any]
+    offset: int = Field(ge=0, strict=True)
+    total_chars: int = Field(ge=0, strict=True)
+    next_offset: Optional[int] = Field(default=None, ge=0, strict=True)
+    complete: bool = Field(strict=True)
 
 
 class BrandPackageMember(_Result):

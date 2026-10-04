@@ -4,6 +4,12 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.28.0] — 2026-10-04
+
+- Add structured, owner-scoped saved-plan evidence reads with character bounds, provenance, continuation and truthful errors.
+- Pass content-v3 Context Search save inputs through existing action-item creation; preserve v2 arguments and lifecycle methods.
+- Requires the matching Context Search backend and customer plugin for full execution; no deployment or publishing is performed by the tool.
+
 ## [0.27.0] — 2026-10-04
 
 Requires the AEKO backend with the Phase 5b read API (PR #211).

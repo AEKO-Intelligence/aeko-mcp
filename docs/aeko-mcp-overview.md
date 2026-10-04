@@ -444,3 +444,9 @@ C-level snapshot: headline KPI movement, top-performing prompts, new citations t
 ---
 
 *For the authoritative current tool list, see [`aeko_mcp/tools/`](../aeko_mcp/tools/). For skills, see [`skills/`](../skills/) (Claude Code) and [`.codex-plugin/skills/`](../.codex-plugin/skills/) (Codex).*
+
+## Context Search content-v3 evidence
+
+The action-plan group adds `aeko_get_action_evidence(item_id, evidence_id, offset=0, max_chars=8000)`. It returns a typed slice of original evidence frozen into that saved plan, including source revision/hash, metadata and continuation. The backend rechecks ownership, current platform access and redaction. It never fetches a live replacement. A readability diagnostic records why a PDP is unassessed; it is not a verified product claim.
+
+The compatible customer plugin executes six content-v3 task kinds as local artifacts through the existing claim/release/complete lifecycle. Unknown plan versions fail closed. Plan completion is executor-reported and does not publish content or clear an image-only PDP assessment hold. Install the matching backend, MCP and plugin versions together; adding the MCP tool does not create the backend evidence endpoint.
