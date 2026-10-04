@@ -115,7 +115,8 @@ def aeko_fetch_source_content(domain_id: str, source_id: str) -> str:
     )
     lines.append("```")
 
-    lines.extend(["", f"## Associated tracked prompts ({len(prompt_refs)})", ""])
+    # The backend returns at most 5 associated prompts, so their count is not a total.
+    lines.extend(["", "## Associated tracked prompts", "", "top 5 associated prompts (more may exist)", ""])
     if prompt_refs:
         for ref in prompt_refs[:5]:
             prompt_id = _clean(ref.get("prompt_id") or ref.get("id"))

@@ -93,8 +93,9 @@ def test_analytics_tools_call_expected_routes(monkeypatch):
     drift = analytics.aeko_get_answer_drift("domain-1", days=14, prompt_ids=["p1"])
     measure = analytics.aeko_get_measure("domain-1", view="readiness")
 
-    assert "monitoring/sov" in sov
-    assert "monitoring/drift" in drift
+    # SOV and drift are shaped; measure still returns the raw JSON block.
+    assert sov.startswith("# Share of Voice")
+    assert drift.startswith("# Answer drift")
     assert "measure/readiness" in measure
     assert calls == [
         {
@@ -102,13 +103,323 @@ def test_analytics_tools_call_expected_routes(monkeypatch):
             "params": {
                 "domain_id": "domain-1",
                 "prompt_ids": "p1",
-                "start_date": "2026-01-01",
-                "end_date": "2026-01-31",
+                "from": "2026-01-01",
+                "to": "2026-01-31",
+                "limit": 25,
+                "per_prompt_limit": 1,
             },
         },
-        {"path": "/api/monitoring/drift", "params": {"domain_id": "domain-1", "days": 14, "prompt_ids": "p1"}},
+        {
+            "path": "/api/monitoring/drift",
+            "params": {
+                "domain_id": "domain-1",
+                "days": 14,
+                "prompt_ids": "p1",
+                "events_limit": 50,
+                "heatmap_limit": 1,
+            },
+        },
         {"path": "/api/measure/readiness", "params": {"domain_id": "domain-1"}},
     ]
+
+
+def _capture_get(monkeypatch, module, response):
+    calls = []
+
+    def fake_get(path, params=None):
+        calls.append({"path": path, "params": params})
+        return response
+
+    monkeypatch.setattr(module.client, "get", fake_get)
+    return calls
+
+
+def _sov_brand(name, mentions, *, own=False, position=2.5):
+    return {
+        "name": name,
+        "total_mentions": mentions,
+        "avg_visibility": 41.237,
+        "avg_position": position,
+        "cited_response_count": 4,
+        "response_count": 9,
+        "mention_share_pct": 12.345,
+        "is_own_brand": own,
+    }
+
+
+def test_share_of_voice_defaults_send_no_range_and_render_all_time(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    calls = _capture_get(
+        monkeypatch,
+        analytics,
+        {"brands": [_sov_brand("Acme", 10)], "brands_total": 1, "per_prompt": [], "per_prompt_total": 0, "range": None},
+    )
+
+    rendered = analytics.aeko_get_share_of_voice("domain-1")
+
+    assert calls == [
+        {"path": "/api/monitoring/sov", "params": {"domain_id": "domain-1", "limit": 25, "per_prompt_limit": 1}}
+    ]
+    assert "Range: all time" in rendered
+    assert "| 1 | Acme | 12.3 | 10 | 41.24 | 2.50 | 4 / 9 |" in rendered
+    assert "showing 1 of 1 brands" in rendered
+
+
+def test_share_of_voice_maps_date_aliases_and_clamps_limit(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    calls = _capture_get(
+        monkeypatch, analytics, {"brands": [], "brands_total": 0, "range": {"from": "2026-09-01", "to": "2026-09-30"}}
+    )
+
+    rendered = analytics.aeko_get_share_of_voice(
+        "domain-1", start_date="2026-09-01", end_date="2026-09-30", limit=500
+    )
+    analytics.aeko_get_share_of_voice("domain-1", from_date="2026-08-01", to_date="2026-08-31", limit=0)
+
+    assert calls[0]["params"] == {
+        "domain_id": "domain-1",
+        "from": "2026-09-01",
+        "to": "2026-09-30",
+        "limit": 50,
+        "per_prompt_limit": 1,
+    }
+    assert calls[1]["params"] == {
+        "domain_id": "domain-1",
+        "from": "2026-08-01",
+        "to": "2026-08-31",
+        "limit": 1,
+        "per_prompt_limit": 1,
+    }
+    assert "Range: 2026-09-01 ~ 2026-09-30" in rendered
+    assert "showing 0 of 0 brands" in rendered
+
+
+def test_share_of_voice_renders_per_prompt_block_for_small_views(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    calls = _capture_get(
+        monkeypatch,
+        analytics,
+        {
+            "brands": [_sov_brand("Acme", 10)],
+            "brands_total": 1,
+            "per_prompt": [
+                {
+                    "prompt_id": "p1",
+                    "prompt_text": "best sunscreen | for oily skin that does not leave a white cast on darker skin tones",
+                    "country": "US",
+                    "ai_platform": "openai",
+                    "top_brands": [
+                        {"name": "A", "visibility_score": 80.0, "mention_count": 12},
+                        {"name": "B", "visibility_score": 60.0, "mention_count": 7},
+                        {"name": "C", "visibility_score": 20.0, "mention_count": 3},
+                    ],
+                    "brands_total": 5,
+                },
+                {
+                    "prompt_id": "p2",
+                    "prompt_text": "quiet prompt",
+                    "country": "KR",
+                    "ai_platform": "google",
+                    "top_brands": [],
+                    "brands_total": 0,
+                },
+            ],
+            "per_prompt_total": 2,
+            "range": None,
+        },
+    )
+
+    rendered = analytics.aeko_get_share_of_voice("domain-1", prompt_ids=["p1", "p2", "p3"])
+
+    assert calls[0]["params"] == {
+        "domain_id": "domain-1",
+        "prompt_ids": "p1,p2,p3",
+        "limit": 25,
+        "per_prompt_limit": 3,
+    }
+    assert (
+        "- best sunscreen / for oily skin that does not leave a whit... · openai · US"
+        " → A (12), B (7), C (3) (+2 more)"
+    ) in rendered
+    assert "- quiet prompt · google · KR → no brands" in rendered
+
+
+def test_share_of_voice_omits_per_prompt_block_above_ten_prompts(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    ids = [f"p{i}" for i in range(1, 12)]
+    calls = _capture_get(
+        monkeypatch,
+        analytics,
+        {
+            "brands": [_sov_brand("Acme", 10)],
+            "brands_total": 1,
+            "per_prompt": [
+                {"prompt_id": "p1", "prompt_text": "should not render", "top_brands": [], "brands_total": 0}
+            ],
+            "per_prompt_total": 11,
+            "range": None,
+        },
+    )
+
+    rendered = analytics.aeko_get_share_of_voice("domain-1", prompt_ids=ids)
+
+    assert calls[0]["params"]["prompt_ids"] == ",".join(ids)
+    assert calls[0]["params"]["per_prompt_limit"] == 1
+    assert "per-prompt detail is shown for views of 10 prompts or fewer" in rendered.lower()
+    assert "should not render" not in rendered
+
+
+def test_share_of_voice_marks_own_brand_and_reports_totals(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    brands = [_sov_brand(f"Brand {i}", 100 - i) for i in range(1, 25)]
+    brands.insert(4, _sov_brand("Mine|Co", 96, own=True, position=None))
+    _capture_get(
+        monkeypatch,
+        analytics,
+        {"brands": brands, "brands_total": 61, "brands_cursor": "abc", "per_prompt": [], "range": None},
+    )
+
+    rendered = analytics.aeko_get_share_of_voice("domain-1")
+
+    assert "| 5 | ★ Mine/Co | 12.3 | 96 | 41.24 | - | 4 / 9 |" in rendered
+    assert rendered.count("| ★ ") == 1
+    assert "showing 25 of 61 brands" in rendered
+
+
+def test_share_of_voice_leaves_appended_brands_unranked(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    # The backend's first page is the top `limit` brands plus the own brand and configured
+    # competitors that rank below it, appended in rank order: their position is not their rank.
+    brands = [_sov_brand("Top", 50), _sov_brand("Mine", 2, own=True)]
+    _capture_get(monkeypatch, analytics, {"brands": brands, "brands_total": 40, "range": None})
+
+    rendered = analytics.aeko_get_share_of_voice("domain-1", limit=1)
+
+    assert "| 1 | Top |" in rendered
+    assert "| - | ★ Mine |" in rendered
+    assert "showing 2 of 40 brands" in rendered
+
+
+def _drift_event(day, type_, *, own=False, position=None, change=None, name="Other"):
+    return {
+        "date": day,
+        "type": type_,
+        "prompt_text": "best serum | for dry skin",
+        "entity_name": name,
+        "position": position,
+        "position_change": change,
+        "is_own_brand": own,
+        "ai_platform": "openai",
+    }
+
+
+def _drift_response(events, events_total, *, trend_days=30, position_summary=None):
+    trend = [
+        {"date": f"2026-09-{d:02d}" if d <= 30 else f"2026-10-{d - 30:02d}", "avg_visibility": 40 + i, "avg_position": 2.5}
+        for i, d in enumerate(range(5, 5 + trend_days))
+    ]
+    return {
+        "trend": trend,
+        "events": events,
+        "events_total": events_total,
+        "position_summary": position_summary,
+        "heatmap": [],
+        "heatmap_total": 0,
+        "heatmap_cursor": None,
+        "range": {"from": "2026-09-05", "to": "2026-10-04"},
+    }
+
+
+def test_answer_drift_defaults_send_days_and_limits(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    calls = _capture_get(monkeypatch, analytics, _drift_response([], 0))
+
+    analytics.aeko_get_answer_drift("domain-1")
+    analytics.aeko_get_answer_drift("domain-1", days=900, events_limit=900)
+
+    assert calls[0]["params"] == {"domain_id": "domain-1", "days": 30, "events_limit": 50, "heatmap_limit": 1}
+    assert calls[1]["params"] == {"domain_id": "domain-1", "days": 365, "events_limit": 200, "heatmap_limit": 1}
+
+
+def test_answer_drift_explicit_range_replaces_days(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    calls = _capture_get(monkeypatch, analytics, _drift_response([], 0))
+
+    analytics.aeko_get_answer_drift("domain-1", days=7, from_date="2026-09-05", to_date="2026-10-04", events_limit=0)
+    one_sided = analytics.aeko_get_answer_drift("domain-1", days=14, from_date="2026-09-05")
+
+    assert calls[0]["params"] == {
+        "domain_id": "domain-1",
+        "from": "2026-09-05",
+        "to": "2026-10-04",
+        "events_limit": 1,
+        "heatmap_limit": 1,
+    }
+    # One date alone is not a range: the read falls back to `days` and says so.
+    assert calls[1]["params"] == {"domain_id": "domain-1", "days": 14, "events_limit": 50, "heatmap_limit": 1}
+    assert "pass both `from_date` and `to_date`" in one_sided
+
+
+def test_answer_drift_renders_summary_trend_counts_and_events(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    events = (
+        [_drift_event("2026-10-04", "appear", own=True, name="Mine")] * 3
+        + [_drift_event("2026-10-03", "disappear", own=True, name="Mine")] * 2
+        + [_drift_event("2026-10-02", "position_change", own=True, position=2, change=-1, name="Mine")] * 4
+        + [_drift_event("2026-10-01", "appear")] * 41
+    )
+    _capture_get(
+        monkeypatch,
+        analytics,
+        _drift_response(events, 1234, position_summary={"current_avg": 2.8, "previous_avg": 3.2, "change": -0.4}),
+    )
+
+    rendered = analytics.aeko_get_answer_drift("domain-1")
+
+    assert "Range: 2026-09-05 ~ 2026-10-04" in rendered
+    assert "Position: current 2.80 → previous 3.20 (change -0.40" in rendered
+    # weekly sample: every 7th day from the first, plus the last
+    for day in ("2026-09-05", "2026-09-12", "2026-09-19", "2026-09-26", "2026-10-03", "2026-10-04"):
+        assert f"| {day} | " in rendered
+    assert "| 2026-09-06 | " not in rendered
+    assert "appear 3 · disappear 2 · position_change 4" in rendered
+    assert "newest 50 of 1,234 events" in rendered
+    assert "| 2026-10-02 | position_change | ★ Mine | best serum / for dry skin | openai | 2 (-1) |" in rendered
+    assert "| 2026-10-01 | appear | Other | best serum / for dry skin | openai | - |" in rendered
+    assert "showing 50 of 1,234 events" in rendered
+
+
+def test_answer_drift_explains_stable_events_and_samples_days_with_data(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    events = [_drift_event("2026-10-04", "stable", own=True, position=3, name="Mine")]
+    response = _drift_response(events, 1, trend_days=0)
+    response["trend"] = [
+        {"date": "2026-09-05", "avg_visibility": 40, "avg_position": 2.5},
+        {"date": "2026-09-20", "avg_visibility": 41, "avg_position": 2.4},
+    ]
+    _capture_get(monkeypatch, analytics, response)
+
+    rendered = analytics.aeko_get_answer_drift("domain-1")
+
+    assert "sampled from the 2 days with data: the first day, every 7th day with data after it, and the last day." in rendered
+    assert "every 7th of" not in rendered
+    assert "| 2026-09-05 | " in rendered and "| 2026-09-20 | " in rendered
+    assert "| 2026-10-04 | stable | ★ Mine |" in rendered
+    assert "`stable` = your brand held the same position" in rendered
+    assert "appear 0 · disappear 0 · position_change 0" in rendered
+
+
+def test_answer_drift_reports_complete_event_lists(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    events = [_drift_event("2026-10-01", "appear", own=True, name="Mine")] * 12
+    _capture_get(monkeypatch, analytics, _drift_response(events, 12, trend_days=0))
+
+    rendered = analytics.aeko_get_answer_drift("domain-1")
+
+    assert "showing 12 of 12 events" in rendered
+    assert "appear 12 · disappear 0 · position_change 0" in rendered
+    assert "Position:" not in rendered
+    assert "No trend data in this range." in rendered
 
 
 # aeko_connect_review_source / aeko_sync_review_source were removed: connecting or syncing a
@@ -271,3 +582,11 @@ def test_public_state_removal_tools_are_annotated_destructive():
     sync = registered["aeko_sync_store"].annotations
     assert sync.readOnlyHint is False
     assert sync.destructiveHint is True
+
+
+def test_share_of_voice_docstring_states_one_sided_ranges():
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    doc = " ".join(analytics.aeko_get_share_of_voice.__doc__.split())
+
+    assert "`to_date` alone reads the 90 days ending there" in doc
+    assert "`from_date` alone reads through today" in doc

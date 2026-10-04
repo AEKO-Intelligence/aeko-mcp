@@ -4,6 +4,31 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.27.0] — 2026-10-04
+
+Requires the AEKO backend with the Phase 5b read API (PR #211).
+
+### Added
+
+- Add `aeko_get_source_share`: citation share by platform and by domain with change versus the previous period,
+  or the top 20 or fewer URLs of one domain. No raw rows are returned. The URL list is all time, and its range
+  line says so.
+- Registered tool count is now 126 across 22 modules.
+
+### Changed
+
+- `aeko_get_tracked_prompts` reads the light `/api/tracked-prompts/index`: the complete list with a constant
+  `tracked` status. The table adds context, funnel and type columns, with pipes and line breaks escaped. The
+  reconciliation JSON now comes before the table, is compact, and keys each row by `prompt_id` only.
+- `aeko_get_share_of_voice` returns a shaped brand table (`from`/`to`/`limit`, `brands_total`); the per-prompt
+  block appears only for 10 or fewer prompt ids.
+- `aeko_get_answer_drift` returns a shaped trend, own-brand event counts and the newest `events_limit`
+  (default 50) events with `events_total`, and accepts `from`/`to`.
+- `aeko_get_visibility_summary` is scoped to the caller's tracked prompts by the backend (sentiment is the
+  positive share; windows are UTC days). The cited-pages heading says the list is the top the backend returns
+  (at most 50) and that more may exist.
+- `aeko_fetch_source_content` notes that its associated prompts are the top 5 and more may exist.
+
 ## [0.26.0] — 2026-09-30
 
 ### Added

@@ -187,7 +187,7 @@ aeko-mcp ships tools across modules including `visibility`, `research`, `sources
 | Tool | Purpose |
 |---|---|
 | `aeko_search_research_prompts` | Search the research prompt library (country, AI platform, query type, funnel stage). Returns KO + EN phrasing with latest response metrics. |
-| `aeko_get_tracked_prompts` | List prompts actively tracked for the user's domain. |
+| `aeko_get_tracked_prompts` | List every prompt actively tracked for the user's domain (light `/api/tracked-prompts/index`). |
 | `aeko_track_prompt(raw_prompt, ai_platform, ...)` | **New in v0.5.0 (WRITE)** — closes the find-prompts-to-track loop. |
 | `aeko_untrack_prompt(prompt_id)` | **New in v0.5.0 (WRITE)** — inverse; preserves historical data (`UserPrompts.status='untracked'`). |
 
@@ -227,7 +227,9 @@ aeko-mcp holds no state. Every tool maps to one or more backend HTTP calls.
 | `/api/domains/{domain_id}` | GET | `aeko_get_domain_info` |
 | `/api/visibility/summary` | GET | `aeko_get_visibility_summary` (all three scopes) |
 | `/api/research/prompts` | GET | `aeko_search_research_prompts` |
-| `/api/tracked-prompts` | GET/POST/DELETE | `aeko_get_tracked_prompts`, `aeko_track_prompt`, `aeko_untrack_prompt` |
+| `/api/tracked-prompts` | POST/DELETE | `aeko_track_prompt`, `aeko_untrack_prompt` |
+| `/api/tracked-prompts/index` | GET | `aeko_get_tracked_prompts`, `aeko_resolve_prompts_by_text` |
+| `/api/monitoring/sources/domains` | GET | `aeko_get_source_share` |
 | `/api/tracked-prompts/{prompt_id}` | GET | `aeko_get_tracked_prompt` (composes Responses + ResponseCitations + Sources + CrawledPages) |
 | `/api/sources/{source_id}/content?domain_id=...` | GET | `aeko_fetch_source_content` |
 | `/api/content-ideas/recommendations` | GET | `aeko_list_content_ideas` |

@@ -127,28 +127,150 @@ def test_track_prompt_rejects_non_backend_metadata_kwargs():
         research.aeko_track_prompt(raw_prompt="friend gift cream", priority=1)
 
 
-def test_tracked_prompt_list_renders_angle_fields():
-    rendered = research._format_tracked_prompts(
-        [
-            {
-                "id": "tp-1",
-                "raw_prompt": "friend gift cream",
-                "ai_platform": "openai",
-                "country": "US",
-                "status": "tracked",
-                "context_id": "ctx-1",
-                "context_title": "Friend gift situation",
-                "funnel_stage": "consideration",
-                "query_type": "recommendation",
-                "tags": ["gift", "cream"],
-            }
-        ]
-    )
+INDEX_ROWS = [
+    {
+        "id": "tp-1",
+        "raw_prompt": "friend gift cream",
+        "prompt_en": "friend gift cream",
+        "prompt_ko": "친구 선물 크림",
+        "ai_platform": "openai",
+        "country": "US",
+        "context_id": "ctx-1",
+        "context_title": "Friend gift situation",
+        "funnel_stage": "consideration",
+        "query_type": "recommendation",
+        "tags": ["gift", "cream"],
+    },
+    {
+        "id": "tp-2",
+        "raw_prompt": "best sunscreen",
+        "prompt_en": None,
+        "prompt_ko": None,
+        "ai_platform": "google",
+        "country": "KR",
+        "context_id": None,
+        "context_title": None,
+        "funnel_stage": None,
+        "query_type": None,
+        "tags": None,
+    },
+    {
+        "id": "tp-3",
+        "raw_prompt": "retinol vs bakuchiol",
+        "prompt_en": "retinol vs bakuchiol",
+        "prompt_ko": None,
+        "ai_platform": "anthropic",
+        "country": "US",
+        "context_id": "ctx-2",
+        "context_title": "Ingredient comparison",
+        "funnel_stage": "awareness",
+        "query_type": "comparison",
+        "tags": [],
+    },
+]
 
+
+def _payload(rendered):
+    block = rendered.split("```json\n", 1)[1].split("\n```", 1)[0]
+    return json.loads(block)
+
+
+def test_tracked_prompt_list_renders_index_rows():
+    rendered = research._format_tracked_prompts(INDEX_ROWS)
+
+    assert "Tracked prompts: 3" in rendered
+    assert "| # | id | prompt | platform | country | context | funnel | type | status |" in rendered
+    assert rendered.count("| `tp-") == 3
     assert "Friend gift situation" in rendered
     assert "consideration" in rendered
     assert "recommendation" in rendered
     assert "gift, cream" in rendered
+    assert rendered.count("친구 선물 크림") == 2  # ko line + payload
+    payload = _payload(rendered)
+    assert [r["prompt_id"] for r in payload] == ["tp-1", "tp-2", "tp-3"]
+    assert all("id" not in r for r in payload)
+    assert payload[0]["tags"] == ["gift", "cream"]
+    assert payload[0]["context_title"] == "Friend gift situation"
+    assert payload[1]["tags"] is None
+    assert {r["status"] for r in payload} == {"tracked"}
+    assert rendered.count("| tracked |") == 3
+
+
+def test_tracked_prompt_payload_is_compact_and_precedes_the_table():
+    rendered = research._format_tracked_prompts(INDEX_ROWS)
+
+    block = rendered.split("```json\n", 1)[1].split("\n```", 1)[0]
+    assert "\n" not in block
+    assert '{"prompt_id":"tp-1","raw_prompt":"friend gift cream"' in block
+    assert "친구 선물 크림" in block  # not \u-escaped
+    assert rendered.index("## Reconciliation payload") < rendered.index("| # | id | prompt |")
+
+
+def test_tracked_prompt_table_escapes_pipes_and_newlines():
+    rows = [
+        {
+            "id": "tp-9",
+            "raw_prompt": "serum | toner\nfor oily skin",
+            "prompt_ko": "세럼 | 토너",
+            "ai_platform": "openai",
+            "country": "US",
+            "context_title": "Summer | oily skin",
+            "funnel_stage": "consideration",
+            "query_type": "comparison",
+            "tags": ["a|b", "c"],
+        }
+    ]
+    rendered = research._format_tracked_prompts(rows)
+
+    table = rendered.split("## Prompts", 1)[1]
+    row = next(line for line in table.splitlines() if "`tp-9`" in line)
+    assert row.count("|") == 10  # 9 columns
+    assert "serum / toner for oily skin" in row
+    assert "Summer / oily skin" in row
+    assert "*세럼 / 토너*" in table
+    assert "_Tags_: a/b, c" in table
+    assert _payload(rendered)[0]["context_title"] == "Summer | oily skin"
+
+
+def test_tracked_prompt_list_does_not_cap_rows():
+    rows = [{"id": f"tp-{i}", "raw_prompt": f"prompt {i}"} for i in range(250)]
+    rendered = research._format_tracked_prompts(rows)
+
+    assert "Tracked prompts: 250" in rendered
+    assert len(_payload(rendered)) == 250
+
+
+def test_tracked_prompts_tool_reads_light_index(monkeypatch):
+    calls = []
+
+    def fake_get(path, params=None):
+        calls.append((path, params))
+        return INDEX_ROWS
+
+    monkeypatch.setattr(research.client, "get", fake_get)
+
+    out = research.aeko_get_tracked_prompts()
+
+    assert calls == [("/api/tracked-prompts/index", None)]
+    assert "tp-3" in out
+    assert "Ingredient comparison" in out
+
+
+def test_resolve_prompts_by_text_reads_index_once(monkeypatch):
+    calls = []
+
+    def fake_get(path, params=None):
+        calls.append((path, params))
+        return INDEX_ROWS
+
+    monkeypatch.setattr(research.client, "get", fake_get)
+
+    out = research.aeko_resolve_prompts_by_text(["Best Sunscreen!", "친구 선물 크림", "unknown"])
+
+    assert calls == [("/api/tracked-prompts/index", None)]
+    assert '`tp-2` (matched_via: raw_prompt)' in out
+    assert '`tp-1` (matched_via: prompt_ko)' in out
+    assert "Resolved 2/3." in out
 
 
 def test_tracked_prompt_detail_renders_context_not_legacy_persona():

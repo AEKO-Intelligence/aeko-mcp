@@ -202,50 +202,25 @@ def _format_responses(data: dict) -> str:
     return "\n".join(lines)
 
 
+def _clip(text: str, limit: int = 60) -> str:
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _cell(text: Any, limit: Optional[int] = None) -> str:
+    """Text for a markdown table cell: one line, no pipes, optionally clipped."""
+    value = " ".join(str(text if text is not None else "").split()).replace("|", "/")
+    return _clip(value, limit) if limit is not None else value
+
+
 def _format_tracked_prompts(data: list) -> str:
     if not data:
         return "No tracked prompts found. Add prompts to track how AI engines respond to queries relevant to your products."
 
     lines = ["# Tracked Prompts", ""]
-    lines.append(f"You are tracking {len(data)} prompt(s).")
+    lines.append(f"Tracked prompts: {len(data)}")
     lines.append("")
 
-    lines.append("| # | ID | Prompt | Platform | Country | Status |")
-    lines.append("|---|----|--------|----------|---------|--------|")
-
-    for i, p in enumerate(data, 1):
-        prompt_id = p.get("id", "N/A")
-        prompt_text = p.get("prompt_en") or p.get("raw_prompt", "N/A")
-        if len(prompt_text) > 60:
-            prompt_text = prompt_text[:57] + "..."
-        platform = PLATFORM_DISPLAY.get(p.get("ai_platform", ""), p.get("ai_platform", "N/A"))
-        country = p.get("country", "N/A")
-        status = p.get("status", "tracked")
-        lines.append(f"| {i} | `{prompt_id}` | {prompt_text} | {platform} | {country} | {status} |")
-        prompt_ko = p.get("prompt_ko")
-        if prompt_ko:
-            ko_text = (prompt_ko[:57] + "...") if len(prompt_ko) > 60 else prompt_ko
-            lines.append(f"|   |   | *{ko_text}* |   |   |   |")
-        angle_bits: list[str] = []
-        context_id = p.get("context_id")
-        context_title = p.get("context_title")
-        if context_title or context_id:
-            label = context_title or "Context"
-            suffix = f" (`{context_id}`)" if context_id else ""
-            angle_bits.append(f"Context: {label}{suffix}")
-        funnel_stage = p.get("funnel_stage")
-        if funnel_stage:
-            angle_bits.append(f"Funnel: {funnel_stage}")
-        query_type = p.get("query_type")
-        if query_type:
-            angle_bits.append(f"Query: {query_type}")
-        tags = p.get("tags") or []
-        if tags:
-            angle_bits.append(f"Tags: {', '.join(str(x) for x in tags)}")
-        if angle_bits:
-            lines.append(f"|   |   | _Angles_: {' · '.join(angle_bits)} |   |   |   |")
-
-    lines.append("")
+    # The reconciliation block comes before the table so a client-side output cap cuts the table, not the block.
     lines.append("## Reconciliation payload")
     lines.append("")
     lines.append(
@@ -256,21 +231,51 @@ def _format_tracked_prompts(data: list) -> str:
                     "prompt_id": p.get("id"),
                     "raw_prompt": p.get("raw_prompt"),
                     "prompt_en": p.get("prompt_en"),
+                    "prompt_ko": p.get("prompt_ko"),
                     "ai_platform": p.get("ai_platform"),
                     "country": p.get("country"),
                     "context_id": p.get("context_id"),
-                    "status": p.get("status", "tracked"),
+                    "status": "tracked",
+                    "context_title": p.get("context_title"),
+                    "funnel_stage": p.get("funnel_stage"),
+                    "query_type": p.get("query_type"),
+                    "tags": p.get("tags"),
                 }
                 for p in data
             ],
             ensure_ascii=False,
-            indent=2,
+            separators=(",", ":"),
             default=str,
         )
         + "\n```"
     )
     lines.append("")
-    lines.append("Pass an `ID` from the table to `aeko_get_tracked_prompt` for full forensics (cited sources, JSON-LD `@types`, citability scores).")
+
+    lines.append("## Prompts")
+    lines.append("")
+    lines.append("| # | id | prompt | platform | country | context | funnel | type | status |")
+    lines.append("|---|----|--------|----------|---------|---------|--------|------|--------|")
+
+    for i, p in enumerate(data, 1):
+        prompt_id = _cell(p.get("id", "N/A"))
+        prompt_text = _cell(p.get("prompt_en") or p.get("raw_prompt") or "N/A", 60)
+        platform = _cell(PLATFORM_DISPLAY.get(p.get("ai_platform", ""), p.get("ai_platform") or "N/A"))
+        country = _cell(p.get("country") or "N/A")
+        context = _cell(p.get("context_title") or p.get("context_id") or "-")
+        funnel = _cell(p.get("funnel_stage") or "-")
+        query_type = _cell(p.get("query_type") or "-")
+        lines.append(
+            f"| {i} | `{prompt_id}` | {prompt_text} | {platform} | {country} | {context} | {funnel} | {query_type} | tracked |"
+        )
+        prompt_ko = p.get("prompt_ko")
+        if prompt_ko:
+            lines.append(f"|   |   | *{_cell(prompt_ko, 60)}* |   |   |   |   |   |   |")
+        tags = p.get("tags") or []
+        if tags:
+            lines.append(f"|   |   | _Tags_: {_cell(', '.join(str(x) for x in tags))} |   |   |   |   |   |   |")
+
+    lines.append("")
+    lines.append("Pass a `prompt_id` (the table's `id`) to `aeko_get_tracked_prompt` for full forensics (cited sources, JSON-LD `@types`, citability scores).")
     lines.append("")
 
     return "\n".join(lines)
@@ -324,11 +329,13 @@ def aeko_search_research_prompts(
 def aeko_get_tracked_prompts() -> str:
     """List all prompts you are actively tracking.
 
-    Shows your tracked prompts with their AI platform, country,
-    and tracking status. These prompts are periodically re-queried
+    The list is complete (every tracked prompt, never capped or paged)
+    and light: AI platform, country, context, funnel stage, query type
+    and tags, with no responses or metrics. Use aeko_get_tracked_prompt
+    for one prompt's responses. These prompts are periodically re-queried
     to monitor changes in AI engine responses over time.
     """
-    data = client.get("/api/tracked-prompts")
+    data = client.get("/api/tracked-prompts/index")
     return _format_tracked_prompts(data)
 
 
@@ -360,7 +367,7 @@ def aeko_resolve_prompts_by_text(texts: list[str]) -> str:
     if not texts:
         return "No input texts provided."
 
-    data = client.get("/api/tracked-prompts")
+    data = client.get("/api/tracked-prompts/index")
     if not isinstance(data, list):
         return "Backend returned unexpected payload (expected a JSON list)."
 
