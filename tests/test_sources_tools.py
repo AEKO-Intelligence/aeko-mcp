@@ -152,16 +152,18 @@ def test_fetch_source_content_says_how_many_prompts_are_shown(monkeypatch):
     )
     output = sources.aeko_fetch_source_content("domain-1", "source-1")
 
-    assert "## Associated tracked prompts (7) - showing 5 of 7" in output
+    assert "## Associated tracked prompts\n\ntop 5 associated prompts (more may exist)" in output
     assert "prompt-4" in output
     assert "prompt-5" not in output
 
 
-def test_fetch_source_content_has_no_showing_note_when_nothing_is_clipped(monkeypatch):
+def test_fetch_source_content_notes_the_backend_cap_at_five_prompts(monkeypatch):
+    # The backend returns at most 5 prompts, so five is the usual case and more may exist.
     monkeypatch.setattr(
         sources.client, "get", lambda path, params=None: _source_payload(5)
     )
     output = sources.aeko_fetch_source_content("domain-1", "source-1")
 
-    assert "## Associated tracked prompts (5)" in output
+    assert "top 5 associated prompts (more may exist)" in output
+    assert "prompt-4" in output
     assert "showing" not in output

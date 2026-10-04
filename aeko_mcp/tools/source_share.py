@@ -116,9 +116,15 @@ def _format_domain_share(current: dict, previous: dict, window: tuple[date, date
     return "\n".join(lines)
 
 
-def _format_domain_urls(domain: str, data: dict) -> str:
+def _format_domain_urls(domain: str, data: dict, window: tuple[date, date]) -> str:
     urls = data.get("urls") or []
-    lines = [f"# Top URLs of {_cell(domain)}", ""]
+    lines = [
+        f"# Top URLs of {_cell(domain)}",
+        "",
+        f"Range: {window[0].isoformat()} ~ {window[1].isoformat()} (citation shares);"
+        " URL list: all time — the URL endpoint has no date range",
+        "",
+    ]
     if not urls:
         lines.append(f"No citations of {_cell(domain)} in this scope (all time).")
         return "\n".join(lines)
@@ -126,7 +132,7 @@ def _format_domain_urls(domain: str, data: dict) -> str:
     for row in urls:
         last_cited = _cell(str(row.get("last_cited_at") or "")[:10])
         lines.append(
-            f"| {_cell(row.get('url'))} | {_cell(row.get('title'), 80)} | {_count(row.get('citations'))} | {last_cited} |"
+            f"| {_cell(row.get('url'), 80)} | {_cell(row.get('title'), 80)} | {_count(row.get('citations'))} | {last_cited} |"
         )
     lines += ["", f"showing {len(urls):,} of {_count(data.get('total'))} URLs"]
     return "\n".join(lines)
@@ -151,21 +157,22 @@ def aeko_get_source_share(
 
     With `domain` (a cited domain such as `news.naver.com`, as listed in the
     domain table): the top 20 URLs of that domain (title, citations, last
-    cited). The URL list counts all time; `from_date`/`to_date` do not apply.
+    cited). The URL list counts all time; `from_date`/`to_date` do not apply
+    to it, and its range line says so.
 
     Optional `prompt_ids` and `ai_platform` narrow the scope of either read.
     Only these capped summaries are available here: raw citation rows are not
     served through MCP; the dashboard's Source Analysis export has them.
     """
     params = _scope_params(domain_id, prompt_ids, ai_platform)
+    window = _resolve_window(from_date, to_date)
     if domain:
         data = client.get(
             f"/api/monitoring/sources/domains/{quote(domain, safe='')}/urls",
             params={**params, "limit": URL_LIMIT},
         )
-        return _format_domain_urls(domain, data)
+        return _format_domain_urls(domain, data, window)
 
-    window = _resolve_window(from_date, to_date)
     length = window[1] - window[0] + timedelta(days=1)
     previous_window = (window[0] - length, window[0] - timedelta(days=1))
     current = client.get(

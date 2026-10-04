@@ -118,7 +118,8 @@ def aeko_get_share_of_voice(
     (share %, mentions, average visibility and position, cited responses) with
     "showing N of M brands", your brand marked ★. All time unless a range is
     given: `from_date`/`to_date` (`YYYY-MM-DD`, inclusive; `start_date`/`end_date`
-    are the same). `limit` brands (1-50, default 25). Optional `prompt_ids`
+    are the same). `from_date` alone reads through today; `to_date` alone reads
+    the 90 days ending there. `limit` brands (1-50, default 25). Optional `prompt_ids`
     scope the read; with 10 or fewer, each prompt's top brands are listed too.
     """
     limit = max(1, min(int(limit), 50))
@@ -163,9 +164,11 @@ def _format_answer_drift(data: dict, events_limit: int, note: Optional[str]) -> 
         if (len(trend) - 1) % 7:
             sampled.append(trend[-1])
         # Without brand keywords the backend's trend covers every brand in scope.
+        # The trend lists only days with data, so the sample steps through those days, not the calendar.
         lines.append(
-            f"Your brand's daily averages (every brand when the domain has no brand keywords):"
-            f" every 7th of {len(trend):,} days, plus the last."
+            f"Your brand's daily averages (every brand when the domain has no brand keywords),"
+            f" sampled from the {len(trend):,} days with data: the first day, every 7th day with data after it,"
+            f" and the last day."
         )
         lines.append("")
         lines.append("| date | avg visibility | avg position |")
@@ -208,6 +211,10 @@ def _format_answer_drift(data: dict, events_limit: int, note: Optional[str]) -> 
             )
         lines.append("")
         lines.append("★ = your brand. Δ = position change; negative = moved up.")
+        lines.append(
+            "`stable` = your brand held the same position on the prompt's first and last day in the range;"
+            " listed in the table, not counted above."
+        )
     else:
         lines.append("No drift events in this range.")
     showing = f"showing {len(events):,} of {events_total:,} events"
@@ -230,9 +237,12 @@ def aeko_get_answer_drift(
 
     Reads the last `days` (1-365, default 30), or `from_date`..`to_date`
     (`YYYY-MM-DD`, inclusive, both required) instead. Returns the range, your
-    brand's average position now vs before, a weekly-sampled visibility and
-    position trend, your brand's event counts, and the newest `events_limit`
-    events (1-200, default 50) with "showing N of M events".
+    brand's average position now vs before, a sampled visibility and position
+    trend (the first day with data, every 7th day with data, the last day),
+    your brand's appear/disappear/position_change counts, and the newest
+    `events_limit` events (1-200, default 50) with "showing N of M events".
+    Your brand also gets `stable` events (same position at the start and end
+    of the range); they are listed but not counted.
     """
     params: dict[str, Any] = {"domain_id": domain_id}
     note = None

@@ -77,16 +77,16 @@ def test_cited_sources_says_how_many_pages_are_shown(monkeypatch):
     monkeypatch.setattr(
         visibility.client,
         "get",
-        lambda *args, **kwargs: {"cited_pages": _cited_pages(25)},
+        lambda *args, **kwargs: {"cited_pages": _cited_pages(50)},
     )
     output = visibility.aeko_get_visibility_summary("domain-1", view="cited_sources")
 
-    assert "# Cited Pages (25) - showing 20 of 25" in output
+    assert "# Cited Pages - showing 20 of the top 50 the backend returns (more may exist)" in output
     assert "/page-19" in output
     assert "/page-20" not in output
 
 
-def test_cited_sources_has_no_showing_note_when_nothing_is_clipped(monkeypatch):
+def test_cited_sources_names_the_backend_cap_when_nothing_is_clipped(monkeypatch):
     monkeypatch.setattr(
         visibility.client,
         "get",
@@ -94,5 +94,6 @@ def test_cited_sources_has_no_showing_note_when_nothing_is_clipped(monkeypatch):
     )
     output = visibility.aeko_get_visibility_summary("domain-1", view="cited_sources")
 
-    assert "# Cited Pages (20)" in output
+    assert "# Cited Pages - top 20 the backend returns (more may exist)" in output
+    assert "/page-19" in output
     assert "showing" not in output

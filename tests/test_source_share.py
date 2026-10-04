@@ -202,6 +202,52 @@ def test_domain_with_no_urls_says_no_citations(monkeypatch):
     assert "| url |" not in output
 
 
+def test_domain_mode_labels_the_url_list_all_time_and_clips_urls(monkeypatch):
+    calls = []
+    long_url = "https://news.naver.com/" + "a" * 300
+
+    def fake_get(path, params=None):
+        calls.append((path, dict(params or {})))
+        return {
+            "domain": "news.naver.com",
+            "urls": [{"url": long_url, "title": "Long", "citations": 3, "last_cited_at": "2026-09-30T00:00:00Z"}],
+            "total": 1,
+            "cursor": None,
+        }
+
+    monkeypatch.setattr(source_share.client, "get", fake_get)
+
+    output = source_share.aeko_get_source_share(
+        "domain-1", from_date="2026-09-01", to_date="2026-09-30", domain="news.naver.com"
+    )
+
+    assert calls == [
+        ("/api/monitoring/sources/domains/news.naver.com/urls", {"domain_id": "domain-1", "limit": 20})
+    ]
+    assert (
+        "Range: 2026-09-01 ~ 2026-09-30 (citation shares);"
+        " URL list: all time — the URL endpoint has no date range"
+    ) in output
+    row = next(line for line in output.splitlines() if "news.naver.com/aaa" in line)
+    url_cell = row.split(" | ")[0].lstrip("| ")
+    assert len(url_cell) == 80
+    assert url_cell.endswith("...")
+    assert long_url not in output
+
+
+def test_domain_mode_prints_the_range_line_with_the_default_window(monkeypatch):
+    monkeypatch.setattr(source_share, "_utc_today", lambda: date(2026, 10, 4))
+    monkeypatch.setattr(
+        source_share.client,
+        "get",
+        lambda path, params=None: {"domain": "x.com", "urls": [], "total": 0, "cursor": None},
+    )
+
+    output = source_share.aeko_get_source_share("domain-1", domain="x.com")
+
+    assert "Range: 2026-07-07 ~ 2026-10-04 (citation shares); URL list: all time" in output
+
+
 def test_utc_today_is_the_utc_date():
     assert source_share._utc_today() == datetime.now(timezone.utc).date()
 

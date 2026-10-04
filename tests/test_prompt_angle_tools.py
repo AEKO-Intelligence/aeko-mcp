@@ -187,12 +187,49 @@ def test_tracked_prompt_list_renders_index_rows():
     assert "gift, cream" in rendered
     assert rendered.count("친구 선물 크림") == 2  # ko line + payload
     payload = _payload(rendered)
-    assert [r["id"] for r in payload] == ["tp-1", "tp-2", "tp-3"]
+    assert [r["prompt_id"] for r in payload] == ["tp-1", "tp-2", "tp-3"]
+    assert all("id" not in r for r in payload)
     assert payload[0]["tags"] == ["gift", "cream"]
     assert payload[0]["context_title"] == "Friend gift situation"
     assert payload[1]["tags"] is None
     assert {r["status"] for r in payload} == {"tracked"}
     assert rendered.count("| tracked |") == 3
+
+
+def test_tracked_prompt_payload_is_compact_and_precedes_the_table():
+    rendered = research._format_tracked_prompts(INDEX_ROWS)
+
+    block = rendered.split("```json\n", 1)[1].split("\n```", 1)[0]
+    assert "\n" not in block
+    assert '{"prompt_id":"tp-1","raw_prompt":"friend gift cream"' in block
+    assert "친구 선물 크림" in block  # not \u-escaped
+    assert rendered.index("## Reconciliation payload") < rendered.index("| # | id | prompt |")
+
+
+def test_tracked_prompt_table_escapes_pipes_and_newlines():
+    rows = [
+        {
+            "id": "tp-9",
+            "raw_prompt": "serum | toner\nfor oily skin",
+            "prompt_ko": "세럼 | 토너",
+            "ai_platform": "openai",
+            "country": "US",
+            "context_title": "Summer | oily skin",
+            "funnel_stage": "consideration",
+            "query_type": "comparison",
+            "tags": ["a|b", "c"],
+        }
+    ]
+    rendered = research._format_tracked_prompts(rows)
+
+    table = rendered.split("## Prompts", 1)[1]
+    row = next(line for line in table.splitlines() if "`tp-9`" in line)
+    assert row.count("|") == 10  # 9 columns
+    assert "serum / toner for oily skin" in row
+    assert "Summer / oily skin" in row
+    assert "*세럼 / 토너*" in table
+    assert "_Tags_: a/b, c" in table
+    assert _payload(rendered)[0]["context_title"] == "Summer | oily skin"
 
 
 def test_tracked_prompt_list_does_not_cap_rows():

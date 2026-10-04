@@ -206,6 +206,12 @@ def _clip(text: str, limit: int = 60) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
+def _cell(text: Any, limit: Optional[int] = None) -> str:
+    """Text for a markdown table cell: one line, no pipes, optionally clipped."""
+    value = " ".join(str(text if text is not None else "").split()).replace("|", "/")
+    return _clip(value, limit) if limit is not None else value
+
+
 def _format_tracked_prompts(data: list) -> str:
     if not data:
         return "No tracked prompts found. Add prompts to track how AI engines respond to queries relevant to your products."
@@ -214,28 +220,7 @@ def _format_tracked_prompts(data: list) -> str:
     lines.append(f"Tracked prompts: {len(data)}")
     lines.append("")
 
-    lines.append("| # | id | prompt | platform | country | context | funnel | type | status |")
-    lines.append("|---|----|--------|----------|---------|---------|--------|------|--------|")
-
-    for i, p in enumerate(data, 1):
-        prompt_id = p.get("id", "N/A")
-        prompt_text = _clip(p.get("prompt_en") or p.get("raw_prompt") or "N/A")
-        platform = PLATFORM_DISPLAY.get(p.get("ai_platform", ""), p.get("ai_platform") or "N/A")
-        country = p.get("country") or "N/A"
-        context = p.get("context_title") or p.get("context_id") or "-"
-        funnel = p.get("funnel_stage") or "-"
-        query_type = p.get("query_type") or "-"
-        lines.append(
-            f"| {i} | `{prompt_id}` | {prompt_text} | {platform} | {country} | {context} | {funnel} | {query_type} | tracked |"
-        )
-        prompt_ko = p.get("prompt_ko")
-        if prompt_ko:
-            lines.append(f"|   |   | *{_clip(prompt_ko)}* |   |   |   |   |   |   |")
-        tags = p.get("tags") or []
-        if tags:
-            lines.append(f"|   |   | _Tags_: {', '.join(str(x) for x in tags)} |   |   |   |   |   |   |")
-
-    lines.append("")
+    # The reconciliation block comes before the table so a client-side output cap cuts the table, not the block.
     lines.append("## Reconciliation payload")
     lines.append("")
     lines.append(
@@ -243,7 +228,6 @@ def _format_tracked_prompts(data: list) -> str:
         + json.dumps(
             [
                 {
-                    "id": p.get("id"),
                     "prompt_id": p.get("id"),
                     "raw_prompt": p.get("raw_prompt"),
                     "prompt_en": p.get("prompt_en"),
@@ -260,13 +244,38 @@ def _format_tracked_prompts(data: list) -> str:
                 for p in data
             ],
             ensure_ascii=False,
-            indent=2,
+            separators=(",", ":"),
             default=str,
         )
         + "\n```"
     )
     lines.append("")
-    lines.append("Pass an `id` from the table to `aeko_get_tracked_prompt` for full forensics (cited sources, JSON-LD `@types`, citability scores).")
+
+    lines.append("## Prompts")
+    lines.append("")
+    lines.append("| # | id | prompt | platform | country | context | funnel | type | status |")
+    lines.append("|---|----|--------|----------|---------|---------|--------|------|--------|")
+
+    for i, p in enumerate(data, 1):
+        prompt_id = _cell(p.get("id", "N/A"))
+        prompt_text = _cell(p.get("prompt_en") or p.get("raw_prompt") or "N/A", 60)
+        platform = _cell(PLATFORM_DISPLAY.get(p.get("ai_platform", ""), p.get("ai_platform") or "N/A"))
+        country = _cell(p.get("country") or "N/A")
+        context = _cell(p.get("context_title") or p.get("context_id") or "-")
+        funnel = _cell(p.get("funnel_stage") or "-")
+        query_type = _cell(p.get("query_type") or "-")
+        lines.append(
+            f"| {i} | `{prompt_id}` | {prompt_text} | {platform} | {country} | {context} | {funnel} | {query_type} | tracked |"
+        )
+        prompt_ko = p.get("prompt_ko")
+        if prompt_ko:
+            lines.append(f"|   |   | *{_cell(prompt_ko, 60)}* |   |   |   |   |   |   |")
+        tags = p.get("tags") or []
+        if tags:
+            lines.append(f"|   |   | _Tags_: {_cell(', '.join(str(x) for x in tags))} |   |   |   |   |   |   |")
+
+    lines.append("")
+    lines.append("Pass a `prompt_id` (the table's `id`) to `aeko_get_tracked_prompt` for full forensics (cited sources, JSON-LD `@types`, citability scores).")
     lines.append("")
 
     return "\n".join(lines)

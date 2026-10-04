@@ -133,9 +133,11 @@ def _format_cited_pages(cited_pages: list) -> str:
             "pages in the responses AEKO has collected."
         )
 
-    heading = f"# Cited Pages ({len(cited_pages)})"
+    # The backend returns at most 50 cited pages, so the list length is not a total.
     if len(cited_pages) > 20:
-        heading += f" - showing 20 of {len(cited_pages)}"
+        heading = f"# Cited Pages - showing 20 of the top {len(cited_pages)} the backend returns (more may exist)"
+    else:
+        heading = f"# Cited Pages - top {len(cited_pages)} the backend returns (more may exist)"
     lines = [heading, ""]
     lines.append("| Page | Citations | AI Engines | Top Prompt |")
     lines.append("|------|-----------|------------|------------|")

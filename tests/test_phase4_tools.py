@@ -389,6 +389,26 @@ def test_answer_drift_renders_summary_trend_counts_and_events(monkeypatch):
     assert "showing 50 of 1,234 events" in rendered
 
 
+def test_answer_drift_explains_stable_events_and_samples_days_with_data(monkeypatch):
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    events = [_drift_event("2026-10-04", "stable", own=True, position=3, name="Mine")]
+    response = _drift_response(events, 1, trend_days=0)
+    response["trend"] = [
+        {"date": "2026-09-05", "avg_visibility": 40, "avg_position": 2.5},
+        {"date": "2026-09-20", "avg_visibility": 41, "avg_position": 2.4},
+    ]
+    _capture_get(monkeypatch, analytics, response)
+
+    rendered = analytics.aeko_get_answer_drift("domain-1")
+
+    assert "sampled from the 2 days with data: the first day, every 7th day with data after it, and the last day." in rendered
+    assert "every 7th of" not in rendered
+    assert "| 2026-09-05 | " in rendered and "| 2026-09-20 | " in rendered
+    assert "| 2026-10-04 | stable | ★ Mine |" in rendered
+    assert "`stable` = your brand held the same position" in rendered
+    assert "appear 0 · disappear 0 · position_change 0" in rendered
+
+
 def test_answer_drift_reports_complete_event_lists(monkeypatch):
     analytics = importlib.import_module("aeko_mcp.tools.analytics")
     events = [_drift_event("2026-10-01", "appear", own=True, name="Mine")] * 12
@@ -562,3 +582,11 @@ def test_public_state_removal_tools_are_annotated_destructive():
     sync = registered["aeko_sync_store"].annotations
     assert sync.readOnlyHint is False
     assert sync.destructiveHint is True
+
+
+def test_share_of_voice_docstring_states_one_sided_ranges():
+    analytics = importlib.import_module("aeko_mcp.tools.analytics")
+    doc = " ".join(analytics.aeko_get_share_of_voice.__doc__.split())
+
+    assert "`to_date` alone reads the 90 days ending there" in doc
+    assert "`from_date` alone reads through today" in doc
