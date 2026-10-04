@@ -80,7 +80,7 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP registers 126 tools across 22 modules, covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, source citation share, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, manual automation starters, store-write actions, versioned brand documents, accepted whole-brand packages, Brand Wiki reads, and Fact Check findings.
+AEKO MCP registers 127 tools across 22 modules, covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, source citation share, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, manual automation starters, store-write actions, versioned brand documents, accepted whole-brand packages, Brand Wiki reads, and Fact Check findings.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
@@ -131,6 +131,8 @@ The `marketing` group includes guarded updates for existing OpenAI Ads entities 
 - `aeko_update_ad_creative(ad_id, idempotency_key, ...)` — replace an existing ad creative only after the caller resends the complete creative returned by `aeko_list_ads`.
 
 The `action_plan` group includes a permanent, token-fenced execution claim for ActionItem executors:
+
+- `aeko_get_action_evidence(item_id, evidence_id, offset=0, max_chars=8000)` — read a bounded original-evidence snapshot attached to a saved Context Search plan. Returns typed provenance and continuation; owner/platform/redaction checks run on every read. Requires the matching Context Search backend. No live-source substitution.
 
 - `aeko_claim_action_item(item_id)` — create an exclusive execution claim for one owned `ready` item and return its unique `claim_id`. The item stays `ready`; a concurrent executor receives 409 and must stop.
 - `aeko_release_action_item(item_id, claim_id=...)` — release only the matching uncompleted claim when no store mutation occurred. Claims do not expire automatically; forced recovery requires explicit confirmation that no execution or mutation is active.
