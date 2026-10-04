@@ -74,6 +74,7 @@ from .tools import (  # noqa: E402, F401
     research,
     reviews,
     setup,
+    source_share,
     sources,
     store_write,
     views,
