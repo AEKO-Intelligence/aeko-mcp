@@ -320,9 +320,10 @@ def aeko_search_research_prompts(
 def aeko_get_tracked_prompts() -> str:
     """List all prompts you are actively tracking.
 
-    Shows your tracked prompts with their AI platform, country,
-    context, funnel stage and query type (no responses or metrics).
-    These prompts are periodically re-queried
+    The list is complete (every tracked prompt, never capped or paged)
+    and light: AI platform, country, context, funnel stage, query type
+    and tags, with no responses or metrics. Use aeko_get_tracked_prompt
+    for one prompt's responses. These prompts are periodically re-queried
     to monitor changes in AI engine responses over time.
     """
     data = client.get("/api/tracked-prompts/index")
