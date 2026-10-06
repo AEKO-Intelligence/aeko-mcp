@@ -43,6 +43,7 @@ def aeko_create_assistant_task(
         "ads.copy_format.proposal.v1",
         "visibility.overview_report.v1",
         "markets.comparison_report.v1",
+        "contexts.group_proposal.v1",
     }:
         raise AekoToolInputError("INVALID_ARGUMENT", "Unsupported assistant task action_id.")
     if not isinstance(scope, dict) or not scope:
@@ -112,14 +113,14 @@ def aeko_save_action_output(
 ) -> str:
     """Persist a claimed task's actual result for AEKO's report/output viewer.
 
-    Client-written kinds are ``report_markdown`` and
-    ``ad_copy_format_proposal``. Tracking receipts are server-created by
+    Client-written kinds are ``report_markdown``,
+    ``ad_copy_format_proposal`` and ``context_group_proposal``. Tracking receipts are server-created by
     ``aeko_track_task_suggestions``; client success summaries cannot create
     them. A local file path is not a report.
     """
     item = _item(item_id)
     claim = uuid_arg(claim_id, "claim_id")
-    if kind not in {"report_markdown", "ad_copy_format_proposal"}:
+    if kind not in {"report_markdown", "ad_copy_format_proposal", "context_group_proposal"}:
         raise AekoToolInputError("INVALID_ARGUMENT", "Unsupported client-written output kind.")
     if schema_version != "assistant-output-v1":
         raise AekoToolInputError("INVALID_ARGUMENT", "schema_version must be assistant-output-v1.")
@@ -127,8 +128,8 @@ def aeko_save_action_output(
         raise AekoToolInputError("INVALID_ARGUMENT", "idempotency_key must be 1–160 characters.")
     if kind == "report_markdown" and (not isinstance(markdown, str) or not markdown.strip() or len(markdown.encode("utf-8")) > 64 * 1024):
         raise AekoToolInputError("INVALID_ARGUMENT", "Report Markdown must be non-empty and at most 64 KiB.")
-    if kind == "ad_copy_format_proposal" and (markdown is not None or evidence_ids or not isinstance(data, dict)):
-        raise AekoToolInputError("INVALID_ARGUMENT", "A format proposal needs structured data only.")
+    if kind in {"ad_copy_format_proposal", "context_group_proposal"} and (markdown is not None or evidence_ids or not isinstance(data, dict)):
+        raise AekoToolInputError("INVALID_ARGUMENT", "A proposal needs structured data only.")
     if data is not None and (not isinstance(data, dict) or len(json.dumps(data).encode("utf-8")) > 64 * 1024):
         raise AekoToolInputError("INVALID_ARGUMENT", "data must be an object of at most 64 KiB.")
     evidence = [uuid_arg(eid, "evidence_id") for eid in (evidence_ids or [])]

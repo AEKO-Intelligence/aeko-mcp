@@ -79,6 +79,20 @@ def test_format_proposal_is_structured_and_never_creates_a_format(monkeypatch):
     assert len(calls) == 1
 
 
+def test_context_group_proposal_uses_claimed_output_only(monkeypatch):
+    calls = []
+    monkeypatch.setattr(assistant_tasks.client, "post", lambda path, *, json: calls.append((path, json)) or {"id": str(uuid4())})
+    groups = {"groups": [{"name": "Gift moments", "rationale": "Shared occasion", "context_ids": [CONTEXT]}]}
+    assistant_tasks.aeko_save_action_output(ITEM, CLAIM, "groups-key", "context_group_proposal", "assistant-output-v1", data=groups)
+    assert calls == [(f"/api/action-items/{ITEM}/outputs", {
+        "claim_id": CLAIM, "idempotency_key": "groups-key", "kind": "context_group_proposal",
+        "schema_version": "assistant-output-v1", "markdown": None, "data": groups, "evidence_ids": [],
+    })]
+    with pytest.raises(AekoToolInputError):
+        assistant_tasks.aeko_save_action_output(ITEM, CLAIM, "bad-groups", "context_group_proposal", "assistant-output-v1", markdown="Created campaign", data=groups)
+    assert len(calls) == 1
+
+
 def test_output_reads_are_task_scoped(monkeypatch):
     calls = []
     monkeypatch.setattr(assistant_tasks.client, "get", lambda path: calls.append(path) or {"outputs": []})
@@ -95,11 +109,12 @@ def test_task_creation_does_not_accept_arbitrary_action_id(monkeypatch):
         assistant_tasks.aeko_create_assistant_task("ads.activate.v1", {"domain_id": str(uuid4())}, "key")
 
 
-@pytest.mark.parametrize("action_id", ["visibility.overview_report.v1", "markets.comparison_report.v1"])
+@pytest.mark.parametrize("action_id", ["visibility.overview_report.v1", "markets.comparison_report.v1", "contexts.group_proposal.v1"])
 def test_read_only_report_actions_can_be_saved_without_execution(monkeypatch, action_id):
     calls = []
     monkeypatch.setattr(assistant_tasks.client, "post", lambda path, *, json, headers: calls.append((path, json, headers)) or {"id": ITEM, "status": "ready"})
-    assistant_tasks.aeko_create_assistant_task(action_id, {"page_id": "overview" if action_id.startswith("visibility.") else "markets"}, "stable-key")
+    page_id = "overview" if action_id.startswith("visibility.") else "contexts" if action_id.startswith("contexts.") else "markets"
+    assistant_tasks.aeko_create_assistant_task(action_id, {"page_id": page_id}, "stable-key")
     assert calls[0][0] == "/api/action-items/assistant-tasks"
     assert calls[0][1]["action_id"] == action_id
     assert calls[0][2] == {"Idempotency-Key": "stable-key"}
