@@ -136,6 +136,7 @@ def test_task_creation_does_not_accept_arbitrary_action_id(monkeypatch):
 
 @pytest.mark.parametrize("action_id,page_id", [
     ("tracking.selected_questions_report.v1", "tracking"),
+    ("tracking.platform_responses_report.v1", "tracking"),
     ("competitors.question_gaps_report.v1", "competitors"),
     ("competitors.source_patterns_report.v1", "competitors"),
     ("visibility.overview_report.v1", "overview"),

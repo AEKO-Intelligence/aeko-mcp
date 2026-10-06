@@ -40,6 +40,7 @@ def aeko_create_assistant_task(
     if action_id not in {
         "tracking.suggested_prompts.bulk_track.v1",
         "tracking.selected_questions_report.v1",
+        "tracking.platform_responses_report.v1",
         "competitors.comparison_report.v1",
         "competitors.question_gaps_report.v1",
         "competitors.source_patterns_report.v1",
