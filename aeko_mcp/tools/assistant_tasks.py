@@ -45,6 +45,8 @@ def aeko_create_assistant_task(
         "markets.comparison_report.v1",
         "contexts.group_proposal.v1",
         "reviews.strengths_report.v1",
+        "ads.performance_report.v1",
+        "measure.ga4_report.v1",
     }:
         raise AekoToolInputError("INVALID_ARGUMENT", "Unsupported assistant task action_id.")
     if not isinstance(scope, dict) or not scope:
