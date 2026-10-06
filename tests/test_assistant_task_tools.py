@@ -109,11 +109,11 @@ def test_task_creation_does_not_accept_arbitrary_action_id(monkeypatch):
         assistant_tasks.aeko_create_assistant_task("ads.activate.v1", {"domain_id": str(uuid4())}, "key")
 
 
-@pytest.mark.parametrize("action_id", ["visibility.overview_report.v1", "markets.comparison_report.v1", "contexts.group_proposal.v1"])
+@pytest.mark.parametrize("action_id", ["visibility.overview_report.v1", "markets.comparison_report.v1", "contexts.group_proposal.v1", "reviews.strengths_report.v1"])
 def test_read_only_report_actions_can_be_saved_without_execution(monkeypatch, action_id):
     calls = []
     monkeypatch.setattr(assistant_tasks.client, "post", lambda path, *, json, headers: calls.append((path, json, headers)) or {"id": ITEM, "status": "ready"})
-    page_id = "overview" if action_id.startswith("visibility.") else "contexts" if action_id.startswith("contexts.") else "markets"
+    page_id = "overview" if action_id.startswith("visibility.") else "contexts" if action_id.startswith("contexts.") else "reviews" if action_id.startswith("reviews.") else "markets"
     assistant_tasks.aeko_create_assistant_task(action_id, {"page_id": page_id}, "stable-key")
     assert calls[0][0] == "/api/action-items/assistant-tasks"
     assert calls[0][1]["action_id"] == action_id
