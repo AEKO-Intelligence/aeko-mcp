@@ -4,7 +4,7 @@ MCP server for [AEKO](https://aeko-intelligence.com) — monitor and optimize ho
 
 This repo ships the **Python MCP server** only. For the guided workflows (skills / slash commands like `/aeko-run-action`) see **[`aeko-plugin`](https://github.com/AEKO-Intelligence/aeko-plugin)** — install both for the full experience.
 
-Saved AEKO dashboard tasks use `/aeko-assistant-task <item_id>` in the customer plugin. The server returns a frozen Plan.md, bounded evidence and an exact claim; the client saves an output or server tracking receipt back to AEKO before completion. The 15-action catalog covers exact suggestion tracking, saved question and evidence reports, cached Ads/GA4 and technical plans, plus reviewed writing-format, Context-group and ad-rule proposals. Opening a client link does not execute a task.
+Saved AEKO dashboard tasks use `/aeko-assistant-task <item_id>` in the customer plugin. The server returns a frozen Plan.md, bounded evidence and an exact claim; the client saves an output or server tracking receipt back to AEKO before completion. The 16-action catalog covers exact suggestion tracking, saved question and evidence reports, cached Ads/GA4 and technical plans, plus reviewed writing-format, Context-group and ad-rule proposals. Opening a client link does not execute a task.
 
 ## Connecting
 
