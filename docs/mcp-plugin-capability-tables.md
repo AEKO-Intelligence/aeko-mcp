@@ -69,7 +69,12 @@ Tier shorthand:
 | `aeko_list_action_items` | List action-plan items. | Yes | No |
 | `aeko_list_technical_items` | List technical-plan items. | Yes | No |
 | `aeko_get_action_plan` | Fetch Plan.md for an item. | Yes | No |
-| `aeko_get_action_evidence` | Read original evidence frozen into a saved content-v3 plan, with bounded continuation. | Backend plan entitlement | No; current owner/platform/redaction checks apply. |
+| `aeko_get_action_evidence` | Read original evidence frozen into a saved content-v3 or assistant-task-v1 plan, with bounded continuation. | Backend plan entitlement | No; current owner/platform/redaction checks apply. |
+| `aeko_create_assistant_task` | Save one server-catalogued assistant task with immutable scope and idempotency key. | Action-dependent | Current owner/scope/entitlement checks apply. |
+| `aeko_track_task_suggestions` | Track only exact saved Context suggestions and variants under an active task claim; returns a persisted per-row receipt. | No | Pro+ Context entitlement and current quota. |
+| `aeko_save_action_output` | Save a claimed task's bounded report or proposal with evidence references. | Action-dependent | Output contract and claim enforced. |
+| `aeko_list_action_outputs` / `aeko_get_action_output` | Read persisted task outputs or server tracking receipts. | Owner-scoped | Current domain access applies. |
+| `aeko_get_ad_copy_formats` / `aeko_create_ad_copy_format` | Read built-in/brand writing formats or create an explicitly requested custom format. | Domain-scoped | Backend format access applies; creation does not run ads. |
 | `aeko_claim_action_item` | Atomically create one permanent, token-fenced claim for a ready item. | Starter limited | Enforces the item's current artifact-tier requirement; PDP execution is Pro+. |
 | `aeko_release_action_item` | Release the matching unmutated claim; forced recovery requires explicit confirmation. | Yes, owner-scoped | No automatic expiry. |
 | `aeko_create_action_item` | Create an action item and enqueue Plan.md generation. | Starter limited | Context grounding requires Pro+ |

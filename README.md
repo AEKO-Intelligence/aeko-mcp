@@ -4,6 +4,8 @@ MCP server for [AEKO](https://aeko-intelligence.com) — monitor and optimize ho
 
 This repo ships the **Python MCP server** only. For the guided workflows (skills / slash commands like `/aeko-run-action`) see **[`aeko-plugin`](https://github.com/AEKO-Intelligence/aeko-plugin)** — install both for the full experience.
 
+Saved AEKO dashboard tasks use `/aeko-assistant-task <item_id>` in the customer plugin. The server returns a frozen Plan.md, bounded evidence and an exact claim; the client saves an output or server tracking receipt back to AEKO before completion. The 16-action catalog covers exact suggestion tracking, saved question and evidence reports, cached Ads/GA4 and technical plans, plus reviewed writing-format, Context-group and ad-rule proposals. Opening a client link does not execute a task.
+
 ## Connecting
 
 The hosted AEKO MCP server is already running at `https://aeko-intelligence.com/mcp`. You don't need to host it yourself. Connect your client:
@@ -80,11 +82,11 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 ## Available Tools
 
-AEKO MCP registers 127 tools across 22 modules, covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, source citation share, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, manual automation starters, store-write actions, versioned brand documents, accepted whole-brand packages, Brand Wiki reads, and Fact Check findings.
+AEKO MCP registers 134 tools across 23 modules, covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, source citation share, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, manual automation starters, store-write actions, saved assistant tasks and outputs, versioned brand documents, accepted whole-brand packages, Brand Wiki reads, and Fact Check findings.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
-Current groups: `visibility`, `research`, `sources`, `content_ideas`, `store_write`, `action_plan`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `analytics`, `ga4`, `views`, `setup`, `automation_documents`, `automations`, `brand_packages`, and `fact_check`.
+Current groups: `visibility`, `research`, `sources`, `source_share`, `content_ideas`, `store_write`, `action_plan`, `assistant_tasks`, `own_content`, `media_upload`, `content_variation`, `reviews`, `contexts`, `marketing`, `marketing_reporting`, `analytics`, `ga4`, `views`, `setup`, `automation_documents`, `automations`, `brand_packages`, and `fact_check`.
 
 Saved `content-v2` plans retain their selected context evidence, format, destination,
 market and language for external execution. Claim the action item before drafting;

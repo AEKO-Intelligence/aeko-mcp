@@ -1,6 +1,6 @@
 # aeko-mcp — What It Does
 
-> Notion paste-ready overview of the AEKO MCP (Model Context Protocol) server. This document began as the v0.5.0 overview and keeps the architecture/token-flow context; the live tool surface is now **104 tools across 16 modules**. Source of truth: [`aeko_mcp/tools/*.py`](../aeko_mcp/tools/).
+> Notion paste-ready overview of the AEKO MCP (Model Context Protocol) server. This document began as the v0.5.0 overview and keeps the architecture/token-flow context; the live tool surface is now **134 tools across 23 modules**. Source of truth: [`aeko_mcp/tools/*.py`](../aeko_mcp/tools/).
 
 ---
 
@@ -11,6 +11,8 @@
 In practice, it is the bridge between the user's local computer (files, browser previews, generated content) and AEKO's insight layer. The user stays in Claude Code, asks for an AEO audit or content draft, and aeko-mcp silently fetches the right data and saves the output to disk.
 
 aeko-mcp is a thin, stateless process. It holds no database. Every call hits the AEKO backend over HTTPS.
+
+Saved dashboard `assistant-task-v1` work uses the customer plugin's `/aeko-assistant-task <item_id>` flow. The MCP passes the frozen plan, bounded evidence, claim-fenced exact suggestion batch and persisted outputs to the backend. The 15 catalog actions cover selected suggestion tracking; selected-question, competitor, Context, overview, market, review, cached Ads/GA4 and technical reports; and ad writing-format, selected Context-group and ad-rule proposals. The backend capability response gates availability; a desktop connection or opened link does not imply execution.
 
 ### The three-tier surface
 
