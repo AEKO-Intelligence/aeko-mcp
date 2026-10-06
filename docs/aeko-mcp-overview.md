@@ -12,7 +12,7 @@ In practice, it is the bridge between the user's local computer (files, browser 
 
 aeko-mcp is a thin, stateless process. It holds no database. Every call hits the AEKO backend over HTTPS.
 
-Saved dashboard `assistant-task-v1` work uses the customer plugin's `/aeko-assistant-task <item_id>` flow. The MCP passes the frozen plan, bounded evidence, claim-fenced exact suggestion batch and persisted outputs to the backend. The first catalogued actions are selected suggestion tracking, competitor comparison reports and ad writing-format proposals. The backend capability response gates availability; a desktop connection or opened link does not imply execution.
+Saved dashboard `assistant-task-v1` work uses the customer plugin's `/aeko-assistant-task <item_id>` flow. The MCP passes the frozen plan, bounded evidence, claim-fenced exact suggestion batch and persisted outputs to the backend. The first catalogued actions are selected suggestion tracking, competitor, overview and market reports, and ad writing-format proposals. The backend capability response gates availability; a desktop connection or opened link does not imply execution.
 
 ### The three-tier surface
 
