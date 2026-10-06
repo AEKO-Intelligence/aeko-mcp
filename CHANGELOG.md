@@ -6,7 +6,7 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 
 ## [0.29.0] — 2026-10-06 (release candidate)
 
-- Add seven adapters for `assistant-task-v1`: save a catalog-approved task, track exact saved Context suggestion rows under a claim, save/read bounded reports and proposals (including selected Context groups), and read/create brand-scoped ad writing formats.
+- Add seven adapters for the 15-action `assistant-task-v1` catalog: save an approved task, track exact saved Context suggestion rows under a claim, save/read bounded reports and typed proposals (including selected Context groups and ad-rule review), and read/create brand-scoped ad writing formats.
 - Keep existing independent MCP tools and content-v2/v3 plans. The new tracking adapter carries the task ID and claim ID; it does not reuse the older review tool that picks top suggestions.
 - Backend action capabilities gate execution: selected suggestion tracking, competitor/overview/market reports and ad writing-format proposals. Proposals are reviewable outputs, not active formats. Coordinated backend/MCP/plugin release and authenticated client verification remain required before enabling UI actions.
 

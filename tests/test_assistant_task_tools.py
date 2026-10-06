@@ -93,6 +93,31 @@ def test_context_group_proposal_uses_claimed_output_only(monkeypatch):
     assert len(calls) == 1
 
 
+def test_rule_proposal_preserves_frozen_evidence_and_typed_change_fence(monkeypatch):
+    calls = []
+    monkeypatch.setattr(assistant_tasks.client, "post", lambda path, *, json: calls.append((path, json)) or {"id": str(uuid4())})
+    rule = str(uuid4())
+    proposal = {"rule_id": rule, "expected_version": 3, "rationale": "Use the observed daily range", "changes": {"description": "Review this threshold"}}
+    assistant_tasks.aeko_save_action_output(ITEM, CLAIM, "rule-key", "ad_rule_proposal", "assistant-output-v1", data=proposal, evidence_ids=[EVIDENCE])
+    assert calls == [(f"/api/action-items/{ITEM}/outputs", {
+        "claim_id": CLAIM, "idempotency_key": "rule-key", "kind": "ad_rule_proposal",
+        "schema_version": "assistant-output-v1", "markdown": None, "data": proposal, "evidence_ids": [EVIDENCE],
+    })]
+    for invalid in (
+        {**proposal, "changes": {"enabled": True}},
+        {**proposal, "expected_version": 0},
+        {**proposal, "rule_id": "other"},
+        {**proposal, "changes": {"conditions": None}},
+    ):
+        with pytest.raises(AekoToolInputError):
+            assistant_tasks.aeko_save_action_output(ITEM, CLAIM, "bad-rule", "ad_rule_proposal", "assistant-output-v1", data=invalid, evidence_ids=[EVIDENCE])
+    with pytest.raises(AekoToolInputError):
+        assistant_tasks.aeko_save_action_output(ITEM, CLAIM, "missing-evidence", "ad_rule_proposal", "assistant-output-v1", data=proposal)
+    with pytest.raises(AekoToolInputError):
+        assistant_tasks.aeko_save_action_output(ITEM, CLAIM, "fake-report", "report_markdown", "assistant-output-v1", markdown="# Report", data={"hidden": "claim"})
+    assert len(calls) == 1
+
+
 def test_output_reads_are_task_scoped(monkeypatch):
     calls = []
     monkeypatch.setattr(assistant_tasks.client, "get", lambda path: calls.append(path) or {"outputs": []})
@@ -109,15 +134,23 @@ def test_task_creation_does_not_accept_arbitrary_action_id(monkeypatch):
         assistant_tasks.aeko_create_assistant_task("ads.activate.v1", {"domain_id": str(uuid4())}, "key")
 
 
-@pytest.mark.parametrize("action_id", ["visibility.overview_report.v1", "markets.comparison_report.v1", "contexts.group_proposal.v1", "reviews.strengths_report.v1", "ads.performance_report.v1", "measure.ga4_report.v1"])
-def test_read_only_report_actions_can_be_saved_without_execution(monkeypatch, action_id):
+@pytest.mark.parametrize("action_id,page_id", [
+    ("tracking.selected_questions_report.v1", "tracking"),
+    ("competitors.question_gaps_report.v1", "competitors"),
+    ("competitors.source_patterns_report.v1", "competitors"),
+    ("visibility.overview_report.v1", "overview"),
+    ("markets.comparison_report.v1", "markets"),
+    ("contexts.group_proposal.v1", "contexts"),
+    ("contexts.related_questions_report.v1", "contexts"),
+    ("reviews.strengths_report.v1", "reviews"),
+    ("ads.performance_report.v1", "ad_performance"),
+    ("measure.ga4_report.v1", "measure"),
+    ("technical.findings_plan.v1", "technical"),
+    ("ads.rule_change_proposal.v1", "ad_rules"),
+])
+def test_catalog_actions_can_be_saved_without_execution(monkeypatch, action_id, page_id):
     calls = []
     monkeypatch.setattr(assistant_tasks.client, "post", lambda path, *, json, headers: calls.append((path, json, headers)) or {"id": ITEM, "status": "ready"})
-    page_id = ("overview" if action_id.startswith("visibility.") else
-               "contexts" if action_id.startswith("contexts.") else
-               "reviews" if action_id.startswith("reviews.") else
-               "ad_performance" if action_id == "ads.performance_report.v1" else
-               "measure" if action_id.startswith("measure.") else "markets")
     assistant_tasks.aeko_create_assistant_task(action_id, {"page_id": page_id}, "stable-key")
     assert calls[0][0] == "/api/action-items/assistant-tasks"
     assert calls[0][1]["action_id"] == action_id
@@ -136,3 +169,15 @@ def test_writing_format_tools_use_definition_routes_without_running_ads(monkeypa
         "domain_id": domain, "name": "Clear answer", "title_instructions": "Lead with question",
         "description_instructions": "Give grounded answer", "examples": [], "language_codes": ["pt-BR"],
     })
+
+
+def test_writing_format_create_carries_stable_optional_idempotency_key(monkeypatch):
+    calls = []
+    monkeypatch.setattr(assistant_tasks.client, "post", lambda path, **kwargs: calls.append((path, kwargs)) or {"id": str(uuid4()), "version": 1})
+    domain = str(uuid4())
+    assistant_tasks.aeko_create_ad_copy_format(domain, "Answer", "Title", "Body", [], ["en"], "stable-format-key")
+    assert calls[0][0] == "/api/ad-copy-formats"
+    assert calls[0][1]["headers"] == {"Idempotency-Key": "stable-format-key"}
+    with pytest.raises(AekoToolInputError):
+        assistant_tasks.aeko_create_ad_copy_format(domain, "Answer", "Title", "Body", [], ["en"], "")
+    assert len(calls) == 1
