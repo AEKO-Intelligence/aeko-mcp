@@ -2,11 +2,16 @@
 
 OpenAI's app review requires explicit boolean readOnlyHint, destructiveHint
 and openWorldHint on every tool; Anthropic's connector review requires the
-title and the read-only/destructive hints. These checks run against the
-tools/list a client actually receives.
+title and the read-only/destructive hints. Both reject descriptions that
+reference tools the user does not have, pull instructions from elsewhere, or
+mismatch what the tool does. These checks run against the tools/list a client
+actually receives.
 """
 
+import ast
+import inspect
 import re
+import textwrap
 
 import anyio
 import pytest
@@ -15,6 +20,8 @@ from mcp.types import ToolAnnotations
 
 from aeko_mcp import server
 from aeko_mcp.tools._annotations import READ_ONLY, tool_spec
+
+MAX_DESCRIPTION_CHARS = 1024
 
 # Tools that overwrite live data, change spend, publish, or change existing state.
 MUST_BE_DESTRUCTIVE = {
@@ -91,6 +98,14 @@ MUST_BE_CLOSED_WORLD = {
     "aeko_read_brand_package_file",
 }
 
+# Phrases that tell the model to load and execute server-hosted instructions.
+INSTRUCTION_PULL_PHRASES = (
+    "before execution",
+    "executing the skill",
+    "read all required instructions",
+    "before using it as brand knowledge",
+)
+
 
 def _served_tools():
     async def run():
@@ -103,6 +118,18 @@ def _served_tools():
 TOOLS = _served_tools()
 TOOL_IDS = [tool.name for tool in TOOLS]
 BY_NAME = {tool.name: tool for tool in TOOLS}
+
+
+def _raw_docstring(name: str) -> str:
+    """The docstring as Python <= 3.12 exposes it in __doc__ (not dedented).
+
+    Python 3.13 strips docstring indentation at compile time, but production
+    runs Python 3.12, where FastMCP sends the indented text as the description.
+    """
+    fn = server.mcp._tool_manager.get_tool(name).fn
+    tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    node = next(n for n in tree.body if isinstance(n, ast.FunctionDef))
+    return ast.get_docstring(node, clean=False) or ""
 
 
 def test_registry_is_not_empty():
@@ -125,6 +152,42 @@ def test_every_tool_declares_explicit_boolean_hints(tool):
 def test_every_tool_repeats_its_title_in_annotations(tool):
     assert tool.title and tool.title.strip()
     assert tool.annotations.title == tool.title
+
+
+@pytest.mark.parametrize("tool", TOOLS, ids=TOOL_IDS)
+def test_descriptions_fit_the_directory_limit(tool):
+    assert tool.description and tool.description.strip()
+    assert len(tool.description) <= MAX_DESCRIPTION_CHARS
+    raw = _raw_docstring(tool.name)
+    assert len(raw) <= MAX_DESCRIPTION_CHARS, f"{tool.name} is {len(raw)} chars on Python 3.12"
+
+
+@pytest.mark.parametrize("tool", TOOLS, ids=TOOL_IDS)
+def test_descriptions_do_not_reference_plugin_slash_commands(tool):
+    assert "/aeko-" not in tool.description
+
+
+@pytest.mark.parametrize("tool", TOOLS, ids=TOOL_IDS)
+def test_descriptions_do_not_pull_instructions_or_promote_upgrades(tool):
+    lowered = tool.description.lower()
+    for phrase in INSTRUCTION_PULL_PHRASES:
+        assert phrase not in lowered, f"{tool.name}: {phrase!r}"
+    assert "upgrade" not in lowered
+
+
+@pytest.mark.parametrize("tool", TOOLS, ids=TOOL_IDS)
+def test_descriptions_do_not_name_internal_symbols(tool):
+    for symbol in (
+        "_upload_local_images_for_aeko_shop",
+        "AekoShopPublisher",
+        "aeko_content_drafts",
+        "MediaPresignRequest",
+        "UserPrompts",
+        "aeko_get_cited_sources",
+        "aeko_get_metrics",
+        "WebFetch",
+    ):
+        assert symbol not in tool.description, f"{tool.name}: {symbol}"
 
 
 def test_known_destructive_tools_are_flagged():

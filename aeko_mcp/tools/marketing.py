@@ -150,19 +150,21 @@ def aeko_list_contextual_reviews(
 
 @mcp.tool(**tool_spec("Inject reviews", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_inject_reviews(domain_id: str, reviews: list[dict]) -> str:
-    """Inject REAL reviews the skill gathered (from the web/marketplaces) or the merchant provided
-    into a domain's credential-less ``manual`` source, so merchants without a cre.ma/Judge.me app
-    still get review-grounded context + ads. Real reviews only — NEVER fabricate.
+    """Add reviews the merchant owns to a domain's manual review source.
 
-    Each review dict: ``external_review_id`` (a STABLE deterministic id you derive, e.g.
-    sha256(source_url+body) — makes re-injection idempotent), ``external_product_ref`` (the store's
-    external product id it belongs to), ``body`` (required), and optional ``rating`` (1-5),
-    ``title``, ``author_name``, ``lang``, ``review_created_at`` (ISO8601), ``source_url``,
-    ``source_method`` ('web_gather' | 'merchant_paste'). Reviews bind to a currently-SELLING product
-    by ``external_product_ref``; unmatched refs are skipped and reported back. Requires a connected
-    store (Cafe24/Shopify). Classification (facets + ad creative) runs automatically after insert.
-    The backend caps one request at 200 reviews — larger lists are chunked into <=200 batches here
-    and the results aggregated into a single summary.
+    For merchants without a connected cre.ma or Judge.me app. Use only real
+    reviews the merchant provided or exported from their own store or review
+    platform; do not write, alter or scrape reviews. Re-sending an
+    external_review_id overwrites that review. Classification runs
+    automatically, and reviews that qualify can then appear publicly on the
+    brand's aeko.shop storefront, so confirm with the user first.
+
+    Each review: external_review_id (a stable ID you derive, e.g. a hash of
+    source and body), external_product_ref (the store's product ID; it must
+    match a product AEKO has for the domain, otherwise it is skipped and
+    reported), body (required), and optional rating (1-5), title, author_name,
+    lang, review_created_at (ISO 8601), source_url and source_method (e.g.
+    merchant_paste). Lists over 200 are sent in batches of 200 and summarized.
     """
     if not reviews:
         return "# No reviews to inject — pass a non-empty `reviews` list."
@@ -270,13 +272,15 @@ def aeko_get_ad_insights(
     limit: int = 200,
     ad_account_id: Optional[str] = None,
 ) -> str:
-    """Pull performance metrics (impressions, clicks, spend_micros, ctr, cpc_micros, cpm_micros) for
-    reporting or budget decisions. ``scope`` = account | campaign | ad_group | ad (non-account needs
-    ``scope_id``); ``segment`` = product | country | device (optional). ``date_from``/``date_to`` are
-    ISO dates (YYYY-MM-DD). The API does NOT rank — sort/aggregate in the skill.
+    """Read OpenAI Ads delivery metrics (impressions, clicks, spend_micros, ctr, cpc_micros, cpm_micros) for reporting or budget decisions.
 
-    NOTE: this tool reads delivery metrics only. Stored campaign conversions are a separate read,
-    ``aeko_get_conversion_insights``; neither tool provides revenue or ROAS."""
+    scope: account, campaign, ad_group or ad (all but account need scope_id).
+    segment: optional product, country or device. date_from/date_to:
+    YYYY-MM-DD. Results are not ranked; sort or aggregate them yourself.
+
+    Delivery metrics only. Stored conversions come from
+    aeko_get_conversion_insights; neither tool reports revenue or ROAS.
+    """
     params: dict[str, Any] = {
         "domain_id": domain_id,
         "scope": scope,
@@ -462,24 +466,20 @@ def aeko_create_ad_rule(
     max_entities_per_run: int,
     description: Optional[str] = None,
 ) -> str:
-    """Create a pacing rule draft. New rules are ALWAYS disabled; preview it, then explicitly enable.
+    """Create an OpenAI Ads pacing rule as a disabled draft; preview it, then enable it with aeko_set_ad_rule_enabled.
 
-    Call ``aeko_get_ad_rule_capabilities`` first instead of inventing combinations. ``scope_level`` is
-    ``campaign | ad_group | ad``. ``scope_filter`` is ``{"target":"all","ids":[]}`` or
-    ``{"target":"ids","ids":[<AEKO entity UUID>, ...]}`` (max 5000 IDs).
+    Check aeko_get_ad_rule_capabilities first. scope_level: campaign, ad_group or ad. scope_filter:
+    {"target":"all","ids":[]} or {"target":"ids","ids":[AEKO UUIDs]} (max 5000).
 
-    ``conditions`` contains 1-5 condition objects, optionally with one nested group
-    ``{"match":"all|any","conditions":[...]}`` at one level. A condition has ``metric`` (spend,
-    impressions, clicks, cpm, cpc, ctr, pace_ratio, or budget_utilization), ``operator``
-    (gt/gte/lt/lte), exactly one of ``threshold_micros`` or ``threshold_value``, and ``window``.
-    Window kinds are last_n_hours (requires hours 1-24), this_completed_hour, today_so_far,
-    rolling_24h, last_complete_day, rolling_days (requires days 2-30), or campaign_to_date. Money
-    metrics spend/cpm/cpc use ``threshold_micros``; other metrics use ``threshold_value``.
+    conditions: 1-5, optionally one nested {"match":"all|any","conditions":[...]}. Each has metric
+    (spend, impressions, clicks, cpm, cpc, ctr, pace_ratio, budget_utilization), operator (gt, gte,
+    lt, lte), threshold_micros for spend/cpm/cpc or threshold_value otherwise, and window
+    (last_n_hours + hours 1-24, this_completed_hour, today_so_far, rolling_24h, last_complete_day,
+    rolling_days + days 2-30, campaign_to_date).
 
-    ``guards`` has min_impressions, min_clicks, min_spend_micros, min_elapsed_fraction (0-1), and
-    min_hours_observed (1-24). ``action`` is pause, notify_only, decrease_budget, or decrease_bid;
-    the shipped evaluator currently applies only pause (the latter two are capability-reserved).
-    Cooldown is 15-10080 minutes; daily actions 1-200; entities per run 1-100, further tier-capped.
+    guards: min_impressions, min_clicks, min_spend_micros, min_elapsed_fraction 0-1,
+    min_hours_observed 1-24. action: pause, notify_only, decrease_budget, decrease_bid (only pause
+    is applied today). Cooldown 15-10080 min; 1-200 actions/day; 1-100 entities/run (plan caps).
     """
     payload = _ad_rule_payload(
         domain_id=domain_id,
@@ -518,9 +518,11 @@ def aeko_update_ad_rule(
 ) -> str:
     """Patch the supplied fields on a saved pacing rule and increment its version.
 
-    Omitted/``None`` arguments are left unchanged. The backend re-validates the fully merged
-    definition, refreshes the account currency/timezone snapshot, and clears per-entity rule state.
-    Pass an empty string to clear the optional description.
+    Omitted arguments are left unchanged; pass an empty string to clear the
+    optional description. AEKO re-validates the merged rule, refreshes the
+    account currency/timezone snapshot and clears per-entity rule state. An
+    enabled rule stays enabled, so the new definition can pause live ads on its
+    next scheduled run: preview it with aeko_preview_ad_rule first.
     """
     fields = {
         "name": name,
@@ -790,26 +792,21 @@ def aeko_create_ad_group_from_context(
     start_time: Optional[int] = None,
     end_time: Optional[int] = None,
 ) -> str:
-    """Create ONE ad group with a broader, agent-composed ``context_hints`` set and MULTIPLE product
-    ads under it (created PAUSED for review). This is how a cluster of reviews across products becomes
-    a single ad group — e.g. mask-pack + serum reviews sharing '민감성 피부' → hints
-    ['민감성 피부에 좋은 제품'] with one ad per product.
+    """Create one OpenAI Ads ad group with several product ads, all created paused for review.
 
-    Placement: pass EITHER ``campaign_id`` (existing) OR both ``new_campaign_name`` +
-    ``new_campaign_budget_micros`` (>= 1_000_000). New campaigns may set ``bidding_type`` to
-    ``impressions`` (default), ``clicks``, or ``conversions``. A conversions campaign requires
-    exactly one eligible event ID from ``aeko_list_conversion_event_settings``. ``targeting`` uses
-    provider location IDs from ``aeko_lookup_ad_locations``; ``start_time`` and ``end_time`` are
-    epoch seconds. These campaign fields are rejected with an existing ``campaign_id`` because a
-    campaign's goal and conversion event are immutable.
+    Use it to turn a cluster of reviews across products into one ad group: write broader
+    context_hints (e.g. sensitive-skin reviews of two products become ["민감성 피부에 좋은 제품"])
+    and add one ad per product.
 
-    ``max_bid_micros`` is per billing event: 60,000 means $0.06 per impression ($60 CPM) for an
-    impressions campaign, per click for a clicks campaign, and the target CPA bid for a conversions
-    campaign (whose ad group is click-billed). ``ads`` = list of dicts (max 100 per ad group —
-    OpenAI Ads cap; split a larger cluster into multiple ad groups), each:
-    ``store_product_id`` (required), and optional ``source_review_id``, ``title``, ``body``,
-    ``target_language`` (if title/body omitted, the backend composes clean creative from the review).
-    ``idempotency_key`` MUST be stable for this logical action (reuse on retry).
+    Placement: campaign_id, or new_campaign_name plus new_campaign_budget_micros (at least
+    1,000,000). New campaigns only: bidding_type impressions (default), clicks or conversions;
+    conversions needs one eligible ID from aeko_list_conversion_event_settings; targeting uses IDs
+    from aeko_lookup_ad_locations; start_time/end_time are epoch seconds.
+
+    max_bid_micros is per billing event: 60,000 = $0.06 per impression ($60 CPM), per click for
+    clicks, target CPA for conversions. ads: up to 100, each with store_product_id and optional
+    source_review_id, title, body, target_language (omit title and body to have AEKO write
+    them). Reuse the same idempotency_key on retries.
     """
     if len(ads or []) > MAX_ADS_PER_AD_GROUP:
         return (
@@ -935,16 +932,16 @@ def aeko_update_campaign_budget(
     max_budget_micros: Optional[int] = None,
     max_delta_pct: float = 25.0,
 ) -> str:
-    """Set a campaign's lifetime budget (the lowest budget lever — ad groups only carry bidding).
-    Spend is real, so guardrails are enforced HERE, not just in skill prose:
+    """Set an OpenAI Ads campaign's lifetime budget. Ad groups carry only bids, so this is the budget lever.
 
-      - defaults to ``dry_run=True`` — returns a before→after preview and writes NOTHING;
-      - rejects budgets below the backend floor (1_000_000 micros);
-      - rejects budgets above ``max_budget_micros`` (absolute ceiling) if provided — does NOT clamp;
-      - rejects a change larger than ``max_delta_pct`` vs ``current_budget_micros`` if provided.
+    Spend is real, so this tool enforces guards itself:
+    - dry_run=True by default: returns a before/after preview and writes nothing;
+    - rejects budgets below 1,000,000 micros;
+    - rejects budgets above max_budget_micros (never clamps);
+    - rejects a change larger than max_delta_pct vs current_budget_micros.
 
-    Pass ``current_budget_micros`` (from ``aeko_list_campaigns``) so the delta guard is active. Only
-    a call with ``dry_run=false`` that passes all guards writes to OpenAI Ads.
+    A real write (dry_run=false) requires both current_budget_micros (from
+    aeko_list_campaigns) and max_budget_micros.
     """
     new = int(lifetime_spend_limit_micros)
     if new < MIN_BUDGET_MICROS:
@@ -1006,21 +1003,19 @@ def aeko_update_ad_group(
     max_bid_ceiling_micros: Optional[int] = None,
     max_delta_pct: float = 25.0,
 ) -> str:
-    """Update ad-group copy, Context hints, or the maximum bid while preserving its billing event.
+    """Update an OpenAI Ads ad group's name, description, Context hints or maximum bid. The billing event is kept.
 
-    Bid is spend, so the same tool-level safety pattern as campaign budgets is
-    enforced: the call defaults to ``dry_run=True``; a real bid write requires
-    both ``current_max_bid_micros`` and ``max_bid_ceiling_micros``; values above
-    the ceiling or beyond ``max_delta_pct`` are rejected, never clamped.
-    Non-bid-only edits skip those bid guards but still honor ``dry_run``.
+    A bid is real spend, so the campaign-budget guards apply: dry_run=True by
+    default (preview only); a real bid change needs current_max_bid_micros and
+    max_bid_ceiling_micros; bids above the ceiling or beyond max_delta_pct are
+    rejected, never clamped. Edits without a bid skip the bid guards but still
+    honor dry_run. Read the current bid from aeko_list_ad_groups first.
 
-    Status and product-set changes are deliberately excluded. Use
-    ``aeko_set_ad_group_state`` for pause/resume/archive so its confirmation
-    gates cannot be bypassed. Read the current bidding value from
-    ``aeko_list_ad_groups`` before changing it. The tool also fetches the exact ad group before a
-    bid preview or write and reuses its ``impression`` or ``click`` billing event. Bid micros are per
-    impression for CPM (60,000 = $0.06 per impression = $60 CPM), per click for clicks campaigns,
-    and the target CPA bid for conversions campaigns. Pro+ is enforced server-side.
+    Bid micros are per impression for impressions campaigns (60,000 = $0.06
+    per impression = $60 CPM), per click for clicks campaigns, and the target
+    CPA for conversions campaigns. Status and product changes are not
+    available here; use aeko_set_ad_group_state to pause, resume or archive.
+    Pro+ only.
     """
     payload: dict[str, Any] = {}
     if name is not None:

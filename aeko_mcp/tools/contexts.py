@@ -37,26 +37,19 @@ def aeko_list_contexts(
     scope: Optional[str] = None,
     kind: Optional[str] = None,
 ) -> str:
-    """List curated AEKO Context memories for a domain.
+    """List saved (curated) AEKO Context memories for a domain.
 
-    Use this from content-generation skills when the user wants drafts grounded
-    in saved brand/customer memory. The backend returns curated memories only;
-    this tool additionally accepts optional ``scope`` and ``kind`` filters for
-    the review-context memory model.
-
-    Returned memories may include flexible facets:
-    ``고객 상태`` (customer_state), ``최근 고민`` (recent_concern), ``제품 경험``
-    (product_experience), and ``느낀 효과`` (felt_effect). Legacy
-    problem/solution/outcome fields are rendered only as fallback when a memory
-    has not yet been migrated to facets.
-
-    Read-only. Pro+ is enforced server-side.
+    Use it when drafts should be grounded in saved brand or customer memory.
+    Memories may include the facets 고객 상태 (customer_state), 최근 고민
+    (recent_concern), 제품 경험 (product_experience) and 느낀 효과
+    (felt_effect); older problem/solution/outcome fields appear only when a
+    memory has no facets yet. Read-only; Pro+ only.
 
     Args:
-        domain_id: UUID of the AEKO domain whose saved contexts you want.
-        scope: Optional filter: ``brand``, ``product``, or ``category``.
-        kind: Optional free-text memory-type filter, e.g. ``브랜드 충성도``,
-            ``재구매``, ``피부 고민``, or ``content angle``.
+        domain_id: Domain UUID.
+        scope: Optional brand, product or category.
+        kind: Optional free-text memory type, e.g. 브랜드 충성도, 재구매,
+            피부 고민 or content angle.
     """
     params = {
         "domain_id": domain_id,
@@ -185,8 +178,8 @@ def aeko_create_context(
 ) -> str:
     """Save a curated Context memory for a domain.
 
-    Context is a Pro+ feature. This creates a user-curated memory (`curated=true`)
-    that can later be attached to prompts via `context_ids`.
+    Creates a user-curated memory (curated=true) that can later be attached to
+    prompts via context_ids. Pro+ only.
     """
     body: dict[str, Any] = {
         "domain_id": domain_id,
@@ -249,10 +242,10 @@ def aeko_update_context(
 ) -> str:
     """Update a curated Context memory. Omitted fields are left unchanged.
 
-    ``context_for_prompt`` is the authoritative grounding text for converted and
-    review-derived contexts. The backend does not let PATCH create that field on
-    a Context that lacks it. ``status=archived`` is refused here; use
-    ``aeko_archive_context`` so archival cannot bypass its dedicated skill gate.
+    context_for_prompt is the main grounding text for converted and
+    review-derived Contexts; it cannot be added to a Context that lacks it.
+    status=archived is refused here; use aeko_archive_context, which has its
+    own confirmation step.
     """
     if status == "archived":
         return (

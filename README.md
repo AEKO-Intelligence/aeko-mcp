@@ -162,7 +162,7 @@ Every tool sets `readOnlyHint`, `destructiveHint`, `openWorldHint` and `idempote
 - `destructiveHint: true` for anything that may overwrite, delete, publish or unpublish, change the state of something that already exists, change a live store or ad, or commit spend. Purely additive writes (new records only) are `false`.
 - `openWorldHint: true` only when the tool reaches a system outside the user's AEKO account (the connected Cafe24/Shopify store, OpenAI Ads, Google Analytics) or has a public effect (aeko.shop, public CDN images). Tools confined to the user's AEKO data are `false`.
 
-`tests/test_tool_annotations.py` enforces this for the whole registry.
+`tests/test_tool_annotations.py` enforces this for the whole registry, along with a 1,024-character description limit and no plugin slash-command references.
 
 Store connections never pass credentials through MCP: `aeko_connect_store` returns the dashboard OAuth steps (Settings → Store Integrations) and accepts no tokens.
 

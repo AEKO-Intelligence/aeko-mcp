@@ -107,58 +107,22 @@ def aeko_save_content_variation(
     metadata: Optional[dict] = None,
     artifact_paths: Optional[list[str]] = None,
 ) -> str:
-    """Save a publishable content variation to the AEKO backend, keyed by item_id.
+    """Save a publishable content draft to AEKO for an action item. Nothing is published.
 
-    Use this from ``/aeko-create-content`` Step 7.5 after drafting an
-    artifact triple locally, so the same draft can later be shipped via
-    ``/aeko-publish-content`` from any machine (the publish source-of-truth
-    is the backend row, not the local files).
-
-    This tool does NOT carry ``brand_id``. For ``destination='aeko_shop'``,
-    ``metadata`` must include ``og_description`` and
-    ``featured_product_source_ids``. When Plan.md includes products, also pass
-    ``featured_products`` snapshots (source_id/product_source_id, name, slug,
-    outbound_url, image_url, short_description, etc.). Publish uses those
-    snapshots to upsert missing aeko.shop products before creating the post's
-    post_products mappings. ``hero_image_url`` is optional; text-only aeko.shop
-    posts are valid.
-
-    When the draft quotes Context Reviews (from ``aeko_get_product_reviews``),
-    also record them in ``metadata`` under the OPTIONAL ``featured_product_reviews``
-    array — a provenance trail of which real customer narratives grounded the
-    copy, parallel to ``featured_products``. Each entry is
-    ``{review_id, product_source_id, context_score, customer_state,
-    recent_concern, product_experience, felt_effect, excerpt}``. Metadata is
-    free-form JSONB passed straight through to the backend (no server-side
-    validation of this key), so it's safe to attach.
+    aeko_publish_content_variation later publishes this saved copy, from any device.
 
     Args:
-        item_id: Action-item id this variation belongs to. Tenancy is
-            enforced server-side (must be owned by the current user).
-        destination: One of ``"aeko_shop"`` or ``"own_store_blog"``. Other
-            channels (naver_blog, tistory, social, editorial) are
-            local-only and should NOT be saved via this tool.
-        title: Variation title. Required, max 300 chars.
-        body_html: Full HTML body (with optional inline JSON-LD). At least
-            one of ``body_html``/``body_markdown`` must be non-empty.
-        body_markdown: Markdown body. At least one of
-            ``body_html``/``body_markdown`` must be non-empty.
-        metadata: Destination-specific metadata dict. For ``aeko_shop``:
-            ``{og_description, featured_product_source_ids[, hero_image_url,
-            locale, content_format_version, featured_products,
-            featured_product_reviews]}``.
-            ``featured_products[]`` entries should mirror Plan.md product refs
-            and should include ``source_id``/``product_source_id`` + ``name``
-            when the product may not already exist in aeko.shop.
-            ``featured_product_reviews[]`` is OPTIONAL — when the draft quoted
-            Context Reviews, list the ones used, each
-            ``{review_id, product_source_id, context_score, customer_state,
-            recent_concern, product_experience, felt_effect, excerpt}``.
-            Free-form JSONB, passed through as-is.
-            For ``own_store_blog``: optional ``{og_description, tags, locale,
-            featured_product_reviews}``.
-        artifact_paths: Optional list of local-disk paths to the artifact
-            triple (audit trail; not used by publish).
+        item_id: The user's action item.
+        destination: "aeko_shop" or "own_store_blog".
+        title: Up to 300 characters.
+        body_html, body_markdown: At least one; HTML may include JSON-LD.
+        metadata: aeko_shop requires og_description and featured_product_source_ids; optional
+            hero_image_url (https), locale, featured_products (product snapshots: source_id, name,
+            slug, outbound_url, image_url, short_description; publish adds missing aeko.shop
+            products from them) and featured_product_reviews (reviews quoted in the draft:
+            review_id, product_source_id, context_score, facets, excerpt). own_store_blog:
+            optional og_description, tags, locale, featured_product_reviews.
+        artifact_paths: Optional local file names, for the record.
     """
     # Mirror backend Pydantic ``_validate_body_and_metadata`` check at the
     # tool layer so we fail fast with a friendly message instead of a 422.
@@ -198,8 +162,7 @@ def aeko_save_content_variation(
         "",
         "Publish later with "
         f"`aeko_publish_content_variation(item_id='{result.get('item_id', item_id)}', "
-        f"variation_id='{result.get('id', '?')}')` "
-        "or via the `/aeko-publish-content` skill.",
+        f"variation_id='{result.get('id', '?')}')`.",
     ]
     return "\n".join(lines)
 
@@ -212,32 +175,25 @@ def aeko_update_content_variation(
     body_markdown: Optional[str] = None,
     metadata: Optional[dict] = None,
 ) -> str:
-    """Edit a SAVED (not-yet-published) content variation in place.
+    """Edit a saved, not yet published content draft in place.
 
-    The "edit a draft" path: tweak a saved draft before publishing without
-    creating a whole new variation. Only the fields you pass change; the rest
-    are kept. A previously ``failed`` variation is reset to ``saved`` on a
-    successful edit so you can retry publish cleanly.
+    Only the fields you pass change. A draft whose publish failed returns to
+    saved after an edit, so publishing can be retried. Published drafts cannot
+    be edited here (409); publishing a variation again overwrites its live
+    aeko.shop post in place.
 
-    **Published variations are immutable here** (backend returns 409). To
-    change a post that is already live on aeko.shop, re-publish the variation —
-    aeko.shop upserts by ``source_content_id`` and overwrites the post in place
-    (then re-renders + redirects on slug change). See ``/aeko-publish-content``.
-
-    For an ``aeko_shop`` variation the merged result must still satisfy the
-    contract (non-empty ``body_html``; ``metadata`` with ``og_description`` and,
-    when present, an absolute-https ``hero_image_url``) or the backend returns
-    422. ``metadata`` REPLACES the stored metadata object, so include the full
-    aeko_shop metadata (og_description, hero_image_url, featured_products, …)
-    when you pass it.
+    For aeko_shop drafts the merged result must keep a non-empty body_html and
+    metadata with og_description (and an https hero_image_url if set), or AEKO
+    returns 422. metadata replaces the stored object instead of merging, so
+    send the full metadata (og_description, hero_image_url, featured_products,
+    ...) when you change it.
 
     Args:
-        variation_id: Row id to edit (from ``aeko_list_content_variations``).
+        variation_id: Draft ID from aeko_list_content_variations.
         title: New title (optional).
         body_html: Replacement HTML body (optional).
         body_markdown: Replacement markdown body (optional).
-        metadata: Replacement destination metadata dict (optional; replaces,
-            not merges).
+        metadata: Replacement metadata object (optional).
     """
     if title is None and body_html is None and body_markdown is None and metadata is None:
         return (
@@ -286,19 +242,15 @@ def aeko_list_content_variations(
     status: Optional[str] = None,
     limit: int = 20,
 ) -> str:
-    """List saved content variations for an action item, grouped by destination.
+    """List saved content drafts for an action item, grouped by destination, newest first.
 
-    Used by ``/aeko-publish-content`` Step 1 to discover what's
-    publishable under a given ``item_id``. Newest-first within each
-    destination group.
+    Use it to find drafts that are ready to publish.
 
     Args:
-        item_id: Action-item id to list variations for.
-        destination: Optional filter — ``"aeko_shop"`` or ``"own_store_blog"``.
-            Omit to get both buckets.
-        status: Optional filter — ``"saved"``, ``"published"``, or ``"failed"``.
-        limit: Max rows to return. Default 20, hard cap 50 (mirrors
-            ``aeko_list_own_content``).
+        item_id: Action item ID.
+        destination: Optional "aeko_shop" or "own_store_blog"; omit for both.
+        status: Optional "saved", "published" or "failed".
+        limit: Max rows, default 20, at most 50.
     """
     capped_limit = max(1, min(int(limit), 50))
     params: dict[str, Any] = {"item_id": item_id, "limit": capped_limit}
@@ -345,28 +297,23 @@ def aeko_list_content_variations(
 
 @mcp.tool(**tool_spec("Publish content variation", DESTRUCTIVE_EXTERNAL))
 def aeko_publish_content_variation(item_id: str, variation_id: str) -> str:
-    """Publish a saved content variation. Branches on destination server-side.
+    """Publish a saved content draft. The effect depends on its destination.
 
-    For ``destination='aeko_shop'``: calls the live ``AekoShopPublisher``
-    (Pro+ tier gate + 10/hour rate limit enforced server-side). Returns
-    the aeko.shop URL and ``post_id`` on success.
+    - aeko_shop: publishes the post publicly on aeko.shop and returns its URL
+      and post_id. Each action item has one post, so publishing again, or
+      publishing another draft of the same item, replaces the live post.
+      Pro+ only; up to 10 publishes per hour per brand.
+    - own_store_blog: saves a draft in the user's AEKO content drafts and
+      returns draft_id. Nothing is sent to Cafe24 or Shopify.
 
-    For ``destination='own_store_blog'``: inserts a draft row in
-    ``aeko_content_drafts`` (no Cafe24/Shopify live API call). Returns the
-    ``draft_id``; the user pushes via the dashboard or a future connector.
-
-    Backend response codes the skill should be prepared to surface:
-      - 403 tier gate (Starter trying to publish to aeko_shop)
-      - 409 ``aeko_shop_disabled=true`` (per-brand opt-out)
-      - 429 publisher rate-limited (10/hour per brand)
-      - 502 aeko-shop upstream error
-      - 422 publish-adapter validation (should have been caught at save)
+    Confirm with the user before publishing to aeko.shop. Expected errors: 403
+    (plan), 409 (aeko.shop turned off for the brand), 429 (rate limit), 502
+    (aeko.shop error), 422 (invalid draft).
 
     Args:
-        item_id: Action-item id the variation belongs to. Carried so the
-            skill can complete the ``aeko_complete_action_item`` write_result
-            handoff after publish.
-        variation_id: UUID of the ``content_variations`` row to publish.
+        item_id: Action item the draft belongs to; pass it to
+            aeko_complete_action_item afterwards.
+        variation_id: Draft ID to publish.
     """
     # Backend identifies the variation by URL path and verifies the item_id
     # body as a defense-in-depth guard against mismatched item/variation calls.

@@ -270,7 +270,11 @@ def aeko_get_measure(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ) -> str:
-    """Read AEKO Measure views: readiness, discovery, or impact."""
+    """Read an AEKO Measure dashboard view for a domain.
+
+    view is readiness (default), discovery or impact. start_date and end_date
+    (YYYY-MM-DD) apply to discovery and impact.
+    """
     normalized_view = view.strip().lower()
     if normalized_view not in {"readiness", "discovery", "impact"}:
         return "Invalid `view`. Use one of: readiness, discovery, impact."

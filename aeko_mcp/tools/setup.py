@@ -23,8 +23,8 @@ def _json_block(title: str, payload: Any) -> str:
 def aeko_generate_starter_prompts(domain_id: str) -> str:
     """Generate starter tracked-prompt drafts for a domain.
 
-    The backend gathers available domain, content, and product inputs, stores
-    a draft offer, and returns the proposed prompts.
+    AEKO gathers the domain, content and product inputs it has, stores a new
+    draft offer (replacing any earlier one) and returns the proposed prompts.
     """
     result, err = _safe(
         client.post,
@@ -105,10 +105,10 @@ def aeko_get_current_markets() -> str:
 def aeko_update_markets(markets: list[str]) -> str:
     """Replace the account's selected target markets.
 
-    This is account-wide and replaces the full list; call
-    ``aeko_get_current_markets`` and show the exact diff first. Starter can
-    select one supported market; Pro/Enterprise can select more according to
-    backend package limits.
+    This is account-wide and replaces the whole list. Call
+    aeko_get_current_markets first and show the user the exact before/after
+    diff. The number of markets allowed depends on the plan; AEKO rejects lists
+    over the limit.
     """
     if not markets:
         return "# No markets provided — pass at least one country code."

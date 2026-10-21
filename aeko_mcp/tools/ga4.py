@@ -33,7 +33,11 @@ def aeko_select_ga4_property(
     account_id: Optional[str] = None,
     account_name: Optional[str] = None,
 ) -> str:
-    """Select the GA4 property AEKO should use for Measure analytics."""
+    """Select the GA4 property AEKO should use for Measure analytics.
+
+    This replaces the domain's current selection and immediately imports the
+    last 90 days of metrics for the new property from Google Analytics.
+    """
     payload = {
         "domain_id": domain_id,
         "property_id": property_id,
@@ -48,9 +52,10 @@ def aeko_select_ga4_property(
 
 @mcp.tool(**tool_spec("Sync GA4 metrics", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_sync_ga4(domain_id: str) -> str:
-    """Trigger GA4 metric sync for the selected property.
+    """Import the latest metrics for the selected GA4 property from Google Analytics.
 
-    The backend owns the fixed sync lookback and rate limit.
+    AEKO refreshes a fixed 90-day window, replacing its stored metrics for
+    those days, and allows one sync every few minutes.
     """
     data = client.post("/api/ga4/sync-mine", json={"domain_id": domain_id})
     return _json_block("GA4 sync complete", data)

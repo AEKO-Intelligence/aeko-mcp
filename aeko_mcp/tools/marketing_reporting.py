@@ -141,22 +141,22 @@ def aeko_get_product_insights(
     limit: int = PRODUCT_INSIGHTS_DEFAULT_LIMIT,
     after: Optional[str] = None,
 ) -> str:
-    """Read ONE live page of OpenAI Ads product rows for one explicit ad account, sorted by product
-    ad impressions over the whole window (``sort=product_impressions_desc``).
+    """Read one page of OpenAI Ads product rows, live from OpenAI Ads, for one explicit ad account, sorted by product ad impressions.
 
-    - ``domain_id`` and ``ad_account_id`` are required local AEKO UUIDs; no default account is used.
-    - ``scope`` = account | campaign. ``campaign`` requires ``scope_id`` (a local campaign UUID that
-      belongs to the account); ``account`` takes no ``scope_id``.
-    - ``date_from``/``date_to`` are completed account-local ISO dates (<= 93 inclusive days). The
-      backend refuses dates after the account's latest completed day and a missing account timezone.
-    - ``limit`` 1..50 (default 25). ``after`` is the opaque ``page.next_cursor`` of a previous page.
+    - domain_id and ad_account_id are required AEKO UUIDs; there is no default
+      account.
+    - scope: account, or campaign with scope_id (a campaign UUID in that
+      account).
+    - date_from/date_to: completed account-local ISO dates, at most 93 days.
+    - limit 1-50 (default 25); after = page.next_cursor of the previous page.
+      The tool does not follow cursors itself.
 
-    Returns the backend payload verbatim: account currency/timezone, provider scope ID, ``page``
-    (``has_more``, ``next_cursor``, ``paging_blocked``, ``blocked_reason``), ``carousel`` status, and
-    rows with feed/item ``identity``, ``key``, nullable ``impressions``/``clicks``/``spend_micros``
-    and separate ``carousel_card_impressions``/``carousel_card_clicks``. ``null`` means not reported,
-    never zero. Carousel card counts are not billable impressions/clicks and must not be added to
-    them. A page is a subset, not a complete account ranking. This tool never follows cursors itself."""
+    Returns account currency and timezone, page info (has_more, next_cursor,
+    paging_blocked, blocked_reason), carousel status, and rows with identity,
+    impressions, clicks and spend_micros (null = not reported, not zero) plus
+    carousel_card_impressions/clicks, which are not billable and must not be
+    added to impressions or clicks. A page is a subset, not a full ranking.
+    """
     title = "Failed to get product insights"
     problem = _uuid_error("domain_id", domain_id) or _uuid_error("ad_account_id", ad_account_id)
     if not problem and scope not in PRODUCT_SCOPES:
@@ -231,22 +231,22 @@ def aeko_get_conversion_insights(
     date_from: str,
     date_to: str,
 ) -> str:
-    """Read the STORED campaign-level conversion report for one explicit ad account. Reads facts
-    AEKO already collected; never calls OpenAI Ads and never queues a refresh.
+    """Read the stored campaign-level conversion report for one explicit ad account. Uses data AEKO already collected; never calls OpenAI Ads or queues a refresh.
 
-    - ``domain_id`` and ``ad_account_id`` are required local AEKO UUIDs; no default account is used.
-    - ``date_from``/``date_to`` are account-local ISO dates, at most 92 inclusive days. Dates after
-      the latest completed account-local day come back as ``pending``.
+    - domain_id and ad_account_id are required AEKO UUIDs; no default account.
+    - date_from/date_to: account-local ISO dates, at most 92 days; days after
+      the latest completed day come back as pending.
 
-    Returns the backend payload verbatim: ``state`` (complete | partial | stale | not_synced),
-    ``state_reasons``, ``blocked_reason``, freshness threshold, restatement days, refresh times,
-    ``coverage`` day counts, ``latest_attempt``/``latest_success`` collection runs, ``attribution`` and
-    per-campaign ``coverage``, nullable metric totals with ``reported_days``, and per-day ``status``
-    (reported | omitted | not_confirmed | not_synced | pending).
+    Returns state (complete, partial, stale, not_synced) with reasons,
+    freshness, coverage, collection runs, attribution, per-campaign coverage,
+    metric totals with reported_days, and per-day status (reported, omitted,
+    not_confirmed, not_synced, pending).
 
-    Click-through and view-through conversions are separate. The conversion event and click-through
-    window are unknown (``null``); the view-through window is 1 day. Totals sum reported days only, so
-    never derive CPA, ROAS or a complete conversion total from a partial, stale or unsynced report."""
+    Click-through and view-through conversions are separate; the view-through
+    window is 1 day, while the event and click-through window are unknown
+    (null). Totals cover reported days only: do not derive CPA, ROAS or a
+    complete total from a partial, stale or unsynced report.
+    """
     title = "Failed to get conversion insights"
     problem = (
         _uuid_error("domain_id", domain_id)
