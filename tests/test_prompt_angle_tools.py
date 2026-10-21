@@ -263,7 +263,7 @@ def test_tracked_prompts_tool_pages_large_accounts(monkeypatch):
     assert [r["prompt_id"] for r in _payload(first)] == [f"tp-{i}" for i in range(50)]
     assert "Showing prompts 101–120 of 120. Last page." in last
     assert [r["prompt_id"] for r in _payload(last)] == [f"tp-{i}" for i in range(100, 120)]
-    assert "| 101 |" not in last  # table numbering restarts per page
+    assert "| 101 | `tp-100` |" in last  # table numbers match the header's positions
 
 
 def test_tracked_prompts_tool_filters_before_paging(monkeypatch):
@@ -287,11 +287,29 @@ def test_tracked_prompts_tool_filters_before_paging(monkeypatch):
 def test_tracked_prompts_tool_confirms_exact_ids_and_names_missing_ones(monkeypatch):
     _index(monkeypatch, INDEX_ROWS)
 
-    out = research.aeko_get_tracked_prompts(prompt_ids=["tp-3", "tp-missing"])
+    out = research.aeko_get_tracked_prompts(prompt_ids=["TP-3 ", "tp-missing", "tp-3"])
 
     assert [r["prompt_id"] for r in _payload(out)] == ["tp-3"]
     assert "Matching 2 prompt_ids: 1" in out
     assert "Not tracked (no row for these IDs): `tp-missing`" in out
+
+
+def test_tracked_prompts_tool_treats_empty_id_list_as_no_filter(monkeypatch):
+    _index(monkeypatch, INDEX_ROWS)
+
+    out = research.aeko_get_tracked_prompts(prompt_ids=[])
+
+    assert len(_payload(out)) == 3
+    assert "Matching" not in out
+
+
+def test_tracked_prompts_platform_filter_reads_a_missing_platform_as_openai(monkeypatch):
+    rows = [*INDEX_ROWS, {"id": "tp-legacy", "raw_prompt": "old prompt", "ai_platform": None}]
+    _index(monkeypatch, rows)
+
+    out = research.aeko_get_tracked_prompts(ai_platform="openai")
+
+    assert [r["prompt_id"] for r in _payload(out)] == ["tp-1", "tp-legacy"]
 
 
 def test_tracked_prompts_tool_reports_no_match_and_past_end(monkeypatch):
@@ -567,6 +585,27 @@ def test_list_contexts_forwards_search_and_filters_exact_ids(monkeypatch):
     assert "`ctx-3`" in out
     assert "`ctx-9`" in out.split("Not in this list", 1)[1]
     assert "## 1. Memory 3" in out
+
+
+def test_list_contexts_matches_ids_case_insensitively_and_ignores_an_empty_list(monkeypatch):
+    rows = [{"id": "3f2a0c1e-0000-4000-8000-00000000000a", "title": "Memory A"}, {"id": "ctx-b", "title": "Memory B"}]
+    _contexts(monkeypatch, rows)
+
+    by_upper = contexts.aeko_list_contexts("domain-1", context_ids=["3F2A0C1E-0000-4000-8000-00000000000A"])
+    by_empty = contexts.aeko_list_contexts("domain-1", context_ids=[])
+
+    assert by_upper.startswith("# Saved AEKO contexts (1)")
+    assert "Not in this list" not in by_upper
+    assert by_empty.startswith("# Saved AEKO contexts (2)")
+
+
+def test_list_contexts_normalizes_decomposed_korean_search(monkeypatch):
+    import unicodedata
+
+    calls = _contexts(monkeypatch, [])
+    contexts.aeko_list_contexts("domain-1", search=unicodedata.normalize("NFD", "선물"))
+
+    assert calls[0]["params"]["search"] == unicodedata.normalize("NFC", "선물")
 
 
 def test_list_contexts_rejects_bad_paging_before_calling(monkeypatch):

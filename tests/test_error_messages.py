@@ -67,6 +67,26 @@ def test_422_validation_list_is_capped():
     assert message.endswith("and 3 more")
 
 
+def test_422_validation_list_keeps_a_field_named_body_and_odd_locations():
+    detail = [
+        {"loc": ["body", "creative", "body"], "msg": "String too long"},
+        {"loc": ["query", "path"], "msg": "Field required"},
+        {"loc": "domain_id", "msg": "Invalid UUID"},
+        {"loc": 7, "msg": "Bad item"},
+        {"msg": "Something else"},
+        "plain string error",
+    ]
+
+    message = str(_error(422, {"detail": detail}))
+
+    assert "creative.body: String too long" in message
+    assert "path: Field required" in message
+    assert "domain_id: Invalid UUID" in message
+    assert "[7]: Bad item" in message
+    assert "Something else" in message
+    assert message.endswith("and 1 more")
+
+
 def test_error_text_drops_the_python_class_name_for_backend_failures():
     assert error_text(AekoAPIError("Campaign not found", http_status=404)) == "Campaign not found"
     assert error_text(ValueError("bad input")) == "ValueError: bad input"

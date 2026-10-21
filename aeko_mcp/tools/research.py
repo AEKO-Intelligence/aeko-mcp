@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from ..server import mcp, client
 from ._annotations import ADDITIVE, DESTRUCTIVE_IDEMPOTENT, READ_ONLY, tool_spec
-from ._paging import fit_page, page_line
+from ._paging import exact_ids, fit_page, id_key, missing_ids_line, page_line
 
 
 _UUID_RE = re.compile(
@@ -213,7 +213,7 @@ def _cell(text: Any, limit: Optional[int] = None) -> str:
     return _clip(value, limit) if limit is not None else value
 
 
-def _format_tracked_prompts(data: list, summary: Optional[list[str]] = None) -> str:
+def _format_tracked_prompts(data: list, summary: Optional[list[str]] = None, start: int = 1) -> str:
     if not data:
         return "No tracked prompts found. Add prompts to track how AI engines respond to queries relevant to your products."
 
@@ -257,7 +257,7 @@ def _format_tracked_prompts(data: list, summary: Optional[list[str]] = None) -> 
     lines.append("| # | id | prompt | platform | country | context | funnel | type | status |")
     lines.append("|---|----|--------|----------|---------|---------|--------|------|--------|")
 
-    for i, p in enumerate(data, 1):
+    for i, p in enumerate(data, start):
         prompt_id = _cell(p.get("id", "N/A"))
         prompt_text = _cell(p.get("prompt_en") or p.get("raw_prompt") or "N/A", 60)
         platform = _cell(PLATFORM_DISPLAY.get(p.get("ai_platform", ""), p.get("ai_platform") or "N/A"))
@@ -324,8 +324,6 @@ def aeko_search_research_prompts(
 
 TRACKED_PROMPTS_PAGE_DEFAULT = 50
 TRACKED_PROMPTS_PAGE_MAX = 200
-# How many unmatched prompt_ids the header names before summarizing the rest.
-MISSING_IDS_SHOWN = 50
 
 
 def _tracked_prompt_matches(
@@ -334,15 +332,16 @@ def _tracked_prompt_matches(
     ai_platform: Optional[str],
     country: Optional[str],
     context_id: Optional[str],
-    wanted_ids: Optional[set[str]],
+    wanted_ids: Optional[dict[str, str]],
 ) -> bool:
-    if wanted_ids is not None and str(p.get("id")) not in wanted_ids:
+    if wanted_ids is not None and id_key(p.get("id")) not in wanted_ids:
         return False
-    if ai_platform and str(p.get("ai_platform") or "").lower() != ai_platform:
+    # A prompt saved without a platform is an OpenAI prompt, as the backend reads it.
+    if ai_platform and str(p.get("ai_platform") or "openai").lower() != ai_platform:
         return False
     if country and str(p.get("country") or "").upper() != country:
         return False
-    if context_id and str(p.get("context_id") or "") != context_id:
+    if context_id and id_key(p.get("context_id")) != context_id:
         return False
     if needle:
         fields = [p.get(key) for key in ("raw_prompt", "prompt_en", "prompt_ko", "context_title")]
@@ -393,9 +392,9 @@ def aeko_get_tracked_prompts(
 
     platform_key = ai_platform.strip().lower() if ai_platform and ai_platform.strip() else None
     country_key = country.strip().upper() if country and country.strip() else None
-    context_key = context_id.strip() if context_id and context_id.strip() else None
+    context_key = id_key(context_id) or None
     needle = _normalize_prompt_text(search) if search else ""
-    wanted_ids = {str(i).strip() for i in prompt_ids if str(i).strip()} if prompt_ids else None
+    wanted_ids = exact_ids(prompt_ids)
 
     filters = []
     if needle:
@@ -405,7 +404,7 @@ def aeko_get_tracked_prompts(
     if country_key:
         filters.append(f"country={country_key}")
     if context_key:
-        filters.append(f"context_id={context_key}")
+        filters.append(f"context_id={context_id.strip()}")
     if wanted_ids is not None:
         filters.append(f"{len(wanted_ids)} prompt_ids")
 
@@ -418,12 +417,11 @@ def aeko_get_tracked_prompts(
     if filters:
         summary.append(f"Matching {', '.join(filters)}: {len(matched)}")
     if wanted_ids is not None:
-        found = {str(p.get("id")) for p in matched}
-        missing = sorted(wanted_ids - found)
+        missing = missing_ids_line(
+            "Not tracked (no row for these IDs)", wanted_ids, {id_key(p.get("id")) for p in matched}
+        )
         if missing:
-            shown = ", ".join(f"`{i}`" for i in missing[:MISSING_IDS_SHOWN])
-            more = f" and {len(missing) - MISSING_IDS_SHOWN} more" if len(missing) > MISSING_IDS_SHOWN else ""
-            summary.append(f"Not tracked (no row for these IDs): {shown}{more}")
+            summary.append(missing)
 
     if not matched:
         return "\n".join(["# Tracked Prompts", "", *summary, "", "No tracked prompts match these filters."])
@@ -436,7 +434,8 @@ def aeko_get_tracked_prompts(
     page = matched[offset:offset + limit]
 
     def render(count: int) -> str:
-        return _format_tracked_prompts(page[:count], [*summary, page_line(offset, count, len(matched), "prompts")])
+        summary_lines = [*summary, page_line(offset, count, len(matched), "prompts")]
+        return _format_tracked_prompts(page[:count], summary_lines, start=offset + 1)
 
     return fit_page(render, len(page))
 

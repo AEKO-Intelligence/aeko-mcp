@@ -9,12 +9,14 @@ The backend at `panomix/aeko` pins this package by git tag in `requirements.txt`
 Fixes from a read-only sweep of the 0.30.0 tools on a large account (2,343 tracked prompts). MCP only; no backend change is needed.
 
 ### Fixed
-- `aeko_get_tracked_prompts`, `aeko_list_contexts` and `aeko_list_context_opportunities` return one page at a time. On a large account their whole result ran to 1.7–4.0 million characters and failed in the client. Each page holds at most `limit` rows and shrinks to stay under 30,000 characters. The header gives the total and the next `offset`.
+- `aeko_get_tracked_prompts`, `aeko_list_contexts` and `aeko_list_context_opportunities` return one page at a time. On a large account their whole result ran to 1.7–4.0 million characters and failed in the client. Each page holds at most `limit` rows and shrinks to stay under 20,000 characters. The header gives the total and the next `offset`; row numbers match it.
 - New filters narrow those lists instead of paging through them:
   - Tracked prompts take `search`, `ai_platform`, `country`, `context_id` and `prompt_ids`.
   - Contexts take `search` (sent to the backend) and `context_ids`.
   - Opportunities take `context_ids` (up to 100). The Focused and Recommended tables stay complete; only the full ranking is paged.
-  - Exact IDs with no row are listed in the header.
+  - Exact IDs match without regard to case or surrounding spaces; IDs with no row are listed in the header. An empty ID list means no filter.
+  - `ai_platform=openai` includes older prompts saved without a platform, as the backend reads them.
+  - The opportunity ranking breaks score ties by Context ID, so pages never overlap or skip rows.
 - Backend errors read as plain sentences:
   - Text tools no longer print a `RuntimeError:` label.
   - A 404 shows the backend's own message alone. It used to be prefixed with "Check the domain_id or analysis_id", for example in front of "Connect an OpenAI Ads account first".

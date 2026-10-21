@@ -108,6 +108,8 @@ def test_list_context_opportunities_calls_route_and_renders_decision_surface(
 
 def test_list_context_opportunities_pages_the_full_ranking_only(monkeypatch):
     ranked = [_opportunity(f"ctx-{i}", "saved") for i in range(120)]
+    for i, item in enumerate(ranked):
+        item["rollup"] = {**item["rollup"], "opportunity_score": 1000 - i}
     payload = {
         "focus_quota": {"used": 1, "limit": 5},
         "focused": [_opportunity("ctx-focused", "focused", "scale_creative")],
@@ -150,9 +152,39 @@ def test_list_context_opportunities_rejects_bad_arguments_before_calling(monkeyp
 
     assert contexts.aeko_list_context_opportunities("domain-1", limit=0).startswith("# `limit`")
     assert contexts.aeko_list_context_opportunities("domain-1", offset=-1).startswith("# `offset`")
-    assert contexts.aeko_list_context_opportunities("domain-1", context_ids=[]).startswith("# `context_ids`")
     too_many = [f"ctx-{i}" for i in range(101)]
     assert contexts.aeko_list_context_opportunities("domain-1", context_ids=too_many).startswith("# Pass at most 100")
+
+
+def test_list_context_opportunities_orders_score_ties_by_id_so_pages_never_overlap(monkeypatch):
+    tied = [_opportunity(f"ctx-{i:03d}", "saved") for i in range(60)]
+    unscored = {"context_id": "ctx-none", "title": "No score", "state": "saved", "rollup": None}
+    shuffled = [tied[i] for i in (list(range(30, 60)) + list(range(30)))]
+    payloads = iter([
+        {"focused": [], "recommended": [], "contexts": [unscored, *tied]},
+        {"focused": [], "recommended": [], "contexts": [*shuffled, unscored]},
+    ])
+    monkeypatch.setattr(contexts.client, "get", lambda path, params=None: next(payloads))
+
+    first = contexts.aeko_list_context_opportunities("domain-1", limit=30)
+    second = contexts.aeko_list_context_opportunities("domain-1", limit=31, offset=30)
+
+    assert "`ctx-029`" in first and "`ctx-030`" not in first
+    assert "`ctx-030`" in second and "`ctx-029`" not in second
+    assert second.rstrip().splitlines()[-1].startswith("| `ctx-none` No score")
+
+
+def test_list_context_opportunities_treats_an_empty_id_list_as_no_filter(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        contexts.client,
+        "get",
+        lambda path, params=None: calls.append(params) or {"focused": [], "recommended": [], "contexts": []},
+    )
+
+    contexts.aeko_list_context_opportunities("domain-1", context_ids=[])
+
+    assert calls == [{"domain_id": "domain-1"}]
 
 
 def test_get_context_metrics_calls_detail_route_with_normalized_market(monkeypatch):

@@ -5,12 +5,13 @@ review rows, these are deliberately curated by the user and can be reused to
 ground tracked prompts and content plans.
 """
 import json
+import unicodedata
 from typing import Any, Optional
 
 from ..client import error_text
 from ..server import mcp, client
 from ._annotations import ADDITIVE_ONCE, DESTRUCTIVE, DESTRUCTIVE_IDEMPOTENT, READ_ONLY, tool_spec
-from ._paging import fit_page, page_line
+from ._paging import exact_ids, fit_page, id_key, missing_ids_line, page_line
 
 
 def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
@@ -36,23 +37,19 @@ CONTEXTS_PAGE_DEFAULT = 25
 CONTEXTS_PAGE_MAX = 100
 OPPORTUNITIES_PAGE_DEFAULT = 50
 OPPORTUNITIES_PAGE_MAX = 200
-# How many unmatched context_ids a header names before summarizing the rest.
-MISSING_IDS_SHOWN = 50
+MISSING_CONTEXTS_LABEL = "Not in this list (archived, not saved, or another domain)"
 
 
-def _missing_ids_line(wanted: list[str], found: set[str]) -> Optional[str]:
-    missing = [i for i in wanted if i not in found]
-    if not missing:
-        return None
-    shown = ", ".join(f"`{i}`" for i in missing[:MISSING_IDS_SHOWN])
-    more = f" and {len(missing) - MISSING_IDS_SHOWN} more" if len(missing) > MISSING_IDS_SHOWN else ""
-    return f"Not in this list (archived, not saved, or another domain): {shown}{more}"
+def _score_rank(item: Any) -> tuple:
+    """Highest opportunity score first, unscored last, then by Context ID.
 
-
-def _id_list(values: Optional[list[str]]) -> Optional[list[str]]:
-    if values is None:
-        return None
-    return list(dict.fromkeys(str(v).strip() for v in values if str(v).strip()))
+    The backend breaks score ties by creation time, which Contexts created
+    together share, so separate page calls could reorder tied rows.
+    """
+    rollup = item.get("rollup") if isinstance(item, dict) and isinstance(item.get("rollup"), dict) else {}
+    score = rollup.get("opportunity_score")
+    scored = isinstance(score, (int, float)) and not isinstance(score, bool)
+    return (not scored, -score if scored else 0, id_key(item.get("context_id") if isinstance(item, dict) else ""))
 
 
 def _context_block(idx: int, item: dict) -> list[str]:
@@ -146,7 +143,7 @@ def aeko_list_contexts(
         domain_id: Domain UUID.
         scope: Optional brand, product or category.
         kind: Optional free-text memory type, e.g. 재구매 or 피부 고민.
-        search: Text to find in the title, summary, prompt context or facets.
+        search: Text to find in the title, summary, prompt context or memory text.
         context_ids: Exact Context IDs, e.g. IDs referenced elsewhere.
         limit: Contexts per page (default 25, max 100).
         offset: Contexts to skip; pass the header's next offset.
@@ -164,7 +161,7 @@ def aeko_list_contexts(
         params["scope"] = scope
     if kind:
         params["kind"] = kind
-    search_text = search.strip() if search and search.strip() else None
+    search_text = unicodedata.normalize("NFC", search.strip()) if search and search.strip() else None
     if search_text:
         params["search"] = search_text
 
@@ -173,12 +170,11 @@ def aeko_list_contexts(
         return f"# Failed to list contexts\n\n```\n{err}\n```"
 
     items = result if isinstance(result, list) else []
-    wanted_ids = _id_list(context_ids)
+    wanted_ids = exact_ids(context_ids)
     missing_line = None
     if wanted_ids is not None:
-        wanted = set(wanted_ids)
-        items = [item for item in items if str(item.get("id")) in wanted]
-        missing_line = _missing_ids_line(wanted_ids, {str(item.get("id")) for item in items})
+        items = [item for item in items if id_key(item.get("id")) in wanted_ids]
+        missing_line = missing_ids_line(MISSING_CONTEXTS_LABEL, wanted_ids, {id_key(item.get("id")) for item in items})
     if not items:
         filter_bits = []
         if scope:
@@ -491,6 +487,7 @@ def _format_context_opportunities(
 
     # Only the full ranking grows with the library; it is paged by score rank.
     ranked = result.get("contexts") if isinstance(result.get("contexts"), list) else []
+    ranked = sorted(ranked, key=_score_rank)
     lines.append("")
     if ranked and offset >= len(ranked):
         lines.extend([
@@ -544,13 +541,11 @@ def aeko_list_context_opportunities(
         if refusal:
             return refusal
         params["market"] = _normalize_market(market)
-    wanted_ids = _id_list(context_ids)
+    wanted_ids = exact_ids(context_ids)
     if wanted_ids is not None:
-        if not wanted_ids:
-            return "# `context_ids` must contain at least one Context ID."
         if len(wanted_ids) > 100:
             return "# Pass at most 100 `context_ids` per call."
-        params["context_ids"] = ",".join(wanted_ids)
+        params["context_ids"] = ",".join(wanted_ids.values())
     result, err = _safe(client.get, "/api/contexts/opportunities", params=params)
     if err:
         return f"# Failed to list Context opportunities\n\n```\n{err}\n```"
@@ -558,8 +553,8 @@ def aeko_list_context_opportunities(
     missing_line = None
     if wanted_ids is not None:
         ranked = payload.get("contexts") if isinstance(payload.get("contexts"), list) else []
-        found = {str(item.get("context_id")) for item in ranked if isinstance(item, dict)}
-        missing_line = _missing_ids_line(wanted_ids, found)
+        found = {id_key(item.get("context_id")) for item in ranked if isinstance(item, dict)}
+        missing_line = missing_ids_line(MISSING_CONTEXTS_LABEL, wanted_ids, found)
     return _format_context_opportunities(domain_id, payload, limit, offset, missing_line)
 
 

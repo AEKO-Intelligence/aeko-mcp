@@ -28,9 +28,9 @@ CONNECT_ERROR_MESSAGE = "Cannot connect to AEKO API. Check AEKO_API_URL."
 class AekoAPIError(RuntimeError):
     """A failed AEKO backend call with its machine-readable details retained.
 
-    ``str(error)`` is exactly the message this client has always raised, so
-    tools that render errors as text keep their output. Structured tool
-    boundaries read the attributes instead of parsing that message.
+    ``str(error)`` is the readable message that text tools print (see
+    ``_format_http_error``). Structured tool boundaries read the attributes
+    instead of parsing that message.
 
     ``request_sent`` is False only when the connection could not be
     established, so the backend cannot have received the request.
@@ -74,7 +74,13 @@ def _format_validation_errors(errors: list) -> str:
         if not isinstance(error, dict):
             parts.append(str(error))
             continue
-        loc = [str(part) for part in error.get("loc") or [] if part not in ("body", "query", "path")]
+        raw_loc = error.get("loc")
+        loc = [str(part) for part in raw_loc] if isinstance(raw_loc, (list, tuple)) else (
+            [str(raw_loc)] if raw_loc is not None else []
+        )
+        # FastAPI prefixes where the value came from; a field may itself be named "body".
+        if len(loc) > 1 and loc[0] in ("body", "query", "path", "header", "cookie"):
+            loc = loc[1:]
         field = ""
         for part in loc:
             field += f"[{part}]" if part.isdigit() else (f".{part}" if field else part)
