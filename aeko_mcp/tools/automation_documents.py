@@ -36,7 +36,7 @@ def _version(domain_id: str, document_id: str, version: int) -> dict:
     return data
 
 
-@mcp.tool(**tool_spec("List brand skills and evals", READ_ONLY))
+@mcp.tool(**tool_spec("List saved brand documents", READ_ONLY))
 def aeko_list_brand_documents(
     domain_id: str,
     kind: Optional[Literal["skill", "eval"]] = None,
@@ -84,7 +84,7 @@ def aeko_list_brand_documents(
     return _json(payload)
 
 
-@mcp.tool(**tool_spec("Inspect a pinned skill or eval package", READ_ONLY))
+@mcp.tool(**tool_spec("Inspect a saved brand document version", READ_ONLY))
 def aeko_get_document_package(domain_id: str, document_id: str, version: int) -> str:
     """Show one saved document version's identity, digest and file list (no file contents).
 
@@ -114,7 +114,7 @@ def aeko_get_document_package(domain_id: str, document_id: str, version: int) ->
     return result
 
 
-@mcp.tool(**tool_spec("Read a pinned skill or eval file", READ_ONLY))
+@mcp.tool(**tool_spec("Read a saved brand document file", READ_ONLY))
 def aeko_read_document_file(
     domain_id: str,
     document_id: str,
