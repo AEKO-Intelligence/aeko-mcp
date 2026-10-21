@@ -5,9 +5,10 @@ import httpx
 
 # Fallback messages when the backend doesn't surface a useful ``detail``.
 # Whenever the backend sends a FastAPI-style {"detail": ...} body, that
-# message wins — so backend upgrade pitches (e.g., Pro+ for Content
-# Generation, or trial-expired prompts) reach the user instead of
-# getting masked by a generic fallback.
+# message wins, so specific plan-limit and subscription explanations reach
+# the user instead of a generic fallback. Those messages must stay neutral
+# ("<feature> isn't included in your current plan"): AI-client directories
+# reject apps that promote upgrades or plans from inside the client.
 ERROR_MESSAGES = {
     401: "Authentication failed. Your AEKO session may be expired or invalid. Reconnect through your MCP client.",
     402: "Tracked-prompt quota exceeded (HTTP 402). Review the current package limit and narrow the fan-out.",
@@ -92,6 +93,12 @@ def _extract_detail_message(resp: httpx.Response) -> str | None:
         # instead of collapsing it to only ``[code] message`` below.
         if detail.get("code") == "focus_slots_full":
             return str(detail)
+        # Plan gates (GA4, Measure) send only a code and a feature key. Say
+        # what is unavailable instead of echoing the raw dict.
+        if detail.get("code") == "UPGRADE_REQUIRED":
+            feature = detail.get("feature")
+            subject = f"This feature ({feature})" if feature else "This feature"
+            return f"{subject} isn't included in your current plan."
         # Store-write platform error shape.
         message = detail.get("message")
         code = detail.get("code")
