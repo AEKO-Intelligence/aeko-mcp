@@ -18,7 +18,7 @@ returns the AEKO-side domain catalog rather than the URLs *on* a domain.
 from typing import Any
 
 from ..server import mcp, client
-from ._annotations import READ_ONLY
+from ._annotations import READ_ONLY, tool_spec
 
 
 _ALLOWED_TYPES: set[str] = {"blog", "pdp", "all"}
@@ -66,30 +66,28 @@ def _format_own_content(items: list[dict], domain_id: str, content_type: str) ->
     return "\n".join(lines)
 
 
-@mcp.tool(title="List own-domain content", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List own-domain content", READ_ONLY))
 def aeko_list_own_content(
     domain_id: str,
     type: str = "all",
     limit: int = 20,
 ) -> str:
-    """List the brand's existing on-site content (blog posts and/or PDPs).
+    """List the brand's existing on-site content (blog posts and/or product pages).
 
-    Returns up to `limit` rows, each with `url`, `title`, optional summary,
-    `content_type`, and `last_seen` timestamp. Backed by AEKO's per-domain
-    page index (sitemap.xml + AI-response page discovery). New domains may
-    return zero rows for up to 24h after connecting until the index
-    populates.
+    Returns up to `limit` rows, each with url, title, optional summary,
+    content_type and last_seen. Built from AEKO's page index for the domain
+    (sitemap.xml plus pages discovered in AI answers); a new domain may return
+    nothing for up to 24 hours.
 
-    Use this whenever a content skill needs to mimic in-house tone, dedupe
-    against existing pages, or reference the brand's own canon — it's the
-    counterpart to `aeko_get_tracked_prompt` (which surfaces *cited*
-    sources) for the brand's own-domain side.
+    Use it to match the brand's tone, avoid duplicating existing pages, or
+    reference the brand's own content. For pages that AI engines cite, use
+    aeko_get_tracked_prompt instead.
 
     Args:
-        domain_id: UUID of the AEKO-connected domain.
-        type: `blog` (blog/journal/magazine/news/insight pages), `pdp`
-            (product detail pages), or `all` (default — both buckets).
-        limit: Max rows to return. Default 20, hard cap 50.
+        domain_id: Domain UUID.
+        type: blog (blog, journal, magazine, news and insight pages), pdp
+            (product pages) or all (default).
+        limit: Max rows, default 20, at most 50.
     """
     if type not in _ALLOWED_TYPES:
         allowed = ", ".join(sorted(_ALLOWED_TYPES))

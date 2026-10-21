@@ -5,7 +5,7 @@ from typing import Any, Optional
 from urllib.parse import quote
 
 from ..server import client, mcp
-from ._annotations import READ_ONLY
+from ._annotations import READ_ONLY, tool_spec
 
 DOMAIN_LIMIT = 25
 URL_LIMIT = 20
@@ -138,7 +138,7 @@ def _format_domain_urls(domain: str, data: dict, window: tuple[date, date]) -> s
     return "\n".join(lines)
 
 
-@mcp.tool(title="Get source share", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get source share", READ_ONLY))
 def aeko_get_source_share(
     domain_id: str,
     from_date: Optional[str] = None,

@@ -48,10 +48,11 @@ def test_context_focus_tools_are_registered_with_expected_annotations():
     assert unfocus.readOnlyHint is False
     assert unfocus.destructiveHint is True
 
+    # Replacing a stored translation overwrites existing data.
     translation = registered["aeko_update_context_translation"].annotations
     assert translation.readOnlyHint is False
     assert translation.idempotentHint is True
-    assert translation.destructiveHint is False
+    assert translation.destructiveHint is True
 
 
 def test_existing_context_archive_safety_annotations_remain_intact():
@@ -62,7 +63,8 @@ def test_existing_context_archive_safety_annotations_remain_intact():
     assert update.destructiveHint is True
     assert archive.readOnlyHint is False
     assert archive.idempotentHint is True
-    assert archive.destructiveHint is False
+    # Archiving removes a Context from active listings: a state change.
+    assert archive.destructiveHint is True
 
 
 def test_list_context_opportunities_calls_route_and_renders_decision_surface(

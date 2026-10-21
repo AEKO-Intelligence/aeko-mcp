@@ -53,7 +53,7 @@ def test_client_post_forwards_idempotency_key_over_auth():
     assert hdr["Authorization"] == "Bearer tok123"  # auth preserved alongside the extra header
 
 
-# --- Budget guardrails live in the tool, not just skill prose ----------------------
+# --- Spend guardrails live in the tool, not just skill prose -----------------------
 
 
 def _no_write(monkeypatch):
@@ -79,56 +79,20 @@ def _mock_ad_group_billing(monkeypatch, billing_event_type="impression"):
     return calls
 
 
-def test_budget_dry_run_default_writes_nothing(monkeypatch):
-    flag = _no_write(monkeypatch)
-    out = marketing.aeko_update_campaign_budget(
-        "c1", 5_000_000, "idem", current_budget_micros=4_000_000, max_delta_pct=50
-    )
-    assert "DRY RUN" in out and flag["posted"] is False
-
-
-def test_budget_rejects_below_floor(monkeypatch):
-    flag = _no_write(monkeypatch)
-    out = marketing.aeko_update_campaign_budget("c1", 500_000, "idem", dry_run=False)
-    assert "below the minimum" in out and flag["posted"] is False
-
-
-def test_budget_real_write_requires_both_caps(monkeypatch):
-    # HARD guard: a real write with a cap omitted is rejected outright (can't bypass delta/ceiling).
-    flag = _no_write(monkeypatch)
-    out = marketing.aeko_update_campaign_budget("c1", 2_000_000, "idem", dry_run=False)
-    assert "requires BOTH" in out and flag["posted"] is False
-
-
-def test_budget_rejects_over_ceiling(monkeypatch):
-    flag = _no_write(monkeypatch)
-    out = marketing.aeko_update_campaign_budget(
-        "c1", 9_000_000, "idem", dry_run=False, current_budget_micros=4_000_000, max_budget_micros=5_000_000
-    )
-    assert "ceiling" in out and flag["posted"] is False
-
-
-def test_budget_rejects_over_delta(monkeypatch):
-    flag = _no_write(monkeypatch)
-    out = marketing.aeko_update_campaign_budget(
-        "c1", 10_000_000, "idem", dry_run=False,
-        current_budget_micros=1_000_000, max_budget_micros=100_000_000, max_delta_pct=25,
-    )
-    assert "exceeds max_delta_pct" in out and flag["posted"] is False
-
-
 # --- Ad-group bid + creative update guardrails ------------------------------------
 
 
-def test_ad_update_tools_are_registered_as_idempotent_writes():
+def test_ad_update_tools_are_registered_as_idempotent_destructive_writes():
     registered = {
         tool.name: tool for tool in marketing.mcp._tool_manager.list_tools()
     }
+    # They overwrite live OpenAI Ads bids and creatives (real spend).
     for name in ("aeko_update_ad_group", "aeko_update_ad_creative"):
         annotations = registered[name].annotations
         assert annotations.readOnlyHint is False
         assert annotations.idempotentHint is True
-        assert annotations.destructiveHint is False
+        assert annotations.destructiveHint is True
+        assert annotations.openWorldHint is True
 
 
 def test_ad_group_bid_defaults_to_dry_run_with_full_bidding_object(monkeypatch):
@@ -1114,12 +1078,13 @@ def test_ad_rule_tools_are_registered_with_expected_annotations():
         "aeko_list_ad_rule_executions",
         "aeko_list_ad_rule_runs",
     }
+    # Validation saves nothing and calls no provider, so it is read-only.
+    read_only.add("aeko_validate_ad_rule")
     writes = {
         "aeko_create_ad_rule",
         "aeko_update_ad_rule",
         "aeko_delete_ad_rule",
         "aeko_set_ad_rule_enabled",
-        "aeko_validate_ad_rule",
         "aeko_preview_ad_rule",
         "aeko_set_ad_automation_enabled",
     }
@@ -1131,8 +1096,12 @@ def test_ad_rule_tools_are_registered_with_expected_annotations():
     for name in writes:
         assert registered[name].annotations.readOnlyHint is False
     for name in {
+        "aeko_update_ad_rule",
         "aeko_delete_ad_rule",
         "aeko_set_ad_rule_enabled",
         "aeko_set_ad_automation_enabled",
     }:
         assert registered[name].annotations.destructiveHint is True
+    # New rules are always stored disabled; previews only add a run record.
+    for name in {"aeko_create_ad_rule", "aeko_preview_ad_rule"}:
+        assert registered[name].annotations.destructiveHint is False

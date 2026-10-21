@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from ..client import legacy_error_name
 from ..server import mcp, client
-from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
+from ._annotations import ADDITIVE_ONCE, DESTRUCTIVE, DESTRUCTIVE_IDEMPOTENT, READ_ONLY, tool_spec
 
 
 def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
@@ -31,32 +31,25 @@ def _json_block(title: str, payload: Any) -> str:
     return f"# {title}\n\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
 
 
-@mcp.tool(title="List saved AEKO contexts", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List saved AEKO contexts", READ_ONLY))
 def aeko_list_contexts(
     domain_id: str,
     scope: Optional[str] = None,
     kind: Optional[str] = None,
 ) -> str:
-    """List curated AEKO Context memories for a domain.
+    """List saved (curated) AEKO Context memories for a domain.
 
-    Use this from content-generation skills when the user wants drafts grounded
-    in saved brand/customer memory. The backend returns curated memories only;
-    this tool additionally accepts optional ``scope`` and ``kind`` filters for
-    the review-context memory model.
-
-    Returned memories may include flexible facets:
-    ``고객 상태`` (customer_state), ``최근 고민`` (recent_concern), ``제품 경험``
-    (product_experience), and ``느낀 효과`` (felt_effect). Legacy
-    problem/solution/outcome fields are rendered only as fallback when a memory
-    has not yet been migrated to facets.
-
-    Read-only. Pro+ is enforced server-side.
+    Use it when drafts should be grounded in saved brand or customer memory.
+    Memories may include the facets 고객 상태 (customer_state), 최근 고민
+    (recent_concern), 제품 경험 (product_experience) and 느낀 효과
+    (felt_effect); older problem/solution/outcome fields appear only when a
+    memory has no facets yet. Read-only; Pro+ only.
 
     Args:
-        domain_id: UUID of the AEKO domain whose saved contexts you want.
-        scope: Optional filter: ``brand``, ``product``, or ``category``.
-        kind: Optional free-text memory-type filter, e.g. ``브랜드 충성도``,
-            ``재구매``, ``피부 고민``, or ``content angle``.
+        domain_id: Domain UUID.
+        scope: Optional brand, product or category.
+        kind: Optional free-text memory type, e.g. 브랜드 충성도, 재구매,
+            피부 고민 or content angle.
     """
     params = {
         "domain_id": domain_id,
@@ -83,7 +76,7 @@ def aeko_list_contexts(
         return (
             f"# No saved contexts for domain `{domain_id}`{filter_text}\n\n"
             "Save review-derived or manual Context memories in the AEKO Context tab, "
-            "then call this tool again. Context memory is a Pro+ feature."
+            "then call this tool again."
         )
 
     lines = [f"# Saved AEKO contexts ({len(items)})", ""]
@@ -159,7 +152,7 @@ def aeko_list_contexts(
     return "\n".join(lines)
 
 
-@mcp.tool(title="Create AEKO context", annotations=WRITE)
+@mcp.tool(**tool_spec("Create AEKO context", ADDITIVE_ONCE))
 def aeko_create_context(
     domain_id: str,
     title: str,
@@ -185,8 +178,8 @@ def aeko_create_context(
 ) -> str:
     """Save a curated Context memory for a domain.
 
-    Context is a Pro+ feature. This creates a user-curated memory (`curated=true`)
-    that can later be attached to prompts via `context_ids`.
+    Creates a user-curated memory (curated=true) that can later be attached to
+    prompts via context_ids. Pro+ only.
     """
     body: dict[str, Any] = {
         "domain_id": domain_id,
@@ -223,7 +216,7 @@ def aeko_create_context(
     return _json_block("Context created", result)
 
 
-@mcp.tool(title="Update AEKO context", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Update AEKO context", DESTRUCTIVE))
 def aeko_update_context(
     context_id: str,
     title: Optional[str] = None,
@@ -249,10 +242,10 @@ def aeko_update_context(
 ) -> str:
     """Update a curated Context memory. Omitted fields are left unchanged.
 
-    ``context_for_prompt`` is the authoritative grounding text for converted and
-    review-derived contexts. The backend does not let PATCH create that field on
-    a Context that lacks it. ``status=archived`` is refused here; use
-    ``aeko_archive_context`` so archival cannot bypass its dedicated skill gate.
+    context_for_prompt is the main grounding text for converted and
+    review-derived Contexts; it cannot be added to a Context that lacks it.
+    status=archived is refused here; use aeko_archive_context, which has its
+    own confirmation step.
     """
     if status == "archived":
         return (
@@ -293,7 +286,7 @@ def aeko_update_context(
     return _json_block("Context updated", result)
 
 
-@mcp.tool(title="Archive AEKO context", annotations=WRITE)
+@mcp.tool(**tool_spec("Archive AEKO context", DESTRUCTIVE_IDEMPOTENT))
 def aeko_archive_context(context_id: str) -> str:
     """Soft-archive a Context memory.
 
@@ -306,7 +299,7 @@ def aeko_archive_context(context_id: str) -> str:
     return _json_block("Context archived", result)
 
 
-@mcp.tool(title="Create contexts from reviews", annotations=WRITE)
+@mcp.tool(**tool_spec("Create contexts from reviews", DESTRUCTIVE))
 def aeko_create_contexts_from_reviews(
     domain_id: str,
     integration_id: str,
@@ -422,7 +415,7 @@ def _format_context_opportunities(domain_id: str, result: dict[str, Any]) -> str
     return "\n".join(lines)
 
 
-@mcp.tool(title="List Context opportunities", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List Context opportunities", READ_ONLY))
 def aeko_list_context_opportunities(
     domain_id: str,
     market: Optional[str] = None,
@@ -446,7 +439,7 @@ def aeko_list_context_opportunities(
     return _format_context_opportunities(domain_id, payload)
 
 
-@mcp.tool(title="Get Context metrics", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get Context metrics", READ_ONLY))
 def aeko_get_context_metrics(
     context_id: str,
     market: Optional[str] = None,
@@ -472,7 +465,7 @@ def aeko_get_context_metrics(
     return _json_block("Context metrics", result)
 
 
-@mcp.tool(title="List focused Contexts", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List focused Contexts", READ_ONLY))
 def aeko_list_focused_contexts(domain_id: str, market: str) -> str:
     """List open Focus periods for one domain and market.
 
@@ -492,7 +485,7 @@ def aeko_list_focused_contexts(domain_id: str, market: str) -> str:
     return _json_block(f"Focused Contexts ({normalized_market})", result)
 
 
-@mcp.tool(title="Focus Context", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Focus Context", ADDITIVE_ONCE))
 def aeko_focus_context(
     context_id: str,
     market: str,
@@ -542,7 +535,7 @@ def aeko_focus_context(
     return _json_block("Context focused", result)
 
 
-@mcp.tool(title="Unfocus Context", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Unfocus Context", DESTRUCTIVE))
 def aeko_unfocus_context(context_id: str, market: str, end_reason: str) -> str:
     """End one Context's open Focus measurement period.
 
@@ -571,7 +564,7 @@ def aeko_unfocus_context(context_id: str, market: str, end_reason: str) -> str:
     return _json_block("Context unfocused", result)
 
 
-@mcp.tool(title="Update Context translation", annotations=WRITE)
+@mcp.tool(**tool_spec("Update Context translation", DESTRUCTIVE_IDEMPOTENT))
 def aeko_update_context_translation(
     context_id: str,
     language: str,

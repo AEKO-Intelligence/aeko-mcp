@@ -547,10 +547,11 @@ def test_action_claim_annotations_expose_permanent_claim_semantics():
     assert claim.idempotentHint is False
     assert claim.destructiveHint is False
 
+    # Releasing ends an existing claim (force mode can end another run's claim).
     release = registered["aeko_release_action_item"].annotations
     assert release.readOnlyHint is False
     assert release.idempotentHint is True
-    assert release.destructiveHint is False
+    assert release.destructiveHint is True
 
 
 def test_unpublish_content_calls_aeko_shop_route(monkeypatch):

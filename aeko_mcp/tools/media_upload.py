@@ -1,9 +1,9 @@
 """Media upload helper for aeko.shop syndication."""
 from ..server import client, mcp
-from ._annotations import WRITE
+from ._annotations import DESTRUCTIVE_IDEMPOTENT_EXTERNAL, tool_spec
 
 
-@mcp.tool(title="Request aeko.shop media upload URL", annotations=WRITE)
+@mcp.tool(**tool_spec("Request aeko.shop media upload URL", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_request_media_upload(
     source_content_id: str,
     filename: str,
@@ -14,28 +14,24 @@ def aeko_request_media_upload(
     item_id: str | None = None,
     domain_id: str | None = None,
 ) -> dict:
-    """Return a pre-signed PUT URL and public CDN URL for a local article image.
+    """Get a pre-signed upload URL and the public aeko.shop CDN URL for one image.
 
-    Supply ONE publish-identity input: ``item_id`` (preferred — the action-item
-    id; ties the upload to the item's verified domain) or ``domain_id``. The
-    backend resolves the domain-derived identity and syncs it to aeko.shop
-    before issuing the signed URL.
+    Use it for local images before putting them in content or product HTML:
+    PUT the file bytes to upload_url (headers x-ms-blob-type: BlockBlob,
+    Content-Type, Content-MD5), then use public_url in <img src>. The image is
+    public once uploaded. AEKO first makes sure the brand exists on aeko.shop,
+    which can create or reactivate its public brand page. Pass item_id
+    (preferred) or domain_id to identify the brand.
 
     Args:
-        source_content_id: 1..240-char identifier from the executor (typically
-            the action-item id). Used in the blob path and idempotency.
-        filename: Basename only — no path separators. Must match the backend's
-            ``filename_only`` validator.
-        content_type: MIME type. Backend pattern: ``^image/(jpeg|jpg|png|webp|gif)$``.
-        content_sha256: Lowercase hex SHA-256 of the file body (64 chars).
-        content_md5: **Base64**-encoded raw MD5 digest of the file body (exactly
-            24 chars including padding). NOT hex — the backend's Pydantic field
-            is ``min_length=24, max_length=24``. Compute as
-            ``base64.b64encode(hashlib.md5(data).digest()).decode()``.
-        byte_length: File size in bytes. Backend caps at 10 MiB.
-        item_id: Optional action-item id — resolves the verified-domain identity.
-            Preferred publish-identity input.
-        domain_id: Optional domain UUID — alternative identity input.
+        source_content_id: 1-240 character ID, usually the action item ID.
+        filename: File name only, no path.
+        content_type: image/jpeg, image/png, image/webp or image/gif.
+        content_sha256: Lowercase hex SHA-256 of the file (64 characters).
+        content_md5: Base64 of the raw MD5 digest (24 characters), not hex.
+        byte_length: File size in bytes, at most 10 MiB.
+        item_id: Optional action item ID.
+        domain_id: Optional domain UUID.
     """
     payload: dict = {
         "source_content_id": source_content_id,

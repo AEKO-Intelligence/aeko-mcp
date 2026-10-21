@@ -83,7 +83,7 @@ Argument or schema errors rejected by the MCP SDK before the function begins are
 
 | State | Meaning | Produced by |
 | --- | --- | --- |
-| `not_attempted` | No store-product write was sent | All read tools; local validation, including an empty patch (formerly a successful "Nothing to update" text); local image upload failure; connection not established |
+| `not_attempted` | No store-product write was sent | All read tools; local validation, including an empty patch (formerly a successful "Nothing to update" text); local image references refused because local file reads are off (`LOCAL_IMAGES_DISABLED`, the default) or failed the opt-in path/type/size checks (`LOCAL_IMAGE_REJECTED`); local image upload failure; connection not established |
 | `rejected` | AEKO definitively refused this request | Pre-write backend codes (`ACTION_ITEM_CLAIM_REQUIRED`, `…_STATUS_CONFLICT`, `…_NOT_STORE_WRITABLE`, `…_PAYLOAD_MISMATCH`, `…_TARGET_MISMATCH`, `SUBSCRIPTION_INACTIVE`, `TIER_REQUIRED`, `STORE_PRODUCT_NOT_FOUND`, `STORE_SNAPSHOT_FAILED`); untyped 400/401/403/404/422/429; a platform 4xx with a valid audit UUID, except `NETWORK_ERROR`/`PLATFORM_ERROR` |
 | `unknown` | The write may have happened | `ACTION_ITEM_WRITE_INDETERMINATE`, `ACTION_ITEM_WRITE_PAYLOAD_CONFLICT`, `NETWORK_ERROR`, `PLATFORM_ERROR`; a platform 5xx with an audit ID; untyped 409, 5xx or other status; timeout after sending; empty, non-JSON, contradictory, failed-status or mismatched success receipt |
 

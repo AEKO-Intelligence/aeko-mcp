@@ -32,18 +32,24 @@ module as runtime types for MCP 1.11/1.12.
 import base64
 import hashlib
 import json
-import mimetypes
 import os
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 from uuid import UUID
 
 import httpx
 
 from ..client import AekoAPIError, legacy_error_name
 from ..server import mcp, client
-from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
+from ._annotations import (
+    DESTRUCTIVE_EXTERNAL,
+    DESTRUCTIVE_IDEMPOTENT_EXTERNAL,
+    READ_ONLY,
+    READ_ONLY_EXTERNAL,
+    tool_spec,
+)
 from ._structured import (
     AekoToolError,
     AekoToolInputError,
@@ -127,6 +133,38 @@ class _MissingImageDomain(RuntimeError):
     """Local image references need a domain for the aeko.shop media presign."""
 
 
+class _LocalImagesDisabled(RuntimeError):
+    """The server does not read local image files unless explicitly enabled."""
+
+
+class _LocalImageRejected(RuntimeError):
+    """An opted-in local image reference failed the path, type or size checks."""
+
+
+# Local ``<img src>`` references (file://, ./, ../) in caller-supplied HTML.
+_LOCAL_IMAGE_SRC = re.compile(
+    r'(<img\b[^>]*\bsrc=["\'])(file://[^"\']+|\./[^"\']+|\.\./[^"\']+)(["\'])',
+    re.IGNORECASE,
+)
+# Reading local files is for self-hosted stdio servers only. The hosted
+# connector runs inside AEKO's backend, where "local" means the server's disk.
+LOCAL_IMAGE_FILES_ENV = "AEKO_MCP_ALLOW_LOCAL_IMAGE_FILES"
+LOCAL_IMAGE_ROOT_ENV = "AEKO_MCP_LOCAL_IMAGE_ROOT"
+MAX_LOCAL_IMAGE_BYTES = 10 * 1024 * 1024  # matches the aeko.shop media presign cap
+_LOCAL_IMAGE_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+_LOCAL_IMAGES_DISABLED_MESSAGE = (
+    "This server does not read local image files (file://, ./ or ../ paths in <img src>). "
+    "Upload each image with aeko_request_media_upload, PUT the bytes to the returned "
+    "upload_url, and use the returned public https URL in <img src>. Nothing was written."
+)
+
+
 def _safe(method, *args, **kwargs) -> tuple[dict | None, str | None]:
     """Wrap client errors into (None, message) for graceful tool output."""
     try:
@@ -173,55 +211,60 @@ def _update_product(
     return "\n".join(lines)
 
 
-@mcp.tool(title="Connect store", annotations=WRITE_ONCE)
-def aeko_connect_store(
-    domain_id: str,
-    platform: str,
-    store_identifier: str,
-    access_token: str,
-    refresh_token: str | None = None,
-    token_expires_at: str | None = None,
-    scopes: str | None = None,
-) -> str:
-    """Connect a Cafe24 or Shopify store to a domain.
+STORE_SETTINGS_URL = "https://aeko-intelligence.com/dashboard/settings"
 
-    Manual/custom stores are created by `aeko_inject_products`, not this
-    OAuth/token connect route.
+
+@mcp.tool(**tool_spec("Get store connection steps", READ_ONLY))
+def aeko_connect_store(
+    domain_id: str | None = None,
+    platform: str | None = None,
+) -> str:
+    """Explain how to connect a Cafe24 or Shopify store to AEKO. Changes nothing.
+
+    Store connections use OAuth in the AEKO dashboard, so this tool never asks
+    for or accepts store passwords, API keys or tokens. It returns the
+    dashboard steps; after the user connects, call
+    `aeko_list_store_integrations` to get the integration ID. For a custom
+    store without Cafe24 or Shopify, use `aeko_inject_products` instead.
     """
-    normalized_platform = platform.strip().lower()
+    normalized_platform = (platform or "").strip().lower()
     if normalized_platform == "manual":
         return (
             "# Manual stores use product inject\n\n"
             "Call `aeko_inject_products(domain_id=..., products=[...])`; it "
             "creates the credential-less manual store internally."
         )
-    if normalized_platform not in {"cafe24", "shopify"}:
-        return "Platform must be `cafe24` or `shopify`. Use `aeko_inject_products` for manual stores."
+    store_label = {"cafe24": "Cafe24", "shopify": "Shopify"}.get(
+        normalized_platform, "Cafe24 or Shopify"
+    )
+    domain_note = f" for domain `{domain_id}`" if domain_id else ""
+    return "\n".join(
+        [
+            f"# Connect a {store_label} store",
+            "",
+            "Store connections are made in the AEKO dashboard with the platform's own "
+            "sign-in (OAuth). Do not paste store passwords, API keys or tokens into chat.",
+            "",
+            f"1. Open {STORE_SETTINGS_URL} and go to **Store Integrations**.",
+            f"2. Choose {store_label}{domain_note} and approve access on the platform's page.",
+            "3. Come back here and call `aeko_list_store_integrations` to get the "
+            "integration ID.",
+            "",
+            "Custom store without Cafe24 or Shopify? Use `aeko_inject_products` instead.",
+        ]
+    )
 
-    body = {
-        "domain_id": domain_id,
-        "platform": normalized_platform,
-        "store_identifier": store_identifier,
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_expires_at": token_expires_at,
-        "scopes": scopes,
-    }
-    payload = {k: v for k, v in body.items() if v is not None}
-    result, err = _safe(client.post, "/api/store-integrations", json=payload)
-    if err:
-        return f"# Failed to connect store\n\n```\n{err}\n```"
-    return _json_block("Store connected", result)
 
-
-@mcp.tool(title="Sync store products", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Sync store products", DESTRUCTIVE_EXTERNAL))
 def aeko_sync_store(integration_id: str) -> str:
-    """Sync products/reviews and replace the public aeko.shop catalog snapshot.
+    """Pull the product catalog from a connected Cafe24 or Shopify store and republish it to the public aeko.shop storefront.
 
-    This can remove public products that are absent from a partial upstream
-    response, so callers must confirm the public effect and inspect the
-    integration's post-sync status. Manual stores are push-only; update them
-    with `aeko_inject_products`.
+    AEKO overwrites its copy of the products, then replaces the public
+    aeko.shop catalog snapshot with the active products and the eligible
+    reviews it already stores. Products no longer in the catalog can be removed
+    from the public catalog, so confirm the public effect with the user first,
+    then check last_sync_status with aeko_list_store_integrations. Manual
+    stores are push-only; update them with aeko_inject_products.
     """
     result, err = _safe(client.post, f"/api/store-integrations/{integration_id}/sync")
     if err:
@@ -229,13 +272,17 @@ def aeko_sync_store(integration_id: str) -> str:
     return _json_block("Public store catalog and reviews synced", result)
 
 
-@mcp.tool(title="Inject manual products", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Inject manual products", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_inject_products(domain_id: str, products: list[dict]) -> str:
-    """Inject products for a custom/manual store.
+    """Add or update products in a custom/manual store (no Cafe24 or Shopify connection).
 
-    The backend get-or-creates a credential-less manual store for `domain_id`
-    and upserts by `external_product_id`. Each product needs stable
-    `external_product_id`, `title`, `product_url`, and `public_url`.
+    AEKO creates the credential-less manual store for domain_id if needed and
+    upserts by external_product_id, so sending an existing ID overwrites that
+    product. The catalog is later republished to the brand's public aeko.shop
+    storefront. Each product needs a stable external_product_id, title,
+    product_url and public_url; description, price, currency, image_url and
+    status are optional. Lists over 200 are sent in batches; check errors and
+    batches_completed in the result.
     """
     if not products:
         return "# No products to inject — pass a non-empty `products` list."
@@ -283,7 +330,7 @@ def aeko_inject_products(domain_id: str, products: list[dict]) -> str:
     return _json_block("Products injected", combined)
 
 
-@mcp.tool(title="List store products", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List store products", READ_ONLY))
 def aeko_list_store_products(
     store_integration_id: str | None = None,
     domain_id: str | None = None,
@@ -293,7 +340,12 @@ def aeko_list_store_products(
     sort: str = "synced_desc",
     aeo_status: str | None = None,
 ) -> str:
-    """List synced/manual store products with stable external product IDs."""
+    """List products AEKO has synced or imported, with their stable external product IDs.
+
+    Filter by store_integration_id or domain_id; sort defaults to synced_desc.
+    limit is 1-500. Set include_citability for citability scores, or filter by
+    aeo_status.
+    """
     params: dict[str, Any] = {
         "include_citability": include_citability,
         "limit": max(1, min(int(limit), 500)),
@@ -312,24 +364,85 @@ def aeko_list_store_products(
     return _json_block("Store products", result)
 
 
+def _local_image_files_allowed() -> bool:
+    """Local image reads are opt-in for self-hosted (stdio) servers only."""
+    raw = os.environ.get(LOCAL_IMAGE_FILES_ENV, "")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _local_image_root() -> Path:
+    configured = os.environ.get(LOCAL_IMAGE_ROOT_ENV, "").strip()
+    return Path(configured).expanduser().resolve() if configured else Path.cwd().resolve()
+
+
+def _resolve_local_image(src: str) -> tuple[Path, str]:
+    """Resolve an opted-in local image reference inside the allowed root.
+
+    Returns the resolved path and its image content type. Raises
+    ``_LocalImageRejected`` for anything outside the root, any non-regular
+    file, an unsupported extension, or a file over the size limit.
+    """
+    root = _local_image_root()
+    if src.lower().startswith("file://"):
+        parsed = urlparse(src)
+        if parsed.netloc not in ("", "localhost"):
+            raise _LocalImageRejected("Only file:// paths on this machine can be read.")
+        candidate = Path(unquote(parsed.path))
+    else:
+        candidate = root / src
+    try:
+        path = candidate.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise _LocalImageRejected("A local image file was not found.") from None
+    if not path.is_relative_to(root):
+        raise _LocalImageRejected(
+            f"Local images must be inside {LOCAL_IMAGE_ROOT_ENV} (default: the server's "
+            "working directory)."
+        )
+    content_type = _LOCAL_IMAGE_TYPES.get(path.suffix.lower())
+    if content_type is None:
+        raise _LocalImageRejected("Local images must be .jpg, .jpeg, .png, .webp or .gif files.")
+    if not path.is_file():
+        raise _LocalImageRejected("A local image reference is not a regular file.")
+    if path.stat().st_size > MAX_LOCAL_IMAGE_BYTES:
+        raise _LocalImageRejected("A local image is larger than 10 MiB.")
+    return path, content_type
+
+
+def _read_local_image(path: Path) -> bytes:
+    with path.open("rb") as handle:
+        data = handle.read(MAX_LOCAL_IMAGE_BYTES + 1)
+    if len(data) > MAX_LOCAL_IMAGE_BYTES:
+        raise _LocalImageRejected("A local image is larger than 10 MiB.")
+    return data
+
+
 def _upload_local_images_for_aeko_shop(
     source_content_id: str,
     html: str,
     domain_id: str | None = None,
 ) -> str:
-    pattern = re.compile(r'(<img\b[^>]*\bsrc=["\'])(file://[^"\']+|\./[^"\']+|\.\./[^"\']+)(["\'])', re.IGNORECASE)
+    """Replace local ``<img src>`` references with uploaded aeko.shop URLs.
+
+    The hosted server never reads its own disk: any local reference is
+    rejected with ``_LocalImagesDisabled`` unless the operator set
+    ``AEKO_MCP_ALLOW_LOCAL_IMAGE_FILES=1`` (self-hosted stdio use).
+    """
+    if not _LOCAL_IMAGE_SRC.search(html):
+        return html
+    if not _local_image_files_allowed():
+        raise _LocalImagesDisabled(_LOCAL_IMAGES_DISABLED_MESSAGE)
 
     def repl(match: re.Match[str]) -> str:
         if not domain_id:
             raise _MissingImageDomain(
-                "Local <img src> requires domain_id (the AEKO domain UUID for media presign). "
-                "Either pass domain_id to aeko_update_product_description, or set skip_aeko_shop=True "
-                "to leave local image references untouched."
+                "Local <img src> requires domain_id (the AEKO domain UUID used for the media "
+                "upload). Pass domain_id, or set skip_aeko_shop=True to leave local image "
+                "references untouched."
             )
         prefix, src, suffix = match.groups()
-        path = Path(src[7:]) if src.startswith("file://") else Path.cwd() / src
-        data = path.read_bytes()
-        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        path, content_type = _resolve_local_image(src)
+        data = _read_local_image(path)
         sha256 = hashlib.sha256(data).hexdigest()
         content_md5 = base64.b64encode(hashlib.md5(data).digest()).decode()
         presign = client.post(
@@ -358,24 +471,19 @@ def _upload_local_images_for_aeko_shop(
             resp.raise_for_status()
         return f"{prefix}{presign['public_url']}{suffix}"
 
-    return pattern.sub(repl, html)
+    return _LOCAL_IMAGE_SRC.sub(repl, html)
 
 
-@mcp.tool(title="List connected stores", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List connected stores", READ_ONLY))
 def aeko_list_store_integrations() -> str:
-    """List every Cafe24 / Shopify store connected to the current user's AEKO account.
+    """List every Cafe24 / Shopify store connected to the user's AEKO account.
 
-    This is the starting point for any write-back workflow — call this
-    first to discover the ``integration_id`` you need for
-    ``aeko_update_product_*``. Each row also shows whether the granted
-    OAuth scopes include write access (Cafe24: ``mall.write_product``,
-    Shopify: ``write_products``). If the integration doesn't have write
-    scopes yet, the user needs to reconnect from the AEKO dashboard
-    Settings → Store Integrations tab.
-
-    Returns markdown with one block per integration, including its AEKO
-    ``domain_id``. Discovery is available on every subscription tier; an
-    agent write is authorized by the claimed artifact's current tier.
+    Start here for any store write: it gives the integration_id that the
+    aeko_update_product_* tools need, the AEKO domain_id, and whether the
+    granted scopes allow writes (Cafe24 mall.write_product, Shopify
+    write_products). Without write scopes, the user reconnects the store in the
+    AEKO dashboard (Settings > Store Integrations). Available on every plan;
+    product writes are checked against the claimed action item.
     """
     result, err = _safe(client.get, "/api/store-integrations")
     if err:
@@ -432,29 +540,23 @@ def aeko_list_store_integrations() -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(
-    title="Get product description HTML",
-    annotations=READ_ONLY,
-    structured_output=True,
-)
+@mcp.tool(**tool_spec("Get product description HTML", READ_ONLY_EXTERNAL, structured_output=True))
 def aeko_get_product_description(
     integration_id: str,
     external_product_id: str,
 ) -> ProductDescription:
-    """Fetch the raw editable product description HTML from the connected store.
+    """Fetch the raw, editable product description HTML from the connected store.
 
-    Returns the source-of-truth description as stored in Cafe24 (`description`
-    field) or Shopify (`body_html`) — distinct from what a live-page
-    WebFetch would return. ``description_html`` is the exact store value, or
-    null when the store has none; use it byte for byte as the base for
-    `aeko_update_product_page`. A failure is an MCP error carrying one
+    Returns the value stored in Cafe24 (description) or Shopify (body_html),
+    which can differ from the rendered live page. description_html is the exact
+    store value, or null when empty; use it unchanged as the base for
+    aeko_update_product_page. A failure is an MCP error carrying one
     aeko.error.v1 JSON object.
 
     Args:
-        integration_id: UUID of the store integration. Call
-            `aeko_list_store_integrations` first to discover it.
-        external_product_id: The product's platform-native id — Cafe24
-            product_no or Shopify product id.
+        integration_id: Store integration UUID from
+            aeko_list_store_integrations.
+        external_product_id: Cafe24 product_no or Shopify product id.
     """
     with read_boundary():
         integration_id = uuid_arg(integration_id, "integration_id")
@@ -503,7 +605,7 @@ def _product_description(
     )
 
 
-@mcp.tool(title="Update product description", annotations=WRITE)
+@mcp.tool(**tool_spec("Update product description", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_update_product_description(
     integration_id: str,
     external_product_id: str,
@@ -513,30 +615,21 @@ def aeko_update_product_description(
     action_item_id: str | None = None,
     execution_claim_id: str | None = None,
 ) -> str:
-    """Replace the full description HTML for a product on a connected store.
+    """Replace the full description HTML of a product on a connected Cafe24 or Shopify store.
+
+    This overwrites the live product page, so show the user the change and get confirmation first.
+    The result includes an audit ID for aeko_revert_store_write. A <script type="application/ld+json">
+    block in the HTML replaces the store's existing JSON-LD block. Images must use public https
+    URLs; upload local images first with aeko_request_media_upload.
 
     Args:
-        integration_id: UUID of the store integration. Call
-            ``aeko_list_store_integrations`` first to discover it. One
-            integration per user/domain pair.
-        external_product_id: The product's platform-native id — Cafe24
-            product_no or Shopify product id.
-        description_html: The new description HTML. May include a
-            <script type="application/ld+json"> block; if it does, any
-            existing JSON-LD block in the store's current description is
-            replaced.
-        skip_aeko_shop: When True, leave local ``<img src>`` references
-            untouched (no upload to aeko.shop CDN). Use this for stores
-            whose domain doesn't have an aeko.shop tenant.
-        domain_id: AEKO domain UUID — required when
-            ``skip_aeko_shop=False`` AND the description contains local
-            image references (file://, ./, ../). Maps to backend
-            ``MediaPresignRequest.domain_id``. Pass the domain UUID, NOT the
-            store integration_id. Pass-through to
-            ``_upload_local_images_for_aeko_shop``.
-        action_item_id: Claimed ActionItem that authorizes this agent write.
-        execution_claim_id: Unique token returned by
-            ``aeko_claim_action_item`` for that item.
+        integration_id: Store integration UUID from aeko_list_store_integrations.
+        external_product_id: Cafe24 product_no or Shopify product id.
+        description_html: The complete new description HTML.
+        skip_aeko_shop: True for domains without an aeko.shop storefront.
+        domain_id: AEKO domain UUID; only used by servers that upload local image files.
+        action_item_id: The claimed action item that authorizes this write.
+        execution_claim_id: Token from aeko_claim_action_item for that item.
     """
     source_content_id = f"store-product:{integration_id}:{external_product_id}"
     clean_html = (
@@ -553,7 +646,7 @@ def aeko_update_product_description(
     )
 
 
-@mcp.tool(title="Update product tags", annotations=WRITE)
+@mcp.tool(**tool_spec("Update product tags", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_update_product_tags(
     integration_id: str,
     external_product_id: str,
@@ -561,16 +654,16 @@ def aeko_update_product_tags(
     action_item_id: str | None = None,
     execution_claim_id: str | None = None,
 ) -> str:
-    """Replace the tag list for a product on a connected store.
+    """Replace the full tag list of a product on a connected store (not an append).
+
+    This overwrites the live tags; confirm with the user first.
 
     Args:
-        integration_id: UUID of the store integration.
+        integration_id: Store integration UUID.
         external_product_id: Cafe24 product_no or Shopify product id.
-        tags: Full replacement list (not append). Cafe24 joins with ","
-            and Shopify joins with ", " — the backend handles the format
-            difference.
-        action_item_id: Claimed ActionItem that authorizes this agent write.
-        execution_claim_id: Matching execution-claim token.
+        tags: The complete new tag list. AEKO handles each platform's format.
+        action_item_id: The claimed action item that authorizes this write.
+        execution_claim_id: Token from aeko_claim_action_item for that item.
     """
     return _update_product(
         integration_id,
@@ -581,7 +674,7 @@ def aeko_update_product_tags(
     )
 
 
-@mcp.tool(title="Update product SEO meta", annotations=WRITE)
+@mcp.tool(**tool_spec("Update product SEO meta", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_update_product_meta(
     integration_id: str,
     external_product_id: str,
@@ -590,17 +683,17 @@ def aeko_update_product_meta(
     action_item_id: str | None = None,
     execution_claim_id: str | None = None,
 ) -> str:
-    """Update SEO meta fields (title tag and meta description) for a product.
+    """Overwrite the SEO title and/or meta description of a product on a connected store.
+
+    This changes the live product; confirm with the user first.
 
     Args:
-        integration_id: UUID of the store integration.
+        integration_id: Store integration UUID.
         external_product_id: Cafe24 product_no or Shopify product id.
-        title: New SEO title (max 255 chars). Cafe24: seo_title. Shopify:
-            metafields[global/title_tag].
-        description: New meta description (max 1024 chars). Cafe24:
-            seo_description. Shopify: metafields[global/description_tag].
-        action_item_id: Claimed ActionItem that authorizes this agent write.
-        execution_claim_id: Matching execution-claim token.
+        title: New SEO title (max 255 chars).
+        description: New meta description (max 1024 chars).
+        action_item_id: The claimed action item that authorizes this write.
+        execution_claim_id: Token from aeko_claim_action_item for that item.
     """
     meta: dict[str, str] = {}
     if title is not None:
@@ -708,9 +801,7 @@ def _write_receipt(
 
 
 @mcp.tool(
-    title="Update product page atomically",
-    annotations=WRITE_ONCE,
-    structured_output=True,
+    **tool_spec("Update product page atomically", DESTRUCTIVE_EXTERNAL, structured_output=True)
 )
 def aeko_update_product_page(
     integration_id: str,
@@ -725,39 +816,19 @@ def aeko_update_product_page(
     skip_aeko_shop: bool = False,
     domain_id: str | None = None,
 ) -> StoreWriteReceipt:
-    """Apply one confirmed PDP patch in one store request and audit record.
+    """Apply one confirmed product-page update (description, JSON-LD, tags, SEO meta) in one audited store write.
 
-    Use this tool after the user has reviewed the local preview and explicitly
-    confirmed the localized Before / After / Risk / Undo summary. Description,
-    JSON-LD, tags, and SEO meta are submitted together, so the platform update
-    and AEKO audit/revert boundary are a single operation. The backend records
-    a request hash on the execution claim: an identical retry replays the
-    recorded result, while an indeterminate write is never submitted twice.
+    Use only after the user confirmed the before/after summary: this overwrites the live product
+    page. An identical retry replays the recorded result; a write with an unknown outcome is never
+    sent twice. The receipt has audit_id; status success changed the store, dry_run did not. On
+    failure the aeko.error.v1 mutation_state is not_attempted or rejected (nothing changed) or
+    unknown (may have changed: check the product and aeko_list_store_writes; do not resubmit).
+    Images must be public https URLs (see aeko_request_media_upload).
 
-    Returns one receipt with the real ``audit_id``. ``status`` is ``success``
-    or ``dry_run``; only ``success`` changed the live store. A failure is an
-    MCP error whose aeko.error.v1 JSON carries ``mutation_state``:
-    ``not_attempted`` or ``rejected`` mean this request changed nothing, and
-    ``unknown`` means the write may have happened — reconcile the product and
-    `aeko_list_store_writes`, and never resubmit it.
-
-    Args:
-        integration_id: UUID of the exact connected store.
-        external_product_id: Exact platform-native product id.
-        action_item_id: Claimed ``pdp_html`` (or compatible) ActionItem.
-        execution_claim_id: Unique token returned by
-            ``aeko_claim_action_item``.
-        description_html: Final description HTML, if the visible body changes.
-            For metadata-only runs this can be omitted; the backend uses the
-            current store description as the JSON-LD base.
-        json_ld: One structured-data object, normally an ``@graph`` containing
-            Product and any evidence-backed FAQPage/Review nodes.
-        tags: Optional full replacement tag list.
-        meta_title: Optional SEO title.
-        meta_description: Optional SEO description.
-        skip_aeko_shop: Leave local image references untouched when true.
-        domain_id: AEKO domain UUID used only when local images must be uploaded
-            to aeko.shop before the store patch.
+    Args: integration_id, external_product_id; action_item_id and execution_claim_id from
+    aeko_claim_action_item; description_html (omit for metadata-only); json_ld (one object, usually
+    an @graph of Product plus evidence-backed FAQPage/Review nodes); tags (full list); meta_title;
+    meta_description; skip_aeko_shop; domain_id.
     """
     integration_id = uuid_arg(integration_id, "integration_id")
     external_product_id = path_segment_arg(external_product_id, "external_product_id")
@@ -781,6 +852,12 @@ def aeko_update_product_page(
                 description_html,
                 domain_id,
             )
+        except _LocalImagesDisabled:
+            raise AekoToolInputError(
+                "LOCAL_IMAGES_DISABLED", _LOCAL_IMAGES_DISABLED_MESSAGE
+            ) from None
+        except _LocalImageRejected as exc:
+            raise AekoToolInputError("LOCAL_IMAGE_REJECTED", str(exc)) from None
         except _MissingImageDomain:
             raise AekoToolInputError(
                 "INVALID_ARGUMENT",
@@ -914,11 +991,7 @@ def _history_page(data: Any, *, limit: int, offset: int) -> StoreWriteHistoryPag
     )
 
 
-@mcp.tool(
-    title="List store write history",
-    annotations=READ_ONLY,
-    structured_output=True,
-)
+@mcp.tool(**tool_spec("List store write history", READ_ONLY, structured_output=True))
 def aeko_list_store_writes(limit: int = 20, offset: int = 0) -> StoreWriteHistoryPage:
     """List recent store writes for the current user, newest first.
 
@@ -942,14 +1015,15 @@ def aeko_list_store_writes(limit: int = 20, offset: int = 0) -> StoreWriteHistor
         return _history_page(result, limit=limit, offset=offset)
 
 
-@mcp.tool(title="Revert store write", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Revert store write", DESTRUCTIVE_EXTERNAL))
 def aeko_revert_store_write(audit_id: str) -> str:
-    """Revert a past store write by pushing the 'before' snapshot back.
+    """Revert a past store write by pushing its saved 'before' snapshot back to the live store.
+
+    Only writes with status 'success' can be reverted. Confirm with the user
+    first.
 
     Args:
-        audit_id: The audit row id from `aeko_list_store_writes` or from
-            the response of a prior update tool. Only rows with
-            status='success' can be reverted.
+        audit_id: Audit ID from aeko_list_store_writes or a prior update result.
     """
     path = f"/api/store-write-audit/{audit_id}/revert"
     result, err = _safe(client.post, path)

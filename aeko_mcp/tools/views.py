@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 from ..client import legacy_error_name
 from ..server import client, mcp
-from ._annotations import READ_ONLY, WRITE, WRITE_ONCE
+from ._annotations import ADDITIVE, ADDITIVE_ONCE, READ_ONLY, tool_spec
 
 
 def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
@@ -24,7 +24,7 @@ def _json_block(title: str, payload: Any) -> str:
     return f"# {title}\n\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
 
 
-@mcp.tool(title="List saved prompt views", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List saved prompt views", READ_ONLY))
 def aeko_list_views(domain_id: str, status: Optional[str] = None) -> str:
     """List saved prompt views for a domain.
 
@@ -40,7 +40,7 @@ def aeko_list_views(domain_id: str, status: Optional[str] = None) -> str:
     return _json_block("Saved prompt views", result)
 
 
-@mcp.tool(title="Create saved prompt view", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Create saved prompt view", ADDITIVE_ONCE))
 def aeko_create_view(
     domain_id: str,
     name: str,
@@ -65,7 +65,7 @@ def aeko_create_view(
     return _json_block("Saved prompt view created", result)
 
 
-@mcp.tool(title="Add prompts to saved view", annotations=WRITE)
+@mcp.tool(**tool_spec("Add prompts to saved view", ADDITIVE))
 def aeko_add_prompts_to_view(view_id: str, prompt_ids: list[str]) -> str:
     """Add tracked prompts to an existing saved prompt view."""
     if not prompt_ids:

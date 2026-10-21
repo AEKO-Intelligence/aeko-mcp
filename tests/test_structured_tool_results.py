@@ -520,7 +520,6 @@ def test_page_write_error_is_an_mcp_error_without_structured_content(backend):
         {"description_html": "\ud800"},
         {"json_ld": {"score": float("nan")}},
         {"action_item_id": ""},
-        {"description_html": '<img src="./local.png">', "skip_aeko_shop": False},
     ],
 )
 def test_invalid_write_input_is_not_attempted_and_sends_nothing(backend, updates):
@@ -539,7 +538,36 @@ def test_invalid_write_input_is_an_mcp_error_over_the_wire(backend):
     assert backend.requests == []
 
 
-def test_image_upload_failure_never_submits_the_store_write(backend, tmp_path):
+def test_local_images_are_refused_by_default_and_send_nothing(backend, monkeypatch):
+    monkeypatch.delenv(store_write.LOCAL_IMAGE_FILES_ENV, raising=False)
+    with pytest.raises(AekoToolInputError) as caught:
+        store_write.aeko_update_product_page(
+            **write_args(description_html='<img src="./local.png">', skip_aeko_shop=False)
+        )
+    payload = error_payload(caught.value)
+    assert (payload["code"], payload["mutation_state"]) == ("LOCAL_IMAGES_DISABLED", "not_attempted")
+    assert "aeko_request_media_upload" in payload["message"]
+    assert backend.requests == []
+
+
+def test_opted_in_local_image_without_domain_is_invalid_and_sends_nothing(
+    backend, monkeypatch, tmp_path
+):
+    (tmp_path / "local.png").write_bytes(b"png")
+    monkeypatch.setenv(store_write.LOCAL_IMAGE_FILES_ENV, "1")
+    monkeypatch.setenv(store_write.LOCAL_IMAGE_ROOT_ENV, str(tmp_path))
+    with pytest.raises(AekoToolInputError) as caught:
+        store_write.aeko_update_product_page(
+            **write_args(description_html='<img src="./local.png">', skip_aeko_shop=False)
+        )
+    payload = error_payload(caught.value)
+    assert (payload["code"], payload["mutation_state"]) == ("INVALID_ARGUMENT", "not_attempted")
+    assert backend.requests == []
+
+
+def test_image_upload_failure_never_submits_the_store_write(backend, tmp_path, monkeypatch):
+    monkeypatch.setenv(store_write.LOCAL_IMAGE_FILES_ENV, "1")
+    monkeypatch.setenv(store_write.LOCAL_IMAGE_ROOT_ENV, str(tmp_path))
     image = tmp_path / "local.png"
     image.write_bytes(b"png")
     backend.routes[("POST", "/api/aeko-shop/media/presign")] = httpx.Response(500, json={"detail": SECRET})

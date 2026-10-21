@@ -2,6 +2,8 @@
 
 import importlib
 
+import pytest
+
 from aeko_mcp.tools import research, store_write, visibility
 
 
@@ -50,30 +52,12 @@ def test_store_tools_call_expected_routes(monkeypatch):
     monkeypatch.setattr(store_write.client, "get", fake_get)
     monkeypatch.setattr(store_write.client, "post", fake_post)
 
-    connect_out = store_write.aeko_connect_store(
-        domain_id="domain-1",
-        platform="shopify",
-        store_identifier="brand.myshopify.com",
-        access_token="token-1",
-    )
     sync_out = store_write.aeko_sync_store("store-1")
     list_out = store_write.aeko_list_store_products(domain_id="domain-1", include_citability=True, limit=25)
 
-    assert "store-1" in connect_out
     assert "prod-1" in sync_out
     assert "sku-1" in list_out
     assert calls == [
-        {
-            "method": "POST",
-            "path": "/api/store-integrations",
-            "json": {
-                "domain_id": "domain-1",
-                "platform": "shopify",
-                "store_identifier": "brand.myshopify.com",
-                "access_token": "token-1",
-            },
-            "headers": None,
-        },
         {"method": "POST", "path": "/api/store-integrations/store-1/sync", "json": None, "headers": None},
         {
             "method": "GET",
@@ -87,15 +71,39 @@ def test_connect_store_rejects_manual_platform_without_call(monkeypatch):
     called = {"post": False}
     monkeypatch.setattr(store_write.client, "post", lambda *a, **k: called.__setitem__("post", True) or {})
 
-    out = store_write.aeko_connect_store(
-        domain_id="domain-1",
-        platform="manual",
-        store_identifier="manual",
-        access_token="not-used",
-    )
+    out = store_write.aeko_connect_store(domain_id="domain-1", platform="manual")
 
     assert "aeko_inject_products" in out
     assert called["post"] is False
+
+
+def _fail_on_backend_call(*args, **kwargs):
+    raise AssertionError("aeko_connect_store must not call the backend")
+
+
+@pytest.mark.parametrize("platform", ["shopify", "cafe24", None])
+def test_connect_store_returns_dashboard_steps_without_any_call(monkeypatch, platform):
+    for method in ("get", "post", "put", "patch", "delete"):
+        monkeypatch.setattr(store_write.client, method, _fail_on_backend_call)
+
+    out = store_write.aeko_connect_store(domain_id="domain-1", platform=platform)
+
+    assert store_write.STORE_SETTINGS_URL in out
+    assert "Store Integrations" in out
+    assert "aeko_list_store_integrations" in out
+    assert "OAuth" in out
+
+
+def test_connect_store_takes_no_credential_parameters():
+    """OpenAI review: tools must not collect access credentials (MCP-B3)."""
+    tool = store_write.mcp._tool_manager.get_tool("aeko_connect_store")
+    properties = set(tool.parameters["properties"])
+
+    assert properties == {"domain_id", "platform"}
+    assert not properties & {"access_token", "refresh_token", "token_expires_at", "scopes"}
+    assert tool.annotations.readOnlyHint is True
+    assert tool.annotations.destructiveHint is False
+    assert tool.annotations.openWorldHint is False
 
 
 def test_inject_products_chunks_over_200(monkeypatch):

@@ -54,7 +54,7 @@ Tier shorthand:
 | `aeko_track_suggested_prompts` | Batch-track top review-derived prompts. | No | Pro+ |
 | `aeko_dismiss_suggested_prompt` | Dismiss a review-derived prompt suggestion. | No | Pro+ |
 | `aeko_inject_reviews` | Inject real reviews into a manual review source. | No | Pro+ |
-| `aeko_connect_store` | Connect Cafe24 or Shopify store credentials. | Yes | No |
+| `aeko_connect_store` | Return the dashboard OAuth steps for connecting Cafe24 or Shopify. Accepts no credentials and makes no call. | Yes | No |
 | `aeko_sync_store` | Sync connected store products. | Yes | No |
 | `aeko_inject_products` | Inject manual/custom-store products. | Yes | No |
 | `aeko_list_store_products` | List synced or injected store products. | Yes | No |
@@ -109,7 +109,6 @@ Tier shorthand:
 | `aeko_list_conversion_event_settings` | List account-scoped conversion events with optimization eligibility. | No | Pro+ |
 | `aeko_lookup_ad_locations` | Resolve account-scoped OpenAI Ads location IDs for targeting. | No | Pro+ |
 | `aeko_create_ad_group_from_context` | Create a paused CPM, CPC, or oCPC context-grounded campaign/ad group and ads. | No | Pro+ |
-| `aeko_update_campaign_budget` | Guarded campaign budget update. | No | Pro+ |
 | `aeko_update_ad_group` | Preview or apply guarded ad-group copy, Context-hint, and maximum-bid changes. | No | Pro+ |
 | `aeko_update_ad_creative` | Replace an existing ad's complete creative after a read-before-write. | No | Pro+ |
 | `aeko_set_campaign_state` | Pause, resume, or archive a campaign. | No | Pro+ |
@@ -153,7 +152,7 @@ The platform validates ownership, tier, setup, and run eligibility.
 | `/aeko-inject-reviews` | Injects real reviews for stores without a review app. | Not available on Starter. | Pro+ only; real reviews only, no fabrication. |
 | `/aeko-compose-ads` | Pulls contextual reviews and creates paused OpenAI Ads groups. | Not available on Starter. | Pro+ with connected OpenAI Ads account; live writes stay paused for review. |
 | `/aeko-ad-report` | Generates OpenAI Ads performance report from efficiency metrics. | Not available on Starter. | Pro+; ROAS waits for conversion ingestion. |
-| `/aeko-optimize-budget` | Dry-runs and confirms guarded campaign budget changes and pauses waste. | Not available on Starter. | Pro+; spend writes require confirmation and guardrails. |
+| `/aeko-optimize-budget` | Reviews ad performance and pauses waste after confirmation. Campaign budgets are not settable through MCP; change them in the AEKO dashboard. | Not available on Starter. | Pro+; state changes require confirmation. |
 
 ## Starter Clarifications
 

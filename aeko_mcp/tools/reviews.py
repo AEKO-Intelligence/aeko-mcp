@@ -33,7 +33,7 @@ from typing import Any, Optional
 
 from ..client import legacy_error_name
 from ..server import mcp, client
-from ._annotations import READ_ONLY, WRITE
+from ._annotations import DESTRUCTIVE_IDEMPOTENT, READ_ONLY, tool_spec
 
 # A review counts as "contextual" at or above this context_score. Mirrors the
 # backend threshold; also the default floor for ``aeko_get_product_reviews``.
@@ -68,26 +68,20 @@ def _excerpt(text: Optional[str], limit: int = 280) -> str:
     return flat
 
 
-@mcp.tool(title="List review integrations", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List review integrations", READ_ONLY))
 def aeko_list_review_integrations(domain_id: str) -> str:
-    """List the Crema / Judge.me review integrations connected for a domain.
+    """List the cre.ma / Judge.me review integrations connected for a domain.
 
-    The starting point for any context-review workflow — call this first to
-    resolve the ``integration_id`` you pass to ``aeko_list_review_products``
-    and ``aeko_get_product_reviews``. The create-content skills call this to
-    discover whether a domain even has classified customer reviews to draw on
-    before drafting.
-
-    Each block shows the integration id, platform, store identifier, the
-    backfill status (whether the initial review import has finished), and when
-    it last synced — so the skill can tell a "classifier still running" empty
-    result apart from a genuinely review-less store.
-
-    Read-only. Pro+ is enforced server-side; a lower tier surfaces a 403 with
-    the upgrade message.
+    Call this first in any review workflow to get the integration_id used by
+    aeko_list_review_products and aeko_get_product_reviews, and to check
+    whether the domain has classified customer reviews at all. Each entry shows
+    the integration ID, platform, store identifier, backfill status (whether
+    the first import finished) and last sync time, so an empty result while
+    classification is still running can be told apart from a store with no
+    reviews. Read-only; Pro+ only.
 
     Args:
-        domain_id: UUID of the AEKO domain whose review integrations you want.
+        domain_id: Domain UUID.
     """
     result, err = _safe(
         client.get, "/api/review-integrations", params={"domain_id": domain_id}
@@ -100,8 +94,7 @@ def aeko_list_review_integrations(domain_id: str) -> str:
         return (
             f"# No review integrations for domain `{domain_id}`\n\n"
             "Connect a Crema or Judge.me review platform from the AEKO dashboard "
-            "Settings → Review Integrations tab, then call this tool again. "
-            "(Context Reviews require a Pro+ subscription.)"
+            "Settings → Review Integrations tab, then call this tool again."
         )
 
     lines = [f"# Review integrations ({len(items)})", ""]
@@ -138,26 +131,19 @@ def aeko_list_review_integrations(domain_id: str) -> str:
 # `aeko_inject_reviews`. (Backend connect/sync routes are require_user_context.)
 
 
-@mcp.tool(title="List review products", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List review products", READ_ONLY))
 def aeko_list_review_products(integration_id: str) -> str:
-    """List products under a review integration, with their contextual-review counts.
+    """List products under a review integration with their contextual-review counts.
 
-    Call this after ``aeko_list_review_integrations`` to see WHICH products
-    actually have contextual reviews worth weaving into a draft. The
-    ``contextual`` column is the count of reviews scoring >= 60 (rich
-    source-backed customer context); ``reviews`` is the raw total. A
-    product with ``contextual = 0`` has reviews but none classified as
-    context-rich yet (or the classifier is still running).
-
-    When picking a product to write content for, prefer ones with a non-zero
-    ``contextual`` count, then call ``aeko_get_product_reviews`` with that
-    product's ``external_product_ref``.
-
-    Read-only. Pro+ enforced server-side (403 if under-tier).
+    `contextual` counts reviews scoring 60 or more (rich customer context);
+    `reviews` is the raw total. contextual = 0 means none are classified as
+    context-rich yet, or classification is still running. Prefer products with
+    a non-zero contextual count, then call aeko_get_product_reviews with the
+    product's external_product_ref. Read-only; Pro+ only.
 
     Args:
-        integration_id: UUID of the review integration (from
-            ``aeko_list_review_integrations``).
+        integration_id: Review integration UUID from
+            aeko_list_review_integrations.
     """
     path = f"/api/review-integrations/{integration_id}/products"
     result, err = _safe(client.get, path)
@@ -215,43 +201,27 @@ def aeko_list_review_products(integration_id: str) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(title="Get product context reviews", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get product context reviews", READ_ONLY))
 def aeko_get_product_reviews(
     integration_id: str,
     external_product_ref: str,
     min_context_score: int = CONTEXTUAL_THRESHOLD,
     limit: int = 10,
 ) -> str:
-    """Fetch a product's TOP contextual reviews — source-backed customer memories.
+    """Fetch a product's strongest contextual reviews (customer stories) stored in AEKO.
 
-    This is the tool the create-content skills call to ground a draft in
-    genuine customer narratives. It returns ONLY contextual reviews — those
-    scoring at or above ``min_context_score`` (default 60) — sorted
-    strongest-context-first (``sort=context``). Pending / unclassified reviews
-    have no score and are excluded once a ``min_context_score`` is applied, so
-    everything returned here is a vetted, context-rich story.
-
-    For each review you get: the ``context_score``, extracted ``문제``
-    (legacy grounding), ``고객 상태``, ``최근 고민``, ``제품 경험``, and
-    ``느낀 효과`` (falling back to legacy outcome/solution when needed), the
-    star rating, author, date, and a quotable excerpt of the body. Weave these
-    into the draft as concrete "who this customer was, what they were dealing
-    with, what the product felt like, and what improved" evidence, and record
-    which reviews you used in the content variation's
-    ``featured_product_reviews`` metadata.
-
-    Read-only. Pro+ enforced server-side (403 if under-tier).
+    Returns only reviews scoring at least min_context_score (default 60), strongest first;
+    unclassified reviews are excluded. Each has context_score, the facets 고객 상태 (customer
+    state), 최근 고민 (recent concern), 제품 경험 (product experience) and 느낀 효과 (felt effect),
+    with older problem/outcome fields as fallback, plus rating, author, date and a quotable
+    excerpt. Use them as concrete evidence in drafts and list the reviews you used in the draft's
+    featured_product_reviews metadata. Read-only; Pro+ only.
 
     Args:
-        integration_id: UUID of the review integration (from
-            ``aeko_list_review_integrations``).
-        external_product_ref: The product's review-platform ref (from
-            ``aeko_list_review_products`` — the ``external_product_ref`` column).
-        min_context_score: Minimum ``context_score`` (0–100) a review must have
-            to be returned. Default 60 (the contextual threshold). Raise it to
-            tighten to only the very richest stories; rows below it — and all
-            unclassified/pending rows — are excluded.
-        limit: Max reviews to return (1–200). Default 10.
+        integration_id: Review integration UUID from aeko_list_review_integrations.
+        external_product_ref: The product's ref from aeko_list_review_products.
+        min_context_score: Minimum score (0-100), default 60; raise it for the richest stories.
+        limit: Max reviews (1-200), default 10.
     """
     capped_limit = max(1, min(int(limit), 200))
     capped_score = max(0, min(int(min_context_score), 100))
@@ -356,7 +326,7 @@ def aeko_get_product_reviews(
     return "\n".join(lines)
 
 
-@mcp.tool(title="Get suggested prompts from reviews", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get suggested prompts from reviews", READ_ONLY))
 def aeko_get_suggested_prompts(
     integration_id: str,
     external_product_ref: str,
@@ -379,7 +349,7 @@ def aeko_get_suggested_prompts(
     return _json_block("Suggested prompts", result)
 
 
-@mcp.tool(title="Track suggested prompt", annotations=WRITE)
+@mcp.tool(**tool_spec("Track suggested prompt", DESTRUCTIVE_IDEMPOTENT))
 def aeko_track_suggested_prompt(
     integration_id: str,
     suggestion_id: str,
@@ -387,10 +357,11 @@ def aeko_track_suggested_prompt(
     countries: Optional[list[str]] = None,
     view_id: Optional[str] = None,
 ) -> str:
-    """Track one review-derived suggested prompt with review Context grounding.
+    """Track one review-derived suggested prompt, grounded in its review Context.
 
-    Optional platform/country fan-out and saved-view assignment use the same
-    settable contract as `aeko_track_prompt`.
+    Tracking also reactivates the originating review Context if it was
+    archived. Optional platform/country fan-out and saved-view assignment work
+    as in aeko_track_prompt.
     """
     body = {
         "ai_platforms": ai_platforms,
@@ -408,7 +379,7 @@ def aeko_track_suggested_prompt(
     return _json_block("Suggested prompt tracked", result)
 
 
-@mcp.tool(title="Track suggested prompts batch", annotations=WRITE)
+@mcp.tool(**tool_spec("Track suggested prompts batch", DESTRUCTIVE_IDEMPOTENT))
 def aeko_track_suggested_prompts(
     integration_id: str,
     min_context_score: int = CONTEXTUAL_THRESHOLD,
@@ -417,7 +388,11 @@ def aeko_track_suggested_prompts(
     countries: Optional[list[str]] = None,
     view_id: Optional[str] = None,
 ) -> str:
-    """Track the top review-derived prompt for each review in a filtered set."""
+    """Track the top review-derived prompt for each review in a filtered set.
+
+    Tracking also reactivates the originating review Contexts if they were
+    archived.
+    """
     body: dict[str, Any] = {
         "min_context_score": max(0, min(int(min_context_score), 100)),
     }
@@ -438,7 +413,7 @@ def aeko_track_suggested_prompts(
     return _json_block("Suggested prompts tracked", result)
 
 
-@mcp.tool(title="Dismiss suggested prompt", annotations=WRITE)
+@mcp.tool(**tool_spec("Dismiss suggested prompt", DESTRUCTIVE_IDEMPOTENT))
 def aeko_dismiss_suggested_prompt(integration_id: str, suggestion_hash: str) -> str:
     """Dismiss a review-derived suggested prompt by its suggestion hash."""
     result, err = _safe(

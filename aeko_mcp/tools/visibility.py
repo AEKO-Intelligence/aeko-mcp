@@ -2,7 +2,7 @@ import json
 from typing import Any, Optional
 
 from ..server import mcp, client
-from ._annotations import READ_ONLY, WRITE_ONCE
+from ._annotations import DESTRUCTIVE, READ_ONLY, tool_spec
 
 
 def _json_block(title: str, payload: Any) -> str:
@@ -208,7 +208,7 @@ def _format_tracked_metrics(
 _VISIBILITY_SCOPES = {"overview", "cited_sources", "tracked_prompt_metrics"}
 
 
-@mcp.tool(title="Get visibility summary", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get visibility summary", READ_ONLY))
 def aeko_get_visibility_summary(
     domain_id: str,
     scope: str = "overview",
@@ -221,33 +221,21 @@ def aeko_get_visibility_summary(
     prompt_ids: Optional[list[str]] = None,
     window: Optional[str] = None,
 ) -> str:
-    """Brand visibility + citation metrics across AI engines.
+    """Read brand visibility and citation metrics across AI engines for your tracked prompts.
 
-    One-tool consolidation of the prior `aeko_get_visibility_summary`,
-    `aeko_get_cited_sources`, and `aeko_get_metrics` surfaces. New callers
-    should pick the view via `view`; `scope` remains the legacy view selector.
+    view (or the older `scope` argument):
+    - overview (default): all-time mention, citation and source counts with
+      week-over-week change, a 13-week trend, and recent brand mentions across
+      ChatGPT, Claude, Gemini and Perplexity.
+    - cited_sources: your pages that AI engines cited, with citation counts
+      and the prompts that triggered them.
+    - tracked_prompt_metrics: the last 7 days vs the previous 7 for mentions,
+      citations, sentiment, visibility and mention share.
 
-    Args:
-        domain_id: UUID of the domain.
-        scope:
-          Legacy view selector. Keep using one of the values below for
-          backwards compatibility, or pass `view=...`.
-        view:
-          - `overview` (default) — all-time mention / citation / source counts
-            with 7-day week-over-week diffs, a 13-week weekly trend, and recent
-            brand mentions across ChatGPT / Claude / Gemini / Perplexity.
-          - `cited_sources` — the subset of your pages AI engines cited,
-            with per-page citation counts + triggering prompts.
-          - `tracked_prompt_metrics` — 7-day performance across tracked
-            prompts with week-over-week trends (mentions / citations /
-            sentiment / visibility / mention share).
-        window: Compatibility-only time-window hint retained for lagging
-            callers. It is not sent to either backend endpoint. Tracked-prompt
-            metrics are fixed at 7 days plus the previous 7 days for comparison;
-            non-``7d`` requests are disclosed in that report.
-
-    The summary is scoped to your tracked prompts. The sentiment in the trend
-    is the share of positive mentions. 7-day windows are UTC days.
+    Optional filters for overview and cited_sources: vertical_scope, country,
+    ai_platform, query_type, funnel_stage, prompt_ids. `window` is accepted for
+    compatibility and ignored; tracked_prompt_metrics always covers 7 days.
+    Sentiment is the share of positive mentions. Days are UTC.
     """
     selected_view = view or scope
     # Backwards-compatible escape hatch: if a caller accidentally passes a
@@ -286,7 +274,7 @@ def aeko_get_visibility_summary(
     return _format_visibility(data)
 
 
-@mcp.tool(title="Get domain info", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get domain info", READ_ONLY))
 def aeko_get_domain_info(domain_id: str) -> str:
     """Get domain details and AI-readiness infrastructure status.
 
@@ -300,7 +288,7 @@ def aeko_get_domain_info(domain_id: str) -> str:
     return _format_domain(data)
 
 
-@mcp.tool(title="Get citability", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get citability", READ_ONLY))
 def aeko_get_citability(
     domain_id: Optional[str] = None,
     source_id: Optional[str] = None,
@@ -350,22 +338,20 @@ def _format_domain_list(domains: list[dict]) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(title="List connected domains", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List connected domains", READ_ONLY))
 def aeko_list_domains() -> str:
-    """List every domain the authenticated AEKO user has connected.
+    """List every domain connected to the signed-in AEKO account.
 
-    Use this when a skill or tool needs a domain UUID and the user hasn't
-    supplied one. Returns each domain's UUID, human-readable name, base URL,
-    and industry scope so the caller can auto-select (if there's one) or
-    offer a pick-list. No arguments; reads the bearer token from the MCP
-    session to resolve the current user.
+    Use it when a domain UUID is needed and the user has not given one. Returns
+    each domain's UUID, name, base URL and industry scope, so you can pick the
+    only domain automatically or offer a choice.
     """
     data = client.get("/api/domains")
     # Backend returns a bare list (List[DomainResponse]).
     return _format_domain_list(data if isinstance(data, list) else [])
 
 
-@mcp.tool(title="Add domain", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Add domain", DESTRUCTIVE))
 def aeko_add_domain(
     base_url: str,
     display_name: Optional[str] = None,
@@ -379,8 +365,10 @@ def aeko_add_domain(
 ) -> str:
     """Add a domain to the current AEKO account.
 
-    Starter users can add domains within their plan limit. The backend owns
-    canonicalization, ownership checks, and package limits.
+    Domains can be added within the plan's domain limit. AEKO handles URL
+    canonicalization, ownership checks and plan limits. If the domain already
+    exists in AEKO, the readiness flags you pass (has_llms_txt,
+    robots_blocks_ai, has_json_ld) update its stored values.
     """
     body = {
         "base_url": base_url,

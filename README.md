@@ -92,10 +92,12 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 | `AEKO_MCP_STREAMABLE_HTTP_PATH` | No | `/` | Path served by the streamable HTTP app. Defaults to `/` so the embedding ASGI app's own mount prefix (e.g. `app.mount("/mcp", create_streamable_http_app())`) is not doubled. Set to `/mcp` only when running the HTTP server standalone. |
 | `AEKO_MCP_STATELESS_HTTP` | No | `true` | Run streamable HTTP in stateless mode |
 | `AEKO_MCP_JSON_RESPONSE` | No | `true` | Prefer JSON HTTP responses over SSE chunks |
+| `AEKO_MCP_ALLOW_LOCAL_IMAGE_FILES` | No | off | Self-hosted stdio servers only. When `1`/`true`, the product-description write tools may read local `<img src>` files (`file://`, `./`, `../`) and upload them to the aeko.shop CDN. Leave unset on any hosted or shared server: when unset, local image references are refused and the caller is told to use `aeko_request_media_upload`. |
+| `AEKO_MCP_LOCAL_IMAGE_ROOT` | No | working directory | Directory that opted-in local image reads must stay inside (symlinks are resolved first). Only regular `.jpg`/`.jpeg`/`.png`/`.webp`/`.gif` files up to 10 MiB are read. |
 
 ## Available Tools
 
-AEKO MCP registers 134 tools across 23 modules, covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, source citation share, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, manual automation starters, store-write actions, saved assistant tasks and outputs, versioned brand documents, accepted whole-brand packages, Brand Wiki reads, and Fact Check findings.
+AEKO MCP registers 133 tools across 23 modules, covering setup, visibility metrics, citability, tracked-prompt angles, owner-associated source evidence, source citation share, ranked content ideas and handoffs, views, content variations, media uploads, customer review contexts, saved memories, Context opportunity and Focus workflows, analytics, GA4, OpenAI Ads operations and pacing rules, manual automation starters, store-write actions, saved assistant tasks and outputs, versioned brand documents, accepted whole-brand packages, Brand Wiki reads, and Fact Check findings.
 
 - [`aeko_mcp/tools/`](aeko_mcp/tools/) — one module per tool group. Each tool is registered with `@mcp.tool()` and its docstring is shown to the AI client at runtime.
 
@@ -168,7 +170,14 @@ The `contexts` group surfaces curated **AEKO Context memories** saved in the Con
 - `aeko_focus_context(...)` / `aeko_unfocus_context(...)` — start or end a Context measurement period; Focus-slot conflicts retain the full occupant list for an explicit user decision.
 - `aeko_update_context_translation(context_id, language, text)` — replace one stored Context translation.
 
-All tools carry MCP `ToolAnnotations` (`readOnlyHint`, `destructiveHint`, `openWorldHint`) so clients can offer per-tool approval policy (e.g. "always allow" for read-only GETs, approval-per-call for writes).
+Every tool sets `readOnlyHint`, `destructiveHint`, `openWorldHint` and `idempotentHint` as explicit booleans and repeats its title in `annotations.title`, as the Claude connector directory and the OpenAI app directory require. Tools register through `tool_spec()` and the presets in [`aeko_mcp/tools/_annotations.py`](aeko_mcp/tools/_annotations.py), which also document the rules:
+
+- `destructiveHint: true` for anything that may overwrite, delete, publish or unpublish, change the state of something that already exists, change a live store or ad, or commit spend. Purely additive writes (new records only) are `false`.
+- `openWorldHint: true` only when the tool reaches a system outside the user's AEKO account (the connected Cafe24/Shopify store, OpenAI Ads, Google Analytics) or has a public effect (aeko.shop, public CDN images). Tools confined to the user's AEKO data are `false`.
+
+`tests/test_tool_annotations.py` enforces this for the whole registry, along with a 1,024-character description limit and no plugin slash-command references.
+
+Store connections never pass credentials through MCP: `aeko_connect_store` returns the dashboard OAuth steps (Settings → Store Integrations) and accepts no tokens.
 
 Inside Claude Code or Codex, run the `list tools` equivalent to see the live set with descriptions.
 

@@ -9,7 +9,9 @@ def test_source_tools_are_registered_read_only():
     for name in ("aeko_fetch_source_content",):
         assert registered[name].annotations.readOnlyHint is True
         assert registered[name].annotations.idempotentHint is True
-        assert registered[name].annotations.openWorldHint is True
+        assert registered[name].annotations.destructiveHint is False
+        # Returns AEKO's stored crawl of the source; nothing is fetched live.
+        assert registered[name].annotations.openWorldHint is False
 
 
 def test_fetch_source_content_calls_owner_scoped_route(monkeypatch):
