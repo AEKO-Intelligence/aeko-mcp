@@ -94,8 +94,7 @@ def aeko_list_review_integrations(domain_id: str) -> str:
         return (
             f"# No review integrations for domain `{domain_id}`\n\n"
             "Connect a Crema or Judge.me review platform from the AEKO dashboard "
-            "Settings → Review Integrations tab, then call this tool again. "
-            "(Context Reviews require a Pro+ subscription.)"
+            "Settings → Review Integrations tab, then call this tool again."
         )
 
     lines = [f"# Review integrations ({len(items)})", ""]

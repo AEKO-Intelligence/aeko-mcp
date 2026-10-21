@@ -89,7 +89,7 @@ class CodedRuntimeError(RuntimeError):
 _STATUS_ERRORS = {
     400: ("BAD_REQUEST", "AEKO rejected the request."),
     401: ("AUTHENTICATION_FAILED", "AEKO authentication failed. Reconnect the MCP client."),
-    402: ("PAYMENT_REQUIRED", "The AEKO plan does not allow this request."),
+    402: ("PAYMENT_REQUIRED", "This request is not included in your current AEKO plan."),
     403: ("ACCESS_DENIED", "This AEKO account or credential cannot perform the request."),
     404: ("NOT_FOUND", "The requested AEKO resource was not found."),
     409: ("CONFLICT", "AEKO reported a conflicting state."),
@@ -113,7 +113,7 @@ _BACKEND_CODE_MESSAGES = {
         "This exact write started earlier without a recorded result. Reconcile the store and "
         "audit history; do not retry."
     ),
-    "TIER_REQUIRED": "This artifact requires a higher AEKO plan.",
+    "TIER_REQUIRED": "This artifact is not included in your current AEKO plan.",
     "STORE_PRODUCT_NOT_FOUND": "The product was not found on the connected store.",
     "STORE_SNAPSHOT_FAILED": (
         "AEKO could not read the product's current state before writing, so the store write "

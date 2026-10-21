@@ -19,6 +19,7 @@ from mcp.shared.memory import create_connected_server_and_client_session
 from mcp.types import ToolAnnotations
 
 from aeko_mcp import server
+from aeko_mcp.tools import _structured
 from aeko_mcp.tools._annotations import READ_ONLY, tool_spec
 
 MAX_DESCRIPTION_CHARS = 1024
@@ -212,3 +213,15 @@ def test_tool_spec_copies_the_preset_with_the_title():
     assert isinstance(spec["annotations"], ToolAnnotations)
     assert spec["annotations"].title == "Example title"
     assert READ_ONLY.title is None
+
+
+def test_plan_messages_state_plan_scope_without_upgrade_wording():
+    """OpenAI plugin guidelines: explain a feature is not in the current plan; do not upsell."""
+    messages = [
+        _structured._STATUS_ERRORS[402][1],
+        _structured._BACKEND_CODE_MESSAGES["TIER_REQUIRED"],
+    ]
+    for message in messages:
+        assert "not included in your current AEKO plan" in message
+        assert "upgrade" not in message.lower()
+        assert "higher" not in message.lower()

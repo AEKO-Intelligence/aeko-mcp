@@ -76,7 +76,7 @@ def aeko_list_contexts(
         return (
             f"# No saved contexts for domain `{domain_id}`{filter_text}\n\n"
             "Save review-derived or manual Context memories in the AEKO Context tab, "
-            "then call this tool again. Context memory is a Pro+ feature."
+            "then call this tool again."
         )
 
     lines = [f"# Saved AEKO contexts ({len(items)})", ""]
