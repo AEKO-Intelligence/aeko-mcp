@@ -17,7 +17,7 @@ Tier shorthand:
 | `aeko_get_visibility_summary` | Read visibility overview, cited pages, or tracked-prompt metrics with filters. | Yes | No |
 | `aeko_get_citability` | Read page or domain AI citability scoring. | Yes | No |
 | `aeko_search_research_prompts` | Search prompt library candidates. | Yes | No |
-| `aeko_get_tracked_prompts` | List all tracked prompts and angle metadata (light index). | Yes | No |
+| `aeko_get_tracked_prompts` | List tracked prompts and angle metadata (light index), paged, with search/platform/country/Context/ID filters. | Yes | No |
 | `aeko_resolve_prompts_by_text` | Resolve prompt text to prompt ids. | Yes | No |
 | `aeko_track_prompt` | Track a prompt with platform, country, view, and context angles. | Starter limited | Context angle requires Pro+ |
 | `aeko_get_quota` | Read tracked-prompt and account limit status. | Yes | No |
@@ -35,7 +35,7 @@ Tier shorthand:
 | `aeko_list_views` | List saved prompt views. | Yes, view cap | Pro gets higher cap |
 | `aeko_create_view` | Create a saved prompt view. | Yes, view cap | Pro gets higher cap |
 | `aeko_add_prompts_to_view` | Add tracked prompts to a saved view. | Yes | No |
-| `aeko_list_contexts` | List curated Context library memories. | No | Pro+ |
+| `aeko_list_contexts` | List curated Context library memories, paged, with search and ID filters. | No | Pro+ |
 | `aeko_create_context` | Create a curated Context memory. | No | Pro+ |
 | `aeko_update_context` | Update a curated Context memory. | No | Pro+ |
 | `aeko_archive_context` | Archive a curated Context memory. | No | Pro+ |

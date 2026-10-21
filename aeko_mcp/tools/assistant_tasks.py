@@ -179,7 +179,11 @@ def aeko_save_action_output(
 
 @mcp.tool(**tool_spec("List saved AEKO action outputs", READ_ONLY))
 def aeko_list_action_outputs(item_id: str) -> str:
-    """Read owner-checked outputs of one saved task for reconciliation."""
+    """Read owner-checked outputs of one saved assistant task for reconciliation.
+
+    Only assistant tasks have outputs. A plain action item returns
+    ASSISTANT_TASK_NOT_FOUND; read it with aeko_get_action_plan instead.
+    """
     with read_boundary():
         item = _item(item_id)
         return _block("Action outputs", client.get(f"/api/action-items/{item}/outputs"))

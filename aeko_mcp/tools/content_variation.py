@@ -26,7 +26,7 @@ already-published row returns the stored handles without creating duplicates.
 """
 from typing import Any, Optional
 
-from ..client import legacy_error_name
+from ..client import error_text
 from ..server import mcp, client
 from ._annotations import (
     ADDITIVE_ONCE,
@@ -49,7 +49,7 @@ def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
     try:
         return method(*args, **kwargs), None
     except Exception as e:  # noqa: BLE001
-        return None, f"{legacy_error_name(e)}: {e}"
+        return None, error_text(e)
 
 
 def _format_meta_summary(meta_summary: Optional[dict]) -> str:

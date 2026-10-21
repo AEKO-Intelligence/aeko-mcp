@@ -707,7 +707,7 @@ def test_connect_failure_keeps_legacy_message_and_marks_request_unsent():
     assert caught.value.http_status is None
 
 
-def test_unmigrated_store_tools_keep_legacy_error_text(monkeypatch):
+def test_unmigrated_store_tools_print_the_backend_message_without_a_class_name(monkeypatch):
     def fail(*args, **kwargs):
         raise AekoAPIError(
             "API error 409 (conflict). — [ACTION_ITEM_CLAIM_REQUIRED] claim first",
@@ -719,7 +719,7 @@ def test_unmigrated_store_tools_keep_legacy_error_text(monkeypatch):
     output = store_write.aeko_update_product_meta("store-1", "7", title="SEO")
     assert output == (
         "# Write failed\n\n```\n"
-        "RuntimeError: API error 409 (conflict). — [ACTION_ITEM_CLAIM_REQUIRED] claim first\n```"
+        "API error 409 (conflict). — [ACTION_ITEM_CLAIM_REQUIRED] claim first\n```"
     )
 
 

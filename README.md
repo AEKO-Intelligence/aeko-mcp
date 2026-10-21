@@ -163,7 +163,7 @@ The `reviews` group surfaces **Context Reviews** — classified customer reviews
 
 The `contexts` group surfaces curated **AEKO Context memories** saved in the Context tab:
 
-- `aeko_list_contexts(domain_id, scope=None, kind=None)` — list saved curated context memories for a domain, optionally filtered by scope (`brand`, `product`, `category`) or free-text kind (for example `브랜드 충성도`, `재구매`, `피부 고민`, `content angle`).
+- `aeko_list_contexts(domain_id, scope=None, kind=None, search=None, context_ids=None, limit=25, offset=0)` — list saved curated context memories for a domain one page at a time, optionally filtered by scope (`brand`, `product`, `category`), free-text kind (for example `브랜드 충성도`, `재구매`, `피부 고민`, `content angle`), text search or exact IDs. The header gives the total and the next offset.
 - `aeko_list_context_opportunities(domain_id, market=None)` — compare Focus quota, ranked opportunity signals, recommendations, next actions, and reason codes.
 - `aeko_get_context_metrics(context_id, market=None)` — read one Context's opportunity-detail payload.
 - `aeko_list_focused_contexts(domain_id, market)` — list the scarce Focus slots currently claimed for a domain and market.

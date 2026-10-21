@@ -189,7 +189,7 @@ aeko-mcp ships tools across modules including `visibility`, `research`, `sources
 | Tool | Purpose |
 |---|---|
 | `aeko_search_research_prompts` | Search the research prompt library (country, AI platform, query type, funnel stage). Returns KO + EN phrasing with latest response metrics. |
-| `aeko_get_tracked_prompts` | List every prompt actively tracked for the user's domain (light `/api/tracked-prompts/index`). |
+| `aeko_get_tracked_prompts` | List the user's tracked prompts one page at a time, with filters (light `/api/tracked-prompts/index`, paged in the MCP). |
 | `aeko_track_prompt(raw_prompt, ai_platform, ...)` | **New in v0.5.0 (WRITE)** — closes the find-prompts-to-track loop. |
 | `aeko_untrack_prompt(prompt_id)` | **New in v0.5.0 (WRITE)** — inverse; preserves historical data (`UserPrompts.status='untracked'`). |
 
