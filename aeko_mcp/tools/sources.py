@@ -7,7 +7,7 @@ import json
 from typing import Any
 
 from ..server import client, mcp
-from ._annotations import READ_ONLY
+from ._annotations import READ_ONLY, tool_spec
 
 
 def _clean(value: Any) -> str:
@@ -24,7 +24,7 @@ def _source_prompt_refs(data: dict[str, Any]) -> list[dict[str, Any]]:
     return [entry for entry in raw if isinstance(entry, dict)]
 
 
-@mcp.tool(title="Fetch cited source content", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Fetch cited source content", READ_ONLY))
 def aeko_fetch_source_content(domain_id: str, source_id: str) -> str:
     """Fetch stored content for one source associated with the user's domain.
 

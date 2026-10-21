@@ -101,6 +101,9 @@ def test_connect_store_takes_no_credential_parameters():
 
     assert properties == {"domain_id", "platform"}
     assert not properties & {"access_token", "refresh_token", "token_expires_at", "scopes"}
+    assert tool.annotations.readOnlyHint is True
+    assert tool.annotations.destructiveHint is False
+    assert tool.annotations.openWorldHint is False
 
 
 def test_inject_products_chunks_over_200(monkeypatch):

@@ -15,14 +15,18 @@ def test_content_idea_tools_are_registered_with_expected_annotations():
         annotations = registered[name].annotations
         assert annotations.readOnlyHint is True
         assert annotations.idempotentHint is True
-        assert annotations.openWorldHint is True
+        assert annotations.destructiveHint is False
+        # Ideas and handoffs live in the user's AEKO account.
+        assert annotations.openWorldHint is False
 
+    # Starting reopens/refreshes an existing idea and dismissing hides one:
+    # both change existing state, so both are destructive.
     for name in ("aeko_start_content_idea", "aeko_dismiss_content_idea"):
         annotations = registered[name].annotations
         assert annotations.readOnlyHint is False
         assert annotations.idempotentHint is True
-        assert annotations.destructiveHint is False
-        assert annotations.openWorldHint is True
+        assert annotations.destructiveHint is True
+        assert annotations.openWorldHint is False
 
 
 def test_list_content_ideas_calls_route_and_renders_decision_surface(monkeypatch):

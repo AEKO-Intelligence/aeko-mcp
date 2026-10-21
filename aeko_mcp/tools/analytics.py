@@ -4,7 +4,7 @@ import json
 from typing import Any, Optional
 
 from ..server import client, mcp
-from ._annotations import READ_ONLY
+from ._annotations import READ_ONLY, tool_spec
 
 
 def _json_block(title: str, payload: Any) -> str:
@@ -102,7 +102,7 @@ def _format_share_of_voice(data: dict, limit: int, show_per_prompt: bool) -> str
     return "\n".join(lines)
 
 
-@mcp.tool(title="Get share of voice", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get share of voice", READ_ONLY))
 def aeko_get_share_of_voice(
     domain_id: str,
     prompt_ids: Optional[list[str]] = None,
@@ -224,7 +224,7 @@ def _format_answer_drift(data: dict, events_limit: int, note: Optional[str]) -> 
     return "\n".join(lines)
 
 
-@mcp.tool(title="Get answer drift", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get answer drift", READ_ONLY))
 def aeko_get_answer_drift(
     domain_id: str,
     days: int = 30,
@@ -263,7 +263,7 @@ def aeko_get_answer_drift(
     return _format_answer_drift(data, params["events_limit"], note)
 
 
-@mcp.tool(title="Get measure dashboard", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get measure dashboard", READ_ONLY))
 def aeko_get_measure(
     domain_id: str,
     view: str = "readiness",

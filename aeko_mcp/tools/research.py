@@ -4,7 +4,7 @@ import unicodedata
 from typing import Any, Optional
 
 from ..server import mcp, client
-from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE
+from ._annotations import ADDITIVE, DESTRUCTIVE_IDEMPOTENT, READ_ONLY, tool_spec
 
 
 _UUID_RE = re.compile(
@@ -281,7 +281,7 @@ def _format_tracked_prompts(data: list) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(title="Search research prompts", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Search research prompts", READ_ONLY))
 def aeko_search_research_prompts(
     scope: str | None = None,
     keyword: str | None = None,
@@ -325,7 +325,7 @@ def aeko_search_research_prompts(
     return _format_prompts(data)
 
 
-@mcp.tool(title="List tracked prompts", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List tracked prompts", READ_ONLY))
 def aeko_get_tracked_prompts() -> str:
     """List all prompts you are actively tracking.
 
@@ -339,7 +339,7 @@ def aeko_get_tracked_prompts() -> str:
     return _format_tracked_prompts(data)
 
 
-@mcp.tool(title="Resolve prompt texts to UUIDs", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Resolve prompt texts to UUIDs", READ_ONLY))
 def aeko_resolve_prompts_by_text(texts: list[str]) -> str:
     """Resolve raw prompt strings to tracked-prompt UUIDs.
 
@@ -421,7 +421,7 @@ def aeko_resolve_prompts_by_text(texts: list[str]) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(title="Track a prompt", annotations=WRITE)
+@mcp.tool(**tool_spec("Track a prompt", ADDITIVE))
 def aeko_track_prompt(
     raw_prompt: str,
     prompt_en: Optional[str] = None,
@@ -504,7 +504,7 @@ def aeko_track_prompt(
     )
 
 
-@mcp.tool(title="Get tracked prompt quota", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get tracked prompt quota", READ_ONLY))
 def aeko_get_quota() -> str:
     """Read tracked-prompt quota and broader account limit status.
 
@@ -525,7 +525,7 @@ def aeko_get_quota() -> str:
     )
 
 
-@mcp.tool(title="Untrack a prompt", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Untrack a prompt", DESTRUCTIVE_IDEMPOTENT))
 def aeko_untrack_prompt(prompt_id: str) -> str:
     """Stop tracking a prompt. Historical response data is preserved.
 
@@ -692,7 +692,7 @@ def _format_tracked_prompt_detail(data: dict) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(title="Get tracked prompt details", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get tracked prompt details", READ_ONLY))
 def aeko_get_tracked_prompt(
     prompt_id: str,
     window: Optional[str] = None,

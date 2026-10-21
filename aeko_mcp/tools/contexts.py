@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from ..client import legacy_error_name
 from ..server import mcp, client
-from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
+from ._annotations import ADDITIVE_ONCE, DESTRUCTIVE, DESTRUCTIVE_IDEMPOTENT, READ_ONLY, tool_spec
 
 
 def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
@@ -31,7 +31,7 @@ def _json_block(title: str, payload: Any) -> str:
     return f"# {title}\n\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
 
 
-@mcp.tool(title="List saved AEKO contexts", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List saved AEKO contexts", READ_ONLY))
 def aeko_list_contexts(
     domain_id: str,
     scope: Optional[str] = None,
@@ -159,7 +159,7 @@ def aeko_list_contexts(
     return "\n".join(lines)
 
 
-@mcp.tool(title="Create AEKO context", annotations=WRITE)
+@mcp.tool(**tool_spec("Create AEKO context", ADDITIVE_ONCE))
 def aeko_create_context(
     domain_id: str,
     title: str,
@@ -223,7 +223,7 @@ def aeko_create_context(
     return _json_block("Context created", result)
 
 
-@mcp.tool(title="Update AEKO context", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Update AEKO context", DESTRUCTIVE))
 def aeko_update_context(
     context_id: str,
     title: Optional[str] = None,
@@ -293,7 +293,7 @@ def aeko_update_context(
     return _json_block("Context updated", result)
 
 
-@mcp.tool(title="Archive AEKO context", annotations=WRITE)
+@mcp.tool(**tool_spec("Archive AEKO context", DESTRUCTIVE_IDEMPOTENT))
 def aeko_archive_context(context_id: str) -> str:
     """Soft-archive a Context memory.
 
@@ -306,7 +306,7 @@ def aeko_archive_context(context_id: str) -> str:
     return _json_block("Context archived", result)
 
 
-@mcp.tool(title="Create contexts from reviews", annotations=WRITE)
+@mcp.tool(**tool_spec("Create contexts from reviews", DESTRUCTIVE))
 def aeko_create_contexts_from_reviews(
     domain_id: str,
     integration_id: str,
@@ -422,7 +422,7 @@ def _format_context_opportunities(domain_id: str, result: dict[str, Any]) -> str
     return "\n".join(lines)
 
 
-@mcp.tool(title="List Context opportunities", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List Context opportunities", READ_ONLY))
 def aeko_list_context_opportunities(
     domain_id: str,
     market: Optional[str] = None,
@@ -446,7 +446,7 @@ def aeko_list_context_opportunities(
     return _format_context_opportunities(domain_id, payload)
 
 
-@mcp.tool(title="Get Context metrics", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get Context metrics", READ_ONLY))
 def aeko_get_context_metrics(
     context_id: str,
     market: Optional[str] = None,
@@ -472,7 +472,7 @@ def aeko_get_context_metrics(
     return _json_block("Context metrics", result)
 
 
-@mcp.tool(title="List focused Contexts", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List focused Contexts", READ_ONLY))
 def aeko_list_focused_contexts(domain_id: str, market: str) -> str:
     """List open Focus periods for one domain and market.
 
@@ -492,7 +492,7 @@ def aeko_list_focused_contexts(domain_id: str, market: str) -> str:
     return _json_block(f"Focused Contexts ({normalized_market})", result)
 
 
-@mcp.tool(title="Focus Context", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Focus Context", ADDITIVE_ONCE))
 def aeko_focus_context(
     context_id: str,
     market: str,
@@ -542,7 +542,7 @@ def aeko_focus_context(
     return _json_block("Context focused", result)
 
 
-@mcp.tool(title="Unfocus Context", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Unfocus Context", DESTRUCTIVE))
 def aeko_unfocus_context(context_id: str, market: str, end_reason: str) -> str:
     """End one Context's open Focus measurement period.
 
@@ -571,7 +571,7 @@ def aeko_unfocus_context(context_id: str, market: str, end_reason: str) -> str:
     return _json_block("Context unfocused", result)
 
 
-@mcp.tool(title="Update Context translation", annotations=WRITE)
+@mcp.tool(**tool_spec("Update Context translation", DESTRUCTIVE_IDEMPOTENT))
 def aeko_update_context_translation(
     context_id: str,
     language: str,

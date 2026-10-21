@@ -16,7 +16,7 @@ from typing import Literal, Optional
 from uuid import UUID
 
 from ..server import client, mcp
-from ._annotations import READ_ONLY
+from ._annotations import READ_ONLY, tool_spec
 from ._structured import (
     BrandPackageFileChunk,
     BrandPackageMember,
@@ -262,11 +262,7 @@ def _page_bounds(offset: int, limit: int) -> None:
     _integer_arg(limit, "limit", 1, 100)
 
 
-@mcp.tool(
-    title="Get the accepted brand package",
-    annotations=READ_ONLY,
-    structured_output=True,
-)
+@mcp.tool(**tool_spec("Get the accepted brand package", READ_ONLY, structured_output=True))
 def aeko_get_active_brand_package(
     domain_id: str, offset: int = 0, limit: int = 50
 ) -> BrandPackagePage:
@@ -286,11 +282,7 @@ def aeko_get_active_brand_package(
         )
 
 
-@mcp.tool(
-    title="Get an exact brand package version",
-    annotations=READ_ONLY,
-    structured_output=True,
-)
+@mcp.tool(**tool_spec("Get an exact brand package version", READ_ONLY, structured_output=True))
 def aeko_get_brand_package_version(
     domain_id: str, version: int, offset: int = 0, limit: int = 50
 ) -> BrandPackagePage:
@@ -312,9 +304,7 @@ def aeko_get_brand_package_version(
 
 
 @mcp.tool(
-    title="Read a file from an accepted brand package",
-    annotations=READ_ONLY,
-    structured_output=True,
+    **tool_spec("Read a file from an accepted brand package", READ_ONLY, structured_output=True)
 )
 def aeko_read_brand_package_file(
     domain_id: str,
@@ -446,7 +436,7 @@ def _read_package_file(
     )
 
 
-@mcp.tool(title="List Brand Wiki chapters", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List Brand Wiki chapters", READ_ONLY))
 def aeko_get_brand_wiki_chapters(domain_id: str) -> str:
     """Read the server-owned six-chapter Brand Wiki navigation registry.
 
@@ -474,7 +464,7 @@ def aeko_get_brand_wiki_chapters(domain_id: str) -> str:
     return output
 
 
-@mcp.tool(title="List accepted Brand Wiki pages", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List accepted Brand Wiki pages", READ_ONLY))
 def aeko_list_brand_wiki_pages(
     domain_id: str,
     topic: Optional[
@@ -587,7 +577,7 @@ def aeko_list_brand_wiki_pages(
     return output
 
 
-@mcp.tool(title="Inspect one accepted Brand Wiki page", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Inspect one accepted Brand Wiki page", READ_ONLY))
 def aeko_get_brand_wiki_page(domain_id: str, document_id: str) -> str:
     """Inspect authority, provenance, and the accepted immutable wiki version.
 

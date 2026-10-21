@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from ..client import legacy_error_name
 from ..server import client, mcp
-from ._annotations import READ_ONLY, WRITE, WRITE_ONCE
+from ._annotations import ADDITIVE, DESTRUCTIVE, DESTRUCTIVE_IDEMPOTENT, READ_ONLY, tool_spec
 
 
 def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
@@ -19,7 +19,7 @@ def _json_block(title: str, payload: Any) -> str:
     return f"# {title}\n\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
 
 
-@mcp.tool(title="Generate starter prompts", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Generate starter prompts", DESTRUCTIVE))
 def aeko_generate_starter_prompts(domain_id: str) -> str:
     """Generate starter tracked-prompt drafts for a domain.
 
@@ -36,7 +36,7 @@ def aeko_generate_starter_prompts(domain_id: str) -> str:
     return _json_block("Starter prompts generated", result)
 
 
-@mcp.tool(title="Accept starter prompts", annotations=WRITE)
+@mcp.tool(**tool_spec("Accept starter prompts", ADDITIVE))
 def aeko_accept_starter_prompts(domain_id: str, selections: list[dict]) -> str:
     """Accept selected starter prompts and create tracked prompts.
 
@@ -86,7 +86,7 @@ def aeko_accept_starter_prompts(domain_id: str, selections: list[dict]) -> str:
     return _json_block("Starter prompts accepted", result)
 
 
-@mcp.tool(title="Get current target markets", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get current target markets", READ_ONLY))
 def aeko_get_current_markets() -> str:
     """Read the account-wide selected market list before replacing it.
 
@@ -101,7 +101,7 @@ def aeko_get_current_markets() -> str:
     return _json_block("Current target markets", {"selected_markets": selected or []})
 
 
-@mcp.tool(title="Update target markets", annotations=WRITE)
+@mcp.tool(**tool_spec("Update target markets", DESTRUCTIVE_IDEMPOTENT))
 def aeko_update_markets(markets: list[str]) -> str:
     """Replace the account's selected target markets.
 

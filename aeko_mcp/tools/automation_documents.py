@@ -4,7 +4,7 @@ from typing import Literal, Optional
 from uuid import UUID
 
 from ..server import client, mcp
-from ._annotations import READ_ONLY
+from ._annotations import READ_ONLY, tool_spec
 
 METADATA_PAGE_BYTES = 32 * 1024
 
@@ -36,7 +36,7 @@ def _version(domain_id: str, document_id: str, version: int) -> dict:
     return data
 
 
-@mcp.tool(title="List brand skills and evals", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List brand skills and evals", READ_ONLY))
 def aeko_list_brand_documents(
     domain_id: str,
     kind: Optional[Literal["skill", "eval"]] = None,
@@ -81,7 +81,7 @@ def aeko_list_brand_documents(
     return _json(payload)
 
 
-@mcp.tool(title="Inspect a pinned skill or eval package", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Inspect a pinned skill or eval package", READ_ONLY))
 def aeko_get_document_package(domain_id: str, document_id: str, version: int) -> str:
     """Inspect one explicit version's identity, digest and file manifest.
 
@@ -113,7 +113,7 @@ def aeko_get_document_package(domain_id: str, document_id: str, version: int) ->
     return result
 
 
-@mcp.tool(title="Read a pinned skill or eval file", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Read a pinned skill or eval file", READ_ONLY))
 def aeko_read_document_file(
     domain_id: str,
     document_id: str,

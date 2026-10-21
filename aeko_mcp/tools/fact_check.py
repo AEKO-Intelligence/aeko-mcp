@@ -1,10 +1,10 @@
 """Read the same owner-scoped Fact Check records used by the dashboard."""
 import json
 from ..server import mcp, client
-from ._annotations import READ_ONLY
+from ._annotations import READ_ONLY, tool_spec
 
 
-@mcp.tool(title="List brand fact checks", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List brand fact checks", READ_ONLY))
 def aeko_list_fact_checks(domain_id: str, state: str = "needs_review,action_required", limit: int = 30, offset: int = 0) -> str:
     """List stored source/Wiki comparisons for one owned domain, without calling AI.
 
@@ -16,7 +16,7 @@ def aeko_list_fact_checks(domain_id: str, state: str = "needs_review,action_requ
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
-@mcp.tool(title="Get fact check and review history", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get fact check and review history", READ_ONLY))
 def aeko_get_fact_check(domain_id: str, finding_id: str) -> str:
     """Read a finding's current revision, exact source quotation, Wiki reference and decisions.
 

@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 from ..client import legacy_error_name
 from ..server import client, mcp
-from ._annotations import READ_ONLY
+from ._annotations import READ_ONLY, READ_ONLY_EXTERNAL, tool_spec
 
 # Mirrors GET /api/marketing/product-insights (routes/marketing.py, product_insights.py).
 PRODUCT_SCOPES = ("account", "campaign")
@@ -96,7 +96,7 @@ def _window_error(date_from: Any, date_to: Any, max_days: int) -> Optional[str]:
     return None
 
 
-@mcp.tool(title="List OpenAI Ads accounts", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List OpenAI Ads accounts", READ_ONLY))
 def aeko_list_ad_accounts(domain_id: str) -> str:
     """List every OpenAI Ads account recorded for an owned domain, so a report can pin one
     ``ad_account_id`` explicitly. Each account carries ``id`` (use as ``ad_account_id``), status,
@@ -130,7 +130,7 @@ def aeko_list_ad_accounts(domain_id: str) -> str:
     )
 
 
-@mcp.tool(title="Get OpenAI Ads product insights page", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get OpenAI Ads product insights page", READ_ONLY_EXTERNAL))
 def aeko_get_product_insights(
     domain_id: str,
     ad_account_id: str,
@@ -224,7 +224,7 @@ def aeko_get_product_insights(
     )
 
 
-@mcp.tool(title="Get stored OpenAI Ads conversion insights", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get stored OpenAI Ads conversion insights", READ_ONLY))
 def aeko_get_conversion_insights(
     domain_id: str,
     ad_account_id: str,

@@ -31,7 +31,14 @@ from typing import Any, Optional
 
 from ..client import legacy_error_name
 from ..server import client, mcp
-from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
+from ._annotations import (
+    ADDITIVE_ONCE,
+    ADDITIVE_ONCE_EXTERNAL,
+    DESTRUCTIVE_IDEMPOTENT_EXTERNAL,
+    READ_ONLY,
+    READ_ONLY_EXTERNAL,
+    tool_spec,
+)
 
 # Backend enforces this floor on campaign budgets (schemas/marketing.py MarketingBudget).
 MIN_BUDGET_MICROS = 1_000_000
@@ -105,7 +112,7 @@ def _ad_rule_payload(
 # --- Reviews: domain-wide pull + inject -------------------------------------------
 
 
-@mcp.tool(title="List contextual reviews (domain-wide)", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List contextual reviews (domain-wide)", READ_ONLY))
 def aeko_list_contextual_reviews(
     domain_id: str,
     min_context_score: int = 60,
@@ -141,7 +148,7 @@ def aeko_list_contextual_reviews(
     return _json_block(f"{len(items)} contextual reviews for domain `{domain_id}`", items)
 
 
-@mcp.tool(title="Inject reviews", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Inject reviews", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_inject_reviews(domain_id: str, reviews: list[dict]) -> str:
     """Inject REAL reviews the skill gathered (from the web/marketplaces) or the merchant provided
     into a domain's credential-less ``manual`` source, so merchants without a cre.ma/Judge.me app
@@ -216,7 +223,7 @@ def aeko_inject_reviews(domain_id: str, reviews: list[dict]) -> str:
 # --- Campaign / ad group / ad reads -----------------------------------------------
 
 
-@mcp.tool(title="List ad campaigns", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List ad campaigns", READ_ONLY))
 def aeko_list_campaigns(domain_id: str, ad_account_id: Optional[str] = None) -> str:
     """List a domain's OpenAI-Ads campaigns, including each campaign's ``bidding_type``,
     ``conversion_event_setting_ids``, and ``product_feed_id``. Pass ``ad_account_id`` when the
@@ -231,7 +238,7 @@ def aeko_list_campaigns(domain_id: str, ad_account_id: Optional[str] = None) -> 
     return _json_block(f"{len(items)} campaigns for domain `{domain_id}`", items)
 
 
-@mcp.tool(title="List ad groups", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List ad groups", READ_ONLY))
 def aeko_list_ad_groups(campaign_id: str) -> str:
     """List the ad groups under a campaign (id, name, status, context_hints)."""
     result, err = _safe(client.get, "/api/marketing/ad-groups", params={"campaign_id": campaign_id})
@@ -241,7 +248,7 @@ def aeko_list_ad_groups(campaign_id: str) -> str:
     return _json_block(f"{len(items)} ad groups for campaign `{campaign_id}`", items)
 
 
-@mcp.tool(title="List ads", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List ads", READ_ONLY))
 def aeko_list_ads(ad_group_id: str) -> str:
     """List the ads under an ad group (id, name, status, creative). Use an ``id`` as ``ad_id``
     to pause a wasteful ad with ``aeko_set_ad_state``."""
@@ -252,7 +259,7 @@ def aeko_list_ads(ad_group_id: str) -> str:
     return _json_block(f"{len(items)} ads for ad group `{ad_group_id}`", items)
 
 
-@mcp.tool(title="Get ad performance insights", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get ad performance insights", READ_ONLY_EXTERNAL))
 def aeko_get_ad_insights(
     domain_id: str,
     date_from: str,
@@ -289,7 +296,7 @@ def aeko_get_ad_insights(
     return _json_block(f"Insights ({scope}, {date_from} → {date_to})", result)
 
 
-@mcp.tool(title="Get ad account status", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get ad account status", READ_ONLY))
 def aeko_get_ad_account_status(
     domain_id: str, ad_account_id: Optional[str] = None
 ) -> str:
@@ -306,7 +313,7 @@ def aeko_get_ad_account_status(
     return _json_block("Ad account status", result)
 
 
-@mcp.tool(title="Get feed status", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get feed status", READ_ONLY))
 def aeko_get_feed_status(domain_id: str, ad_account_id: Optional[str] = None) -> str:
     """Read OpenAI Ads product-feed readiness and latest sync status."""
     params = {"domain_id": domain_id}
@@ -318,7 +325,7 @@ def aeko_get_feed_status(domain_id: str, ad_account_id: Optional[str] = None) ->
     return _json_block("Feed status", result)
 
 
-@mcp.tool(title="Sync product feed", annotations=WRITE)
+@mcp.tool(**tool_spec("Sync product feed", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_sync_feed(
     domain_id: str,
     idempotency_key: str,
@@ -339,7 +346,7 @@ def aeko_sync_feed(
     return _json_block("Feed sync queued", result)
 
 
-@mcp.tool(title="List OpenAI Ads conversion event settings", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List OpenAI Ads conversion event settings", READ_ONLY_EXTERNAL))
 def aeko_list_conversion_event_settings(
     domain_id: str,
     ad_account_id: Optional[str] = None,
@@ -379,7 +386,7 @@ def aeko_list_conversion_event_settings(
     return _json_block("Conversion event settings", result)
 
 
-@mcp.tool(title="Look up OpenAI Ads locations", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Look up OpenAI Ads locations", READ_ONLY_EXTERNAL))
 def aeko_lookup_ad_locations(
     domain_id: str,
     q: str,
@@ -409,7 +416,7 @@ def aeko_lookup_ad_locations(
 # --- Automated pacing / guardrail rules -------------------------------------------
 
 
-@mcp.tool(title="List OpenAI Ads pacing rules", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List OpenAI Ads pacing rules", READ_ONLY))
 def aeko_list_ad_rules(domain_id: str, include_disabled: bool = False) -> str:
     """List non-deleted pacing rules for a domain.
 
@@ -431,7 +438,7 @@ def aeko_list_ad_rules(domain_id: str, include_disabled: bool = False) -> str:
     return _json_block(f"{len(items)} ad rules for domain `{domain_id}`", items)
 
 
-@mcp.tool(title="Get OpenAI Ads pacing rule", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get OpenAI Ads pacing rule", READ_ONLY))
 def aeko_get_ad_rule(rule_id: str) -> str:
     """Get one non-deleted pacing rule by its AEKO rule UUID."""
     result, err = _safe(client.get, f"/api/marketing/rules/{rule_id}")
@@ -440,7 +447,7 @@ def aeko_get_ad_rule(rule_id: str) -> str:
     return _json_block("Ad rule", result)
 
 
-@mcp.tool(title="Create OpenAI Ads pacing rule", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Create OpenAI Ads pacing rule", ADDITIVE_ONCE))
 def aeko_create_ad_rule(
     domain_id: str,
     name: str,
@@ -494,7 +501,7 @@ def aeko_create_ad_rule(
     return _json_block("Ad rule created (disabled)", result)
 
 
-@mcp.tool(title="Update OpenAI Ads pacing rule", annotations=WRITE)
+@mcp.tool(**tool_spec("Update OpenAI Ads pacing rule", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_update_ad_rule(
     rule_id: str,
     name: Optional[str] = None,
@@ -545,7 +552,7 @@ def aeko_update_ad_rule(
     return _json_block("Ad rule updated", result)
 
 
-@mcp.tool(title="Delete OpenAI Ads pacing rule", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Delete OpenAI Ads pacing rule", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_delete_ad_rule(rule_id: str) -> str:
     """Soft-delete a pacing rule. The backend disables it and retains its audit history."""
     result, err = _safe(client.delete, f"/api/marketing/rules/{rule_id}")
@@ -554,7 +561,7 @@ def aeko_delete_ad_rule(rule_id: str) -> str:
     return _json_block("Ad rule deleted (soft delete)", result)
 
 
-@mcp.tool(title="Enable or disable OpenAI Ads pacing rule", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Enable or disable OpenAI Ads pacing rule", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_set_ad_rule_enabled(
     rule_id: str,
     enabled: bool,
@@ -591,7 +598,7 @@ def aeko_set_ad_rule_enabled(
     return _json_block(f"Ad rule {'enabled' if enabled else 'disabled'}", result)
 
 
-@mcp.tool(title="Get OpenAI Ads pacing rule capabilities", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get OpenAI Ads pacing rule capabilities", READ_ONLY))
 def aeko_get_ad_rule_capabilities(domain_id: str) -> str:
     """Get the authoritative rule grammar for a domain before drafting a rule.
 
@@ -608,7 +615,7 @@ def aeko_get_ad_rule_capabilities(domain_id: str) -> str:
     return _json_block("Ad rule capabilities", result)
 
 
-@mcp.tool(title="Validate OpenAI Ads pacing rule", annotations=WRITE)
+@mcp.tool(**tool_spec("Validate OpenAI Ads pacing rule", READ_ONLY))
 def aeko_validate_ad_rule(
     domain_id: str,
     name: str,
@@ -653,7 +660,7 @@ def aeko_validate_ad_rule(
     return _json_block("Ad rule validation", result)
 
 
-@mcp.tool(title="Preview OpenAI Ads pacing rule", annotations=WRITE)
+@mcp.tool(**tool_spec("Preview OpenAI Ads pacing rule", ADDITIVE_ONCE_EXTERNAL))
 def aeko_preview_ad_rule(
     rule_id: Optional[str] = None,
     rule: Optional[dict] = None,
@@ -683,7 +690,7 @@ def aeko_preview_ad_rule(
     return _json_block("Ad rule preview (dry run)", result)
 
 
-@mcp.tool(title="List OpenAI Ads rule executions", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List OpenAI Ads rule executions", READ_ONLY))
 def aeko_list_ad_rule_executions(
     domain_id: str,
     rule_id: Optional[str] = None,
@@ -714,7 +721,7 @@ def aeko_list_ad_rule_executions(
     return _json_block(f"{len(items)} ad rule executions", items)
 
 
-@mcp.tool(title="List OpenAI Ads rule runs", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List OpenAI Ads rule runs", READ_ONLY))
 def aeko_list_ad_rule_runs(domain_id: str, limit: int = 20) -> str:
     """List newest-first rule evaluation runs for a domain.
 
@@ -735,7 +742,7 @@ def aeko_list_ad_rule_runs(domain_id: str, limit: int = 20) -> str:
     return _json_block(f"{len(items)} ad rule runs", items)
 
 
-@mcp.tool(title="Set OpenAI Ads automation kill switch", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Set OpenAI Ads automation kill switch", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_set_ad_automation_enabled(domain_id: str, enabled: bool) -> str:
     """Set the connected ad account's global rules kill switch.
 
@@ -765,7 +772,7 @@ def aeko_set_ad_automation_enabled(domain_id: str, enabled: bool) -> str:
 # --- Writes: compose ad group, budget, pause --------------------------------------
 
 
-@mcp.tool(title="Create ad group from context", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Create ad group from context", ADDITIVE_ONCE_EXTERNAL))
 def aeko_create_ad_group_from_context(
     domain_id: str,
     ad_group_name: str,
@@ -918,7 +925,7 @@ def aeko_create_ad_group_from_context(
     return _json_block("Ad group created (paused)", result)
 
 
-@mcp.tool(title="Update campaign budget", annotations=WRITE)
+@mcp.tool(**tool_spec("Update campaign budget", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_update_campaign_budget(
     campaign_id: str,
     lifetime_spend_limit_micros: int,
@@ -986,7 +993,7 @@ def aeko_update_campaign_budget(
     return _json_block(f"Budget updated (Δ {delta_note or 'n/a'})", result)
 
 
-@mcp.tool(title="Update ad group", annotations=WRITE)
+@mcp.tool(**tool_spec("Update ad group", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_update_ad_group(
     ad_group_id: str,
     idempotency_key: str,
@@ -1118,7 +1125,7 @@ def aeko_update_ad_group(
     )
 
 
-@mcp.tool(title="Update ad creative", annotations=WRITE)
+@mcp.tool(**tool_spec("Update ad creative", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_update_ad_creative(
     ad_id: str,
     idempotency_key: str,
@@ -1280,7 +1287,7 @@ def _set_marketing_state(
     return _json_block(f"{entity_label} {result_label}", result)
 
 
-@mcp.tool(title="Set campaign state", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Set campaign state", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_set_campaign_state(
     campaign_id: str,
     action: str,
@@ -1305,7 +1312,7 @@ def aeko_set_campaign_state(
     )
 
 
-@mcp.tool(title="Set ad group state", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Set ad group state", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_set_ad_group_state(
     ad_group_id: str,
     action: str,
@@ -1325,7 +1332,7 @@ def aeko_set_ad_group_state(
     )
 
 
-@mcp.tool(title="Set ad state", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Set ad state", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_set_ad_state(
     ad_id: str,
     action: str,

@@ -33,7 +33,7 @@ from typing import Any, Optional
 
 from ..client import legacy_error_name
 from ..server import mcp, client
-from ._annotations import READ_ONLY, WRITE
+from ._annotations import DESTRUCTIVE_IDEMPOTENT, READ_ONLY, tool_spec
 
 # A review counts as "contextual" at or above this context_score. Mirrors the
 # backend threshold; also the default floor for ``aeko_get_product_reviews``.
@@ -68,7 +68,7 @@ def _excerpt(text: Optional[str], limit: int = 280) -> str:
     return flat
 
 
-@mcp.tool(title="List review integrations", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List review integrations", READ_ONLY))
 def aeko_list_review_integrations(domain_id: str) -> str:
     """List the Crema / Judge.me review integrations connected for a domain.
 
@@ -138,7 +138,7 @@ def aeko_list_review_integrations(domain_id: str) -> str:
 # `aeko_inject_reviews`. (Backend connect/sync routes are require_user_context.)
 
 
-@mcp.tool(title="List review products", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List review products", READ_ONLY))
 def aeko_list_review_products(integration_id: str) -> str:
     """List products under a review integration, with their contextual-review counts.
 
@@ -215,7 +215,7 @@ def aeko_list_review_products(integration_id: str) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(title="Get product context reviews", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get product context reviews", READ_ONLY))
 def aeko_get_product_reviews(
     integration_id: str,
     external_product_ref: str,
@@ -356,7 +356,7 @@ def aeko_get_product_reviews(
     return "\n".join(lines)
 
 
-@mcp.tool(title="Get suggested prompts from reviews", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get suggested prompts from reviews", READ_ONLY))
 def aeko_get_suggested_prompts(
     integration_id: str,
     external_product_ref: str,
@@ -379,7 +379,7 @@ def aeko_get_suggested_prompts(
     return _json_block("Suggested prompts", result)
 
 
-@mcp.tool(title="Track suggested prompt", annotations=WRITE)
+@mcp.tool(**tool_spec("Track suggested prompt", DESTRUCTIVE_IDEMPOTENT))
 def aeko_track_suggested_prompt(
     integration_id: str,
     suggestion_id: str,
@@ -408,7 +408,7 @@ def aeko_track_suggested_prompt(
     return _json_block("Suggested prompt tracked", result)
 
 
-@mcp.tool(title="Track suggested prompts batch", annotations=WRITE)
+@mcp.tool(**tool_spec("Track suggested prompts batch", DESTRUCTIVE_IDEMPOTENT))
 def aeko_track_suggested_prompts(
     integration_id: str,
     min_context_score: int = CONTEXTUAL_THRESHOLD,
@@ -438,7 +438,7 @@ def aeko_track_suggested_prompts(
     return _json_block("Suggested prompts tracked", result)
 
 
-@mcp.tool(title="Dismiss suggested prompt", annotations=WRITE)
+@mcp.tool(**tool_spec("Dismiss suggested prompt", DESTRUCTIVE_IDEMPOTENT))
 def aeko_dismiss_suggested_prompt(integration_id: str, suggestion_hash: str) -> str:
     """Dismiss a review-derived suggested prompt by its suggestion hash."""
     result, err = _safe(

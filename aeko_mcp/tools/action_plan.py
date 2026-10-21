@@ -11,7 +11,7 @@ import json
 from typing import Any, List, Optional
 
 from ..server import mcp, client
-from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
+from ._annotations import ADDITIVE_ONCE, DESTRUCTIVE, DESTRUCTIVE_IDEMPOTENT, READ_ONLY, tool_spec
 from ._structured import (
     ActionEvidenceChunk,
     AekoToolError,
@@ -147,7 +147,7 @@ def _list_items(
     return "\n".join(lines)
 
 
-@mcp.tool(title="List action items", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List action items", READ_ONLY))
 def aeko_list_action_items(
     domain_id: Optional[str] = None,
     status: Optional[str] = "pending,ready",
@@ -179,7 +179,7 @@ def aeko_list_action_items(
     return _list_items("action", domain_id, status, limit, offset)
 
 
-@mcp.tool(title="List technical items", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List technical items", READ_ONLY))
 def aeko_list_technical_items(
     domain_id: Optional[str] = None,
     status: Optional[str] = "pending,ready",
@@ -203,7 +203,7 @@ def aeko_list_technical_items(
     return _list_items("technical", domain_id, status, limit, offset)
 
 
-@mcp.tool(title="Get action plan (Plan.md)", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get action plan (Plan.md)", READ_ONLY))
 def aeko_get_action_plan(item_id: str) -> str:
     """Fetch the Plan.md for one Action, Technical or saved assistant task.
 
@@ -225,7 +225,7 @@ def aeko_get_action_plan(item_id: str) -> str:
     return client.get_text(f"/api/action-items/{item_id}", accept="text/markdown")
 
 
-@mcp.tool(title="Read saved action evidence", annotations=READ_ONLY, structured_output=True)
+@mcp.tool(**tool_spec("Read saved action evidence", READ_ONLY, structured_output=True))
 def aeko_get_action_evidence(
     item_id: str,
     evidence_id: str,
@@ -285,7 +285,7 @@ def aeko_get_action_evidence(
         return result
 
 
-@mcp.tool(title="Claim action item execution", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Claim action item execution", ADDITIVE_ONCE))
 def aeko_claim_action_item(item_id: str) -> str:
     """Atomically claim one ready ActionItem before generating its artifact.
 
@@ -300,7 +300,7 @@ def aeko_claim_action_item(item_id: str) -> str:
     return _json_block("Action item claimed", result)
 
 
-@mcp.tool(title="Release action item execution", annotations=WRITE)
+@mcp.tool(**tool_spec("Release action item execution", DESTRUCTIVE_IDEMPOTENT))
 def aeko_release_action_item(
     item_id: str,
     claim_id: str | None = None,
@@ -336,7 +336,7 @@ def aeko_release_action_item(
     return _json_block("Action item released", result)
 
 
-@mcp.tool(title="Create action item", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Create action item", ADDITIVE_ONCE))
 def aeko_create_action_item(
     domain_id: str,
     artifact_type: str,
@@ -418,14 +418,14 @@ def aeko_create_action_item(
     return _json_block("Action item created", result)
 
 
-@mcp.tool(title="Dismiss action item", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Dismiss action item", DESTRUCTIVE))
 def aeko_dismiss_action_item(item_id: str) -> str:
     """Dismiss/archive an action or technical item by id."""
     client.delete(f"/api/action-items/{item_id}")
     return f"Action item `{item_id}` dismissed."
 
 
-@mcp.tool(title="Complete action item", annotations=WRITE)
+@mcp.tool(**tool_spec("Complete action item", DESTRUCTIVE_IDEMPOTENT))
 def aeko_complete_action_item(
     item_id: str,
     artifact_summary: Optional[str] = None,

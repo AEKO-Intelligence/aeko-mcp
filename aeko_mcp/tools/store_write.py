@@ -43,7 +43,13 @@ import httpx
 
 from ..client import AekoAPIError, legacy_error_name
 from ..server import mcp, client
-from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
+from ._annotations import (
+    DESTRUCTIVE_EXTERNAL,
+    DESTRUCTIVE_IDEMPOTENT_EXTERNAL,
+    READ_ONLY,
+    READ_ONLY_EXTERNAL,
+    tool_spec,
+)
 from ._structured import (
     AekoToolError,
     AekoToolInputError,
@@ -208,7 +214,7 @@ def _update_product(
 STORE_SETTINGS_URL = "https://aeko-intelligence.com/dashboard/settings"
 
 
-@mcp.tool(title="Get store connection steps", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get store connection steps", READ_ONLY))
 def aeko_connect_store(
     domain_id: str | None = None,
     platform: str | None = None,
@@ -249,7 +255,7 @@ def aeko_connect_store(
     )
 
 
-@mcp.tool(title="Sync store products", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Sync store products", DESTRUCTIVE_EXTERNAL))
 def aeko_sync_store(integration_id: str) -> str:
     """Sync products/reviews and replace the public aeko.shop catalog snapshot.
 
@@ -264,7 +270,7 @@ def aeko_sync_store(integration_id: str) -> str:
     return _json_block("Public store catalog and reviews synced", result)
 
 
-@mcp.tool(title="Inject manual products", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Inject manual products", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_inject_products(domain_id: str, products: list[dict]) -> str:
     """Inject products for a custom/manual store.
 
@@ -318,7 +324,7 @@ def aeko_inject_products(domain_id: str, products: list[dict]) -> str:
     return _json_block("Products injected", combined)
 
 
-@mcp.tool(title="List store products", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List store products", READ_ONLY))
 def aeko_list_store_products(
     store_integration_id: str | None = None,
     domain_id: str | None = None,
@@ -457,7 +463,7 @@ def _upload_local_images_for_aeko_shop(
     return _LOCAL_IMAGE_SRC.sub(repl, html)
 
 
-@mcp.tool(title="List connected stores", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List connected stores", READ_ONLY))
 def aeko_list_store_integrations() -> str:
     """List every Cafe24 / Shopify store connected to the current user's AEKO account.
 
@@ -528,11 +534,7 @@ def aeko_list_store_integrations() -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(
-    title="Get product description HTML",
-    annotations=READ_ONLY,
-    structured_output=True,
-)
+@mcp.tool(**tool_spec("Get product description HTML", READ_ONLY_EXTERNAL, structured_output=True))
 def aeko_get_product_description(
     integration_id: str,
     external_product_id: str,
@@ -599,7 +601,7 @@ def _product_description(
     )
 
 
-@mcp.tool(title="Update product description", annotations=WRITE)
+@mcp.tool(**tool_spec("Update product description", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_update_product_description(
     integration_id: str,
     external_product_id: str,
@@ -649,7 +651,7 @@ def aeko_update_product_description(
     )
 
 
-@mcp.tool(title="Update product tags", annotations=WRITE)
+@mcp.tool(**tool_spec("Update product tags", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_update_product_tags(
     integration_id: str,
     external_product_id: str,
@@ -677,7 +679,7 @@ def aeko_update_product_tags(
     )
 
 
-@mcp.tool(title="Update product SEO meta", annotations=WRITE)
+@mcp.tool(**tool_spec("Update product SEO meta", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_update_product_meta(
     integration_id: str,
     external_product_id: str,
@@ -804,9 +806,7 @@ def _write_receipt(
 
 
 @mcp.tool(
-    title="Update product page atomically",
-    annotations=WRITE_ONCE,
-    structured_output=True,
+    **tool_spec("Update product page atomically", DESTRUCTIVE_EXTERNAL, structured_output=True)
 )
 def aeko_update_product_page(
     integration_id: str,
@@ -1016,11 +1016,7 @@ def _history_page(data: Any, *, limit: int, offset: int) -> StoreWriteHistoryPag
     )
 
 
-@mcp.tool(
-    title="List store write history",
-    annotations=READ_ONLY,
-    structured_output=True,
-)
+@mcp.tool(**tool_spec("List store write history", READ_ONLY, structured_output=True))
 def aeko_list_store_writes(limit: int = 20, offset: int = 0) -> StoreWriteHistoryPage:
     """List recent store writes for the current user, newest first.
 
@@ -1044,7 +1040,7 @@ def aeko_list_store_writes(limit: int = 20, offset: int = 0) -> StoreWriteHistor
         return _history_page(result, limit=limit, offset=offset)
 
 
-@mcp.tool(title="Revert store write", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Revert store write", DESTRUCTIVE_EXTERNAL))
 def aeko_revert_store_write(audit_id: str) -> str:
     """Revert a past store write by pushing the 'before' snapshot back.
 

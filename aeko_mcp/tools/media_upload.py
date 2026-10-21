@@ -1,9 +1,9 @@
 """Media upload helper for aeko.shop syndication."""
 from ..server import client, mcp
-from ._annotations import WRITE
+from ._annotations import DESTRUCTIVE_IDEMPOTENT_EXTERNAL, tool_spec
 
 
-@mcp.tool(title="Request aeko.shop media upload URL", annotations=WRITE)
+@mcp.tool(**tool_spec("Request aeko.shop media upload URL", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_request_media_upload(
     source_content_id: str,
     filename: str,

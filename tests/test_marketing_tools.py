@@ -120,15 +120,17 @@ def test_budget_rejects_over_delta(monkeypatch):
 # --- Ad-group bid + creative update guardrails ------------------------------------
 
 
-def test_ad_update_tools_are_registered_as_idempotent_writes():
+def test_ad_update_tools_are_registered_as_idempotent_destructive_writes():
     registered = {
         tool.name: tool for tool in marketing.mcp._tool_manager.list_tools()
     }
+    # They overwrite live OpenAI Ads bids and creatives (real spend).
     for name in ("aeko_update_ad_group", "aeko_update_ad_creative"):
         annotations = registered[name].annotations
         assert annotations.readOnlyHint is False
         assert annotations.idempotentHint is True
-        assert annotations.destructiveHint is False
+        assert annotations.destructiveHint is True
+        assert annotations.openWorldHint is True
 
 
 def test_ad_group_bid_defaults_to_dry_run_with_full_bidding_object(monkeypatch):
@@ -1114,12 +1116,13 @@ def test_ad_rule_tools_are_registered_with_expected_annotations():
         "aeko_list_ad_rule_executions",
         "aeko_list_ad_rule_runs",
     }
+    # Validation saves nothing and calls no provider, so it is read-only.
+    read_only.add("aeko_validate_ad_rule")
     writes = {
         "aeko_create_ad_rule",
         "aeko_update_ad_rule",
         "aeko_delete_ad_rule",
         "aeko_set_ad_rule_enabled",
-        "aeko_validate_ad_rule",
         "aeko_preview_ad_rule",
         "aeko_set_ad_automation_enabled",
     }
@@ -1131,8 +1134,12 @@ def test_ad_rule_tools_are_registered_with_expected_annotations():
     for name in writes:
         assert registered[name].annotations.readOnlyHint is False
     for name in {
+        "aeko_update_ad_rule",
         "aeko_delete_ad_rule",
         "aeko_set_ad_rule_enabled",
         "aeko_set_ad_automation_enabled",
     }:
         assert registered[name].annotations.destructiveHint is True
+    # New rules are always stored disabled; previews only add a run record.
+    for name in {"aeko_create_ad_rule", "aeko_preview_ad_rule"}:
+        assert registered[name].annotations.destructiveHint is False

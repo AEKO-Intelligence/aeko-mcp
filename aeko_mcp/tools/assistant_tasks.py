@@ -8,7 +8,7 @@ import json
 from typing import Any, Optional
 
 from ..server import client, mcp
-from ._annotations import READ_ONLY, WRITE, WRITE_ONCE
+from ._annotations import ADDITIVE_ONCE, READ_ONLY, tool_spec
 from ._structured import AekoToolInputError, path_segment_arg, read_boundary, uuid_arg
 
 
@@ -23,7 +23,7 @@ def _block(title: str, result: Any) -> str:
     return f"# {title}\n\n```json\n{json.dumps(result, ensure_ascii=False, indent=2, default=str)}\n```"
 
 
-@mcp.tool(title="Save an AEKO assistant task", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Save an AEKO assistant task", ADDITIVE_ONCE))
 def aeko_create_assistant_task(
     action_id: str,
     scope: dict,
@@ -73,7 +73,7 @@ def aeko_create_assistant_task(
     return _block("Assistant task saved", result)
 
 
-@mcp.tool(title="Track exact suggestions in a saved task", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Track exact suggestions in a saved task", ADDITIVE_ONCE))
 def aeko_track_task_suggestions(
     item_id: str,
     claim_id: str,
@@ -110,7 +110,7 @@ def aeko_track_task_suggestions(
     return _block("Saved task tracking receipt", result)
 
 
-@mcp.tool(title="Save an AEKO action output", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Save an AEKO action output", ADDITIVE_ONCE))
 def aeko_save_action_output(
     item_id: str,
     claim_id: str,
@@ -177,7 +177,7 @@ def aeko_save_action_output(
     return _block("Action output saved", result)
 
 
-@mcp.tool(title="List saved AEKO action outputs", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List saved AEKO action outputs", READ_ONLY))
 def aeko_list_action_outputs(item_id: str) -> str:
     """Read owner-checked outputs of one saved task for reconciliation."""
     with read_boundary():
@@ -185,7 +185,7 @@ def aeko_list_action_outputs(item_id: str) -> str:
         return _block("Action outputs", client.get(f"/api/action-items/{item}/outputs"))
 
 
-@mcp.tool(title="Read a saved AEKO action output", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Read a saved AEKO action output", READ_ONLY))
 def aeko_get_action_output(item_id: str, output_id: str) -> str:
     """Read one owner-checked report, proposal or server tracking receipt."""
     with read_boundary():
@@ -194,7 +194,7 @@ def aeko_get_action_output(item_id: str, output_id: str) -> str:
         return _block("Action output", client.get(f"/api/action-items/{item}/outputs/{output}"))
 
 
-@mcp.tool(title="List ad copy writing formats", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List ad copy writing formats", READ_ONLY))
 def aeko_get_ad_copy_formats(domain_id: str) -> str:
     """Read built-in and current-brand custom writing formats and versions."""
     with read_boundary():
@@ -202,7 +202,7 @@ def aeko_get_ad_copy_formats(domain_id: str) -> str:
         return _block("Ad copy writing formats", client.get("/api/ad-copy-formats", params={"domain_id": domain}))
 
 
-@mcp.tool(title="Create a brand ad copy writing format", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Create a brand ad copy writing format", ADDITIVE_ONCE))
 def aeko_create_ad_copy_format(
     domain_id: str,
     name: str,

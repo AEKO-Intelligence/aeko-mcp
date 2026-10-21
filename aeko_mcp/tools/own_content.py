@@ -18,7 +18,7 @@ returns the AEKO-side domain catalog rather than the URLs *on* a domain.
 from typing import Any
 
 from ..server import mcp, client
-from ._annotations import READ_ONLY
+from ._annotations import READ_ONLY, tool_spec
 
 
 _ALLOWED_TYPES: set[str] = {"blog", "pdp", "all"}
@@ -66,7 +66,7 @@ def _format_own_content(items: list[dict], domain_id: str, content_type: str) ->
     return "\n".join(lines)
 
 
-@mcp.tool(title="List own-domain content", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List own-domain content", READ_ONLY))
 def aeko_list_own_content(
     domain_id: str,
     type: str = "all",

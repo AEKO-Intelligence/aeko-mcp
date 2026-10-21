@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from ..client import AekoAPIError
 from ..server import client, mcp
-from ._annotations import READ_ONLY, WRITE_ONCE
+from ._annotations import ADDITIVE_ONCE, READ_ONLY, tool_spec
 from ._structured import AekoToolError, AekoToolInputError, api_error
 
 AutomationKey = Literal[
@@ -215,7 +215,7 @@ def _run_view(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-@mcp.tool(title="List automation templates and instances", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List automation templates and instances", READ_ONLY))
 def aeko_list_automations(domain_id: str) -> str:
     """List the three supported starter templates and this domain's instances.
 
@@ -235,7 +235,7 @@ def aeko_list_automations(domain_id: str) -> str:
     })
 
 
-@mcp.tool(title="Resolve automation setup contract", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Resolve automation setup contract", READ_ONLY))
 def aeko_resolve_automation_contract(
     domain_id: str,
     automation_key: AutomationKey,
@@ -255,7 +255,7 @@ def aeko_resolve_automation_contract(
     return _json({key: data.get(key) for key in ("ready", "reason_code", "job_contract", "credits_remaining")})
 
 
-@mcp.tool(title="Create manual automation instance", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Create manual automation instance", ADDITIVE_ONCE))
 def aeko_create_automation_instance(
     domain_id: str,
     automation_key: AutomationKey,
@@ -282,7 +282,7 @@ def aeko_create_automation_instance(
     return _json(_instance_view(data))
 
 
-@mcp.tool(title="Run manual automation instance", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Run manual automation instance", ADDITIVE_ONCE))
 def aeko_run_automation_instance(domain_id: str, instance_id: str, idempotency_key: str) -> str:
     """Queue one existing supported manual instance exactly once per idempotency key.
 
@@ -302,7 +302,7 @@ def aeko_run_automation_instance(domain_id: str, instance_id: str, idempotency_k
     return _json({key: data.get(key) for key in ("run_id", "poll_url", "mode")})
 
 
-@mcp.tool(title="Read automation run results", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Read automation run results", READ_ONLY))
 def aeko_get_automation_run(domain_id: str, run_id: str) -> str:
     """Read status, stages, and bounded safe result fields for one owned automation run."""
     domain = _uuid(domain_id, "domain_id")

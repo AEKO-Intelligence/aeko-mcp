@@ -28,7 +28,13 @@ from typing import Any, Optional
 
 from ..client import legacy_error_name
 from ..server import mcp, client
-from ._annotations import DESTRUCTIVE, READ_ONLY, WRITE, WRITE_ONCE
+from ._annotations import (
+    ADDITIVE_ONCE,
+    DESTRUCTIVE_EXTERNAL,
+    DESTRUCTIVE_IDEMPOTENT,
+    READ_ONLY,
+    tool_spec,
+)
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────
@@ -91,7 +97,7 @@ def _format_variation_row(row: dict) -> list[str]:
 # ─── Tools ────────────────────────────────────────────────────────────────
 
 
-@mcp.tool(title="Save content variation", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Save content variation", ADDITIVE_ONCE))
 def aeko_save_content_variation(
     item_id: str,
     destination: str,
@@ -198,7 +204,7 @@ def aeko_save_content_variation(
     return "\n".join(lines)
 
 
-@mcp.tool(title="Update content variation", annotations=WRITE)
+@mcp.tool(**tool_spec("Update content variation", DESTRUCTIVE_IDEMPOTENT))
 def aeko_update_content_variation(
     variation_id: str,
     title: Optional[str] = None,
@@ -273,7 +279,7 @@ def aeko_update_content_variation(
     return "\n".join(lines)
 
 
-@mcp.tool(title="List content variations", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List content variations", READ_ONLY))
 def aeko_list_content_variations(
     item_id: str,
     destination: Optional[str] = None,
@@ -337,7 +343,7 @@ def aeko_list_content_variations(
     return "\n".join(lines)
 
 
-@mcp.tool(title="Publish content variation", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Publish content variation", DESTRUCTIVE_EXTERNAL))
 def aeko_publish_content_variation(item_id: str, variation_id: str) -> str:
     """Publish a saved content variation. Branches on destination server-side.
 
@@ -410,7 +416,7 @@ def aeko_publish_content_variation(item_id: str, variation_id: str) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(title="Unpublish aeko.shop content", annotations=DESTRUCTIVE)
+@mcp.tool(**tool_spec("Unpublish aeko.shop content", DESTRUCTIVE_EXTERNAL))
 def aeko_unpublish_content(
     source_content_id: str,
     item_id: Optional[str] = None,

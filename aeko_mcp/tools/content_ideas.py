@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 from ..client import legacy_error_name
 from ..server import client, mcp
-from ._annotations import READ_ONLY, WRITE
+from ._annotations import DESTRUCTIVE_IDEMPOTENT, READ_ONLY, tool_spec
 
 
 _FINGERPRINT_PATTERN = re.compile(r"[0-9a-f]{64}")
@@ -190,7 +190,7 @@ def _format_content_ideas(domain_id: str, data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(title="List content ideas", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List content ideas", READ_ONLY))
 def aeko_list_content_ideas(
     domain_id: str,
     window: str = "30d",
@@ -254,7 +254,7 @@ def aeko_list_content_ideas(
     return _format_content_ideas(domain_id, payload)
 
 
-@mcp.tool(title="Start content idea", annotations=WRITE)
+@mcp.tool(**tool_spec("Start content idea", DESTRUCTIVE_IDEMPOTENT))
 def aeko_start_content_idea(
     domain_id: str,
     fingerprint: str,
@@ -301,7 +301,7 @@ def aeko_start_content_idea(
     )
 
 
-@mcp.tool(title="Dismiss content idea", annotations=WRITE)
+@mcp.tool(**tool_spec("Dismiss content idea", DESTRUCTIVE_IDEMPOTENT))
 def aeko_dismiss_content_idea(
     domain_id: str,
     fingerprint: str,
@@ -344,7 +344,7 @@ def aeko_dismiss_content_idea(
     )
 
 
-@mcp.tool(title="Get content idea handoff", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get content idea handoff", READ_ONLY))
 def aeko_get_content_idea_handoff(handoff_id: str) -> str:
     """Fetch one content-idea evidence snapshot for the current run.
 

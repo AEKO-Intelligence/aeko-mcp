@@ -2,7 +2,7 @@ import json
 from typing import Any, Optional
 
 from ..server import mcp, client
-from ._annotations import READ_ONLY, WRITE_ONCE
+from ._annotations import DESTRUCTIVE, READ_ONLY, tool_spec
 
 
 def _json_block(title: str, payload: Any) -> str:
@@ -208,7 +208,7 @@ def _format_tracked_metrics(
 _VISIBILITY_SCOPES = {"overview", "cited_sources", "tracked_prompt_metrics"}
 
 
-@mcp.tool(title="Get visibility summary", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get visibility summary", READ_ONLY))
 def aeko_get_visibility_summary(
     domain_id: str,
     scope: str = "overview",
@@ -286,7 +286,7 @@ def aeko_get_visibility_summary(
     return _format_visibility(data)
 
 
-@mcp.tool(title="Get domain info", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get domain info", READ_ONLY))
 def aeko_get_domain_info(domain_id: str) -> str:
     """Get domain details and AI-readiness infrastructure status.
 
@@ -300,7 +300,7 @@ def aeko_get_domain_info(domain_id: str) -> str:
     return _format_domain(data)
 
 
-@mcp.tool(title="Get citability", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("Get citability", READ_ONLY))
 def aeko_get_citability(
     domain_id: Optional[str] = None,
     source_id: Optional[str] = None,
@@ -350,7 +350,7 @@ def _format_domain_list(domains: list[dict]) -> str:
     return "\n".join(lines)
 
 
-@mcp.tool(title="List connected domains", annotations=READ_ONLY)
+@mcp.tool(**tool_spec("List connected domains", READ_ONLY))
 def aeko_list_domains() -> str:
     """List every domain the authenticated AEKO user has connected.
 
@@ -365,7 +365,7 @@ def aeko_list_domains() -> str:
     return _format_domain_list(data if isinstance(data, list) else [])
 
 
-@mcp.tool(title="Add domain", annotations=WRITE_ONCE)
+@mcp.tool(**tool_spec("Add domain", DESTRUCTIVE))
 def aeko_add_domain(
     base_url: str,
     display_name: Optional[str] = None,
