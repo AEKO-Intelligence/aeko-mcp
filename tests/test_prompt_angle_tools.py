@@ -232,12 +232,104 @@ def test_tracked_prompt_table_escapes_pipes_and_newlines():
     assert _payload(rendered)[0]["context_title"] == "Summer | oily skin"
 
 
-def test_tracked_prompt_list_does_not_cap_rows():
+def test_tracked_prompt_formatter_renders_every_row_it_is_given():
     rows = [{"id": f"tp-{i}", "raw_prompt": f"prompt {i}"} for i in range(250)]
     rendered = research._format_tracked_prompts(rows)
 
     assert "Tracked prompts: 250" in rendered
     assert len(_payload(rendered)) == 250
+
+
+def _index(monkeypatch, rows):
+    calls = []
+
+    def fake_get(path, params=None):
+        calls.append((path, params))
+        return rows
+
+    monkeypatch.setattr(research.client, "get", fake_get)
+    return calls
+
+
+def test_tracked_prompts_tool_pages_large_accounts(monkeypatch):
+    rows = [{"id": f"tp-{i}", "raw_prompt": f"prompt {i}"} for i in range(120)]
+    _index(monkeypatch, rows)
+
+    first = research.aeko_get_tracked_prompts()
+    last = research.aeko_get_tracked_prompts(offset=100)
+
+    assert "Tracked prompts: 120" in first
+    assert "Showing prompts 1–50 of 120. Next page: offset=50." in first
+    assert [r["prompt_id"] for r in _payload(first)] == [f"tp-{i}" for i in range(50)]
+    assert "Showing prompts 101–120 of 120. Last page." in last
+    assert [r["prompt_id"] for r in _payload(last)] == [f"tp-{i}" for i in range(100, 120)]
+    assert "| 101 | `tp-100` |" in last  # table numbers match the header's positions
+
+
+def test_tracked_prompts_tool_filters_before_paging(monkeypatch):
+    _index(monkeypatch, INDEX_ROWS)
+
+    by_search = research.aeko_get_tracked_prompts(search="Sunscreen")
+    by_country = research.aeko_get_tracked_prompts(country="us", ai_platform="Anthropic")
+    by_context = research.aeko_get_tracked_prompts(context_id="ctx-1")
+    by_korean = research.aeko_get_tracked_prompts(search="선물")
+    by_tag = research.aeko_get_tracked_prompts(search="gift")
+
+    assert [r["prompt_id"] for r in _payload(by_search)] == ["tp-2"]
+    assert 'Matching search="Sunscreen": 1' in by_search
+    assert "Tracked prompts: 3" in by_search
+    assert [r["prompt_id"] for r in _payload(by_country)] == ["tp-3"]
+    assert [r["prompt_id"] for r in _payload(by_context)] == ["tp-1"]
+    assert [r["prompt_id"] for r in _payload(by_korean)] == ["tp-1"]
+    assert [r["prompt_id"] for r in _payload(by_tag)] == ["tp-1"]
+
+
+def test_tracked_prompts_tool_confirms_exact_ids_and_names_missing_ones(monkeypatch):
+    _index(monkeypatch, INDEX_ROWS)
+
+    out = research.aeko_get_tracked_prompts(prompt_ids=["TP-3 ", "tp-missing", "tp-3"])
+
+    assert [r["prompt_id"] for r in _payload(out)] == ["tp-3"]
+    assert "Matching 2 prompt_ids: 1" in out
+    assert "Not tracked (no row for these IDs): `tp-missing`" in out
+
+
+def test_tracked_prompts_tool_treats_empty_id_list_as_no_filter(monkeypatch):
+    _index(monkeypatch, INDEX_ROWS)
+
+    out = research.aeko_get_tracked_prompts(prompt_ids=[])
+
+    assert len(_payload(out)) == 3
+    assert "Matching" not in out
+
+
+def test_tracked_prompts_platform_filter_reads_a_missing_platform_as_openai(monkeypatch):
+    rows = [*INDEX_ROWS, {"id": "tp-legacy", "raw_prompt": "old prompt", "ai_platform": None}]
+    _index(monkeypatch, rows)
+
+    out = research.aeko_get_tracked_prompts(ai_platform="openai")
+
+    assert [r["prompt_id"] for r in _payload(out)] == ["tp-1", "tp-legacy"]
+
+
+def test_tracked_prompts_tool_reports_no_match_and_past_end(monkeypatch):
+    _index(monkeypatch, INDEX_ROWS)
+
+    none = research.aeko_get_tracked_prompts(search="no such prompt")
+    past = research.aeko_get_tracked_prompts(offset=3)
+
+    assert "No tracked prompts match these filters." in none
+    assert "Tracked prompts: 3" in none
+    assert "Offset 3 is past the last matching prompt." in past
+
+
+def test_tracked_prompts_tool_rejects_bad_paging_before_calling(monkeypatch):
+    calls = _index(monkeypatch, INDEX_ROWS)
+
+    assert research.aeko_get_tracked_prompts(limit=0) == "# `limit` must be between 1 and 200."
+    assert research.aeko_get_tracked_prompts(limit=201) == "# `limit` must be between 1 and 200."
+    assert research.aeko_get_tracked_prompts(offset=-1) == "# `offset` must be 0 or more."
+    assert calls == []
 
 
 def test_tracked_prompts_tool_reads_light_index(monkeypatch):
@@ -454,6 +546,74 @@ def test_list_contexts_renders_authoritative_prompt_text(monkeypatch):
             "params": {"domain_id": "domain-1", "status": "active", "curated": "true"},
         }
     ]
+
+
+def _contexts(monkeypatch, rows):
+    calls = []
+
+    def fake_get(path, params=None):
+        calls.append({"path": path, "params": params})
+        return rows
+
+    monkeypatch.setattr(contexts.client, "get", fake_get)
+    return calls
+
+
+def test_list_contexts_pages_large_libraries(monkeypatch):
+    rows = [{"id": f"ctx-{i}", "title": f"Memory {i}"} for i in range(30)]
+    _contexts(monkeypatch, rows)
+
+    first = contexts.aeko_list_contexts("domain-1")
+    second = contexts.aeko_list_contexts("domain-1", offset=25)
+
+    assert first.startswith("# Saved AEKO contexts (30)")
+    assert "Showing contexts 1–25 of 30. Next page: offset=25." in first
+    assert "`ctx-24`" in first and "`ctx-25`" not in first
+    assert "Showing contexts 26–30 of 30. Last page." in second
+    assert "## 26. Memory 25" in second
+    assert "`ctx-24`" not in second
+
+
+def test_list_contexts_forwards_search_and_filters_exact_ids(monkeypatch):
+    rows = [{"id": f"ctx-{i}", "title": f"Memory {i}"} for i in range(5)]
+    calls = _contexts(monkeypatch, rows)
+
+    out = contexts.aeko_list_contexts("domain-1", search=" 선물 ", context_ids=["ctx-3", "ctx-9", "ctx-3"])
+
+    assert calls[0]["params"]["search"] == "선물"
+    assert out.startswith("# Saved AEKO contexts (1)")
+    assert "`ctx-3`" in out
+    assert "`ctx-9`" in out.split("Not in this list", 1)[1]
+    assert "## 1. Memory 3" in out
+
+
+def test_list_contexts_matches_ids_case_insensitively_and_ignores_an_empty_list(monkeypatch):
+    rows = [{"id": "3f2a0c1e-0000-4000-8000-00000000000a", "title": "Memory A"}, {"id": "ctx-b", "title": "Memory B"}]
+    _contexts(monkeypatch, rows)
+
+    by_upper = contexts.aeko_list_contexts("domain-1", context_ids=["3F2A0C1E-0000-4000-8000-00000000000A"])
+    by_empty = contexts.aeko_list_contexts("domain-1", context_ids=[])
+
+    assert by_upper.startswith("# Saved AEKO contexts (1)")
+    assert "Not in this list" not in by_upper
+    assert by_empty.startswith("# Saved AEKO contexts (2)")
+
+
+def test_list_contexts_normalizes_decomposed_korean_search(monkeypatch):
+    import unicodedata
+
+    calls = _contexts(monkeypatch, [])
+    contexts.aeko_list_contexts("domain-1", search=unicodedata.normalize("NFD", "선물"))
+
+    assert calls[0]["params"]["search"] == unicodedata.normalize("NFC", "선물")
+
+
+def test_list_contexts_rejects_bad_paging_before_calling(monkeypatch):
+    calls = _contexts(monkeypatch, [])
+
+    assert contexts.aeko_list_contexts("domain-1", limit=101) == "# `limit` must be between 1 and 100."
+    assert contexts.aeko_list_contexts("domain-1", offset=-5) == "# `offset` must be 0 or more."
+    assert calls == []
 
 
 def test_view_tools_call_expected_routes(monkeypatch):

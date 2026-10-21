@@ -125,6 +125,10 @@ _BACKEND_CODE_MESSAGES = {
     "NETWORK_ERROR": "The connection between AEKO and the store failed during the write.",
     "PLATFORM_ERROR": "The connected store returned an error during the write.",
     "BRAND_PACKAGE_NOT_INITIALIZED": "This brand has no accepted package yet.",
+    "ASSISTANT_TASK_NOT_FOUND": (
+        "This action item is not a saved assistant task. Only assistant tasks have saved outputs; "
+        "read a plain action item with aeko_get_action_plan."
+    ),
 }
 
 

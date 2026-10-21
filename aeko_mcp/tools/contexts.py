@@ -5,11 +5,13 @@ review rows, these are deliberately curated by the user and can be reused to
 ground tracked prompts and content plans.
 """
 import json
+import unicodedata
 from typing import Any, Optional
 
-from ..client import legacy_error_name
+from ..client import error_text
 from ..server import mcp, client
 from ._annotations import ADDITIVE_ONCE, DESTRUCTIVE, DESTRUCTIVE_IDEMPOTENT, READ_ONLY, tool_spec
+from ._paging import exact_ids, fit_page, id_key, missing_ids_line, page_line
 
 
 def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
@@ -17,7 +19,7 @@ def _safe(method, *args, **kwargs) -> tuple[Any, Optional[str]]:
     try:
         return method(*args, **kwargs), None
     except Exception as e:  # noqa: BLE001
-        return None, f"{legacy_error_name(e)}: {e}"
+        return None, error_text(e)
 
 
 def _clean(value: Any) -> Optional[str]:
@@ -31,26 +33,125 @@ def _json_block(title: str, payload: Any) -> str:
     return f"# {title}\n\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n```"
 
 
+CONTEXTS_PAGE_DEFAULT = 25
+CONTEXTS_PAGE_MAX = 100
+OPPORTUNITIES_PAGE_DEFAULT = 50
+OPPORTUNITIES_PAGE_MAX = 200
+MISSING_CONTEXTS_LABEL = "Not in this list (archived, not saved, or another domain)"
+
+
+def _score_rank(item: Any) -> tuple:
+    """Highest opportunity score first, unscored last, then by Context ID.
+
+    The backend breaks score ties by creation time, which Contexts created
+    together share, so separate page calls could reorder tied rows.
+    """
+    rollup = item.get("rollup") if isinstance(item, dict) and isinstance(item.get("rollup"), dict) else {}
+    score = rollup.get("opportunity_score")
+    scored = isinstance(score, (int, float)) and not isinstance(score, bool)
+    return (not scored, -score if scored else 0, id_key(item.get("context_id") if isinstance(item, dict) else ""))
+
+
+def _context_block(idx: int, item: dict) -> list[str]:
+    """One saved Context as a numbered Markdown section."""
+    lines: list[str] = []
+    context_id = item.get("id", "?")
+    title = item.get("title") or "(untitled context)"
+    summary = _clean(item.get("summary"))
+    context_for_prompt = _clean(item.get("context_for_prompt"))
+    item_kind = _clean(item.get("kind"))
+    item_scope = _clean(item.get("scope"))
+    category_ref = _clean(item.get("category_ref"))
+    product_ref = _clean(item.get("product_external_ref"))
+    source_review_id = _clean(item.get("source_review_id"))
+
+    header = f"## {idx}. {title}"
+    badges = [bit for bit in (item_kind, item_scope) if bit]
+    if badges:
+        header += f" · {' / '.join(badges)}"
+    lines.append(header)
+    lines.append(f"- **context_id**: `{context_id}`")
+    if context_for_prompt:
+        lines.append("- **프롬프트 컨텍스트**:")
+        lines.extend(f"  > {line}" for line in context_for_prompt.splitlines())
+    if summary:
+        lines.append(f"- **요약**: {summary}")
+
+    customer_state = _clean(item.get("customer_state"))
+    recent_concern = _clean(item.get("recent_concern"))
+    occasion = _clean(item.get("occasion"))
+    recipient = _clean(item.get("recipient"))
+    product_experience = _clean(item.get("product_experience"))
+    felt_effect = _clean(item.get("felt_effect"))
+
+    if customer_state:
+        lines.append(f"- **고객 상태**: {customer_state}")
+    if recent_concern:
+        lines.append(f"- **최근 고민**: {recent_concern}")
+    if occasion:
+        lines.append(f"- **상황**: {occasion}")
+    if recipient:
+        lines.append(f"- **대상**: {recipient}")
+    if product_experience:
+        lines.append(f"- **제품 경험**: {product_experience}")
+    if felt_effect:
+        lines.append(f"- **느낀 효과**: {felt_effect}")
+
+    # Legacy fallback for rows created before the memory facets shipped.
+    if not any((customer_state, recent_concern, occasion, recipient, product_experience, felt_effect)):
+        problem = _clean(item.get("problem"))
+        solution = _clean(item.get("solution"))
+        outcome = _clean(item.get("outcome"))
+        if problem:
+            lines.append(f"- **문제**: {problem}")
+        if solution:
+            lines.append(f"- **해결**: {solution}")
+        if outcome:
+            lines.append(f"- **결과**: {outcome}")
+
+    if category_ref:
+        lines.append(f"- **category_ref**: `{category_ref}`")
+    if product_ref:
+        lines.append(f"- **product_external_ref**: `{product_ref}`")
+    if source_review_id:
+        lines.append(f"- **source_review_id**: `{source_review_id}`")
+    if item.get("created_at"):
+        lines.append(f"- **created_at**: {item['created_at']}")
+    lines.append("")
+    return lines
+
+
 @mcp.tool(**tool_spec("List saved AEKO contexts", READ_ONLY))
 def aeko_list_contexts(
     domain_id: str,
     scope: Optional[str] = None,
     kind: Optional[str] = None,
+    search: Optional[str] = None,
+    context_ids: Optional[list[str]] = None,
+    limit: int = CONTEXTS_PAGE_DEFAULT,
+    offset: int = 0,
 ) -> str:
-    """List saved (curated) AEKO Context memories for a domain.
+    """List saved (curated) AEKO Context memories for a domain, newest first, one page at a time.
 
-    Use it when drafts should be grounded in saved brand or customer memory.
-    Memories may include the facets 고객 상태 (customer_state), 최근 고민
-    (recent_concern), 제품 경험 (product_experience) and 느낀 효과
-    (felt_effect); older problem/solution/outcome fields appear only when a
-    memory has no facets yet. Read-only; Pro+ only.
+    Use it to ground drafts in saved brand or customer memory. Memories may
+    include the facets 고객 상태, 최근 고민, 제품 경험 and 느낀 효과; older
+    problem/solution/outcome fields appear only when a memory has no facets.
+    The header gives the total and the next page's offset. Narrow a large
+    library with search or context_ids instead of paging. Read-only; Pro+.
 
     Args:
         domain_id: Domain UUID.
         scope: Optional brand, product or category.
-        kind: Optional free-text memory type, e.g. 브랜드 충성도, 재구매,
-            피부 고민 or content angle.
+        kind: Optional free-text memory type, e.g. 재구매 or 피부 고민.
+        search: Text to find in the title, summary, prompt context or memory text.
+        context_ids: Exact Context IDs, e.g. IDs referenced elsewhere.
+        limit: Contexts per page (default 25, max 100).
+        offset: Contexts to skip; pass the header's next offset.
     """
+    if not 1 <= limit <= CONTEXTS_PAGE_MAX:
+        return f"# `limit` must be between 1 and {CONTEXTS_PAGE_MAX}."
+    if offset < 0:
+        return "# `offset` must be 0 or more."
     params = {
         "domain_id": domain_id,
         "status": "active",
@@ -60,96 +161,63 @@ def aeko_list_contexts(
         params["scope"] = scope
     if kind:
         params["kind"] = kind
+    search_text = unicodedata.normalize("NFC", search.strip()) if search and search.strip() else None
+    if search_text:
+        params["search"] = search_text
 
     result, err = _safe(client.get, "/api/contexts", params=params)
     if err:
         return f"# Failed to list contexts\n\n```\n{err}\n```"
 
     items = result if isinstance(result, list) else []
+    wanted_ids = exact_ids(context_ids)
+    missing_line = None
+    if wanted_ids is not None:
+        items = [item for item in items if id_key(item.get("id")) in wanted_ids]
+        missing_line = missing_ids_line(MISSING_CONTEXTS_LABEL, wanted_ids, {id_key(item.get("id")) for item in items})
     if not items:
         filter_bits = []
         if scope:
             filter_bits.append(f"scope={scope}")
         if kind:
             filter_bits.append(f"kind={kind}")
+        if search_text:
+            filter_bits.append(f"search={search_text}")
+        if wanted_ids is not None:
+            filter_bits.append(f"{len(wanted_ids)} context_ids")
         filter_text = f" matching `{', '.join(filter_bits)}`" if filter_bits else ""
-        return (
-            f"# No saved contexts for domain `{domain_id}`{filter_text}\n\n"
+        lines = [f"# No saved contexts for domain `{domain_id}`{filter_text}", ""]
+        if missing_line:
+            lines.extend([missing_line, ""])
+        lines.append(
             "Save review-derived or manual Context memories in the AEKO Context tab, "
             "then call this tool again."
         )
+        return "\n".join(lines)
+    if offset >= len(items):
+        return (
+            f"# Saved AEKO contexts ({len(items)})\n\n"
+            f"Offset {offset} is past the last context. Start again from offset 0."
+        )
 
-    lines = [f"# Saved AEKO contexts ({len(items)})", ""]
-    for idx, item in enumerate(items, start=1):
-        context_id = item.get("id", "?")
-        title = item.get("title") or "(untitled context)"
-        summary = _clean(item.get("summary"))
-        context_for_prompt = _clean(item.get("context_for_prompt"))
-        item_kind = _clean(item.get("kind"))
-        item_scope = _clean(item.get("scope"))
-        category_ref = _clean(item.get("category_ref"))
-        product_ref = _clean(item.get("product_external_ref"))
-        source_review_id = _clean(item.get("source_review_id"))
+    total = len(items)
+    page = items[offset:offset + limit]
+    blocks = [_context_block(idx, item) for idx, item in enumerate(page, start=offset + 1)]
 
-        header = f"## {idx}. {title}"
-        badges = [bit for bit in (item_kind, item_scope) if bit]
-        if badges:
-            header += f" · {' / '.join(badges)}"
-        lines.append(header)
-        lines.append(f"- **context_id**: `{context_id}`")
-        if context_for_prompt:
-            lines.append("- **프롬프트 컨텍스트**:")
-            lines.extend(f"  > {line}" for line in context_for_prompt.splitlines())
-        if summary:
-            lines.append(f"- **요약**: {summary}")
-
-        customer_state = _clean(item.get("customer_state"))
-        recent_concern = _clean(item.get("recent_concern"))
-        occasion = _clean(item.get("occasion"))
-        recipient = _clean(item.get("recipient"))
-        product_experience = _clean(item.get("product_experience"))
-        felt_effect = _clean(item.get("felt_effect"))
-
-        if customer_state:
-            lines.append(f"- **고객 상태**: {customer_state}")
-        if recent_concern:
-            lines.append(f"- **최근 고민**: {recent_concern}")
-        if occasion:
-            lines.append(f"- **상황**: {occasion}")
-        if recipient:
-            lines.append(f"- **대상**: {recipient}")
-        if product_experience:
-            lines.append(f"- **제품 경험**: {product_experience}")
-        if felt_effect:
-            lines.append(f"- **느낀 효과**: {felt_effect}")
-
-        # Legacy fallback for rows created before the memory facets shipped.
-        if not any((customer_state, recent_concern, occasion, recipient, product_experience, felt_effect)):
-            problem = _clean(item.get("problem"))
-            solution = _clean(item.get("solution"))
-            outcome = _clean(item.get("outcome"))
-            if problem:
-                lines.append(f"- **문제**: {problem}")
-            if solution:
-                lines.append(f"- **해결**: {solution}")
-            if outcome:
-                lines.append(f"- **결과**: {outcome}")
-
-        if category_ref:
-            lines.append(f"- **category_ref**: `{category_ref}`")
-        if product_ref:
-            lines.append(f"- **product_external_ref**: `{product_ref}`")
-        if source_review_id:
-            lines.append(f"- **source_review_id**: `{source_review_id}`")
-        if item.get("created_at"):
-            lines.append(f"- **created_at**: {item['created_at']}")
+    def render(count: int) -> str:
+        lines = [f"# Saved AEKO contexts ({total})", "", page_line(offset, count, total, "contexts")]
+        if missing_line:
+            lines.append(missing_line)
         lines.append("")
+        for block in blocks[:count]:
+            lines.extend(block)
+        lines.append(
+            "Use these saved memories as grounding context for prompts and content plans. "
+            "They are curated AEKO Context rows, not raw review rows."
+        )
+        return "\n".join(lines)
 
-    lines.append(
-        "Use these saved memories as grounding context for prompts and content plans. "
-        "They are curated AEKO Context rows, not raw review rows."
-    )
-    return "\n".join(lines)
+    return fit_page(render, len(blocks))
 
 
 @mcp.tool(**tool_spec("Create AEKO context", ADDITIVE_ONCE))
@@ -394,49 +462,100 @@ def _opportunity_table(title: str, items: Any) -> list[str]:
     return lines
 
 
-def _format_context_opportunities(domain_id: str, result: dict[str, Any]) -> str:
+def _format_context_opportunities(
+    domain_id: str,
+    result: dict[str, Any],
+    limit: int = OPPORTUNITIES_PAGE_DEFAULT,
+    offset: int = 0,
+    missing_line: Optional[str] = None,
+) -> str:
     quota = result.get("focus_quota")
     if not isinstance(quota, dict):
         quota = {}
     used = quota.get("used", 0)
-    limit = quota.get("limit", 5)
+    quota_limit = quota.get("limit", 5)
     lines = [
         "# Context opportunities",
         "",
         f"- **Domain ID**: `{domain_id}`",
-        f"- **Focus quota**: {used} of {limit} used",
+        f"- **Focus quota**: {used} of {quota_limit} used",
     ]
-    for title, field in (
-        ("Focused", "focused"),
-        ("Recommended", "recommended"),
-        ("All Contexts", "contexts"),
-    ):
+    if missing_line:
+        lines.append(f"- {missing_line}")
+    for title, field in (("Focused", "focused"), ("Recommended", "recommended")):
         lines.extend(["", *_opportunity_table(title, result.get(field))])
-    return "\n".join(lines)
+
+    # Only the full ranking grows with the library; it is paged by score rank.
+    ranked = result.get("contexts") if isinstance(result.get("contexts"), list) else []
+    ranked = sorted(ranked, key=_score_rank)
+    lines.append("")
+    if ranked and offset >= len(ranked):
+        lines.extend([
+            f"## All Contexts ({len(ranked)})",
+            "",
+            f"Offset {offset} is past the last Context. Start again from offset 0.",
+        ])
+        return "\n".join(lines)
+    page = ranked[offset:offset + limit]
+
+    def render(count: int) -> str:
+        table = _opportunity_table("All Contexts", page[:count])
+        table[0] = f"## All Contexts ({len(ranked)})"
+        if ranked:
+            table[1:1] = ["", page_line(offset, count, len(ranked), "ranks")]
+        return "\n".join([*lines, *table])
+
+    return fit_page(render, len(page))
 
 
 @mcp.tool(**tool_spec("List Context opportunities", READ_ONLY))
 def aeko_list_context_opportunities(
     domain_id: str,
     market: Optional[str] = None,
+    context_ids: Optional[list[str]] = None,
+    limit: int = OPPORTUNITIES_PAGE_DEFAULT,
+    offset: int = 0,
 ) -> str:
     """Rank saved Contexts by opportunity and show Focus recommendations.
 
     The Markdown decision surface includes Focus quota and the backend's
     measured score, confidence, stage, recommendation, next action, and reason
-    codes. Read-only. Pro+ is enforced server-side.
+    codes. Focused and Recommended are always complete; the full ranking is
+    paged by score, highest first, and the header gives the next offset.
+    Read-only. Pro+ is enforced server-side.
+
+    Args:
+        domain_id: Domain UUID.
+        market: Optional market code, e.g. "US".
+        context_ids: Up to 100 exact Context IDs to rank on their own.
+        limit: Ranking rows per page (default 50, max 200).
+        offset: Ranking rows to skip; pass the header's next offset to continue.
     """
+    if not 1 <= limit <= OPPORTUNITIES_PAGE_MAX:
+        return f"# `limit` must be between 1 and {OPPORTUNITIES_PAGE_MAX}."
+    if offset < 0:
+        return "# `offset` must be 0 or more."
     params = {"domain_id": domain_id}
     if market is not None:
         refusal = _market_refusal(market)
         if refusal:
             return refusal
         params["market"] = _normalize_market(market)
+    wanted_ids = exact_ids(context_ids)
+    if wanted_ids is not None:
+        if len(wanted_ids) > 100:
+            return "# Pass at most 100 `context_ids` per call."
+        params["context_ids"] = ",".join(wanted_ids.values())
     result, err = _safe(client.get, "/api/contexts/opportunities", params=params)
     if err:
         return f"# Failed to list Context opportunities\n\n```\n{err}\n```"
     payload = result if isinstance(result, dict) else {}
-    return _format_context_opportunities(domain_id, payload)
+    missing_line = None
+    if wanted_ids is not None:
+        ranked = payload.get("contexts") if isinstance(payload.get("contexts"), list) else []
+        found = {id_key(item.get("context_id")) for item in ranked if isinstance(item, dict)}
+        missing_line = missing_ids_line(MISSING_CONTEXTS_LABEL, wanted_ids, found)
+    return _format_context_opportunities(domain_id, payload, limit, offset, missing_line)
 
 
 @mcp.tool(**tool_spec("Get Context metrics", READ_ONLY))

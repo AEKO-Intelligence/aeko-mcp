@@ -13,7 +13,7 @@ ERROR_MESSAGES = {
     401: "Authentication failed. Your AEKO session may be expired or invalid. Reconnect through your MCP client.",
     402: "Tracked-prompt quota exceeded (HTTP 402). Review the current package limit and narrow the fan-out.",
     403: "Access denied. Your subscription may not include this feature.",
-    404: "Resource not found. Check the domain_id or analysis_id.",
+    404: "Not found. Check the IDs passed to the tool.",
     409: "API error 409 (conflict).",
     422: "API error 422 (validation failed).",
     429: "API error 429 (rate limited).",
@@ -28,9 +28,9 @@ CONNECT_ERROR_MESSAGE = "Cannot connect to AEKO API. Check AEKO_API_URL."
 class AekoAPIError(RuntimeError):
     """A failed AEKO backend call with its machine-readable details retained.
 
-    ``str(error)`` is exactly the message this client has always raised, so
-    tools that render errors as text keep their output. Structured tool
-    boundaries read the attributes instead of parsing that message.
+    ``str(error)`` is the readable message that text tools print (see
+    ``_format_http_error``). Structured tool boundaries read the attributes
+    instead of parsing that message.
 
     ``request_sent`` is False only when the connection could not be
     established, so the backend cannot have received the request.
@@ -52,9 +52,43 @@ class AekoAPIError(RuntimeError):
         self.request_sent = request_sent
 
 
-def legacy_error_name(exc: BaseException) -> str:
-    """Return the class label that text-rendering tools have always printed."""
-    return "RuntimeError" if isinstance(exc, AekoAPIError) else type(exc).__name__
+def error_text(exc: BaseException) -> str:
+    """The failure text that graceful text-rendering tools print.
+
+    A backend failure prints its message alone; the Python class name means
+    nothing to the person reading the tool result.
+    """
+    if isinstance(exc, AekoAPIError):
+        return str(exc)
+    return f"{type(exc).__name__}: {exc}"
+
+
+# FastAPI request-validation lists can be long; show the first few fields.
+MAX_VALIDATION_ERRORS = 5
+
+
+def _format_validation_errors(errors: list) -> str:
+    """Render a FastAPI 422 ``detail`` list as ``field: message`` pairs."""
+    parts = []
+    for error in errors[:MAX_VALIDATION_ERRORS]:
+        if not isinstance(error, dict):
+            parts.append(str(error))
+            continue
+        raw_loc = error.get("loc")
+        loc = [str(part) for part in raw_loc] if isinstance(raw_loc, (list, tuple)) else (
+            [str(raw_loc)] if raw_loc is not None else []
+        )
+        # FastAPI prefixes where the value came from; a field may itself be named "body".
+        if len(loc) > 1 and loc[0] in ("body", "query", "path", "header", "cookie"):
+            loc = loc[1:]
+        field = ""
+        for part in loc:
+            field += f"[{part}]" if part.isdigit() else (f".{part}" if field else part)
+        message = error.get("msg") or error.get("type") or "invalid value"
+        parts.append(f"{field}: {message}" if field else str(message))
+    if len(errors) > MAX_VALIDATION_ERRORS:
+        parts.append(f"and {len(errors) - MAX_VALIDATION_ERRORS} more")
+    return "; ".join(parts)
 
 
 _request_auth_token: ContextVar[str | None] = ContextVar("aeko_request_auth_token", default=None)
@@ -107,6 +141,8 @@ def _extract_detail_message(resp: httpx.Response) -> str | None:
         if message:
             return str(message)
         return str(detail)
+    if isinstance(detail, list):
+        return _format_validation_errors(detail)
     return str(detail)
 
 
@@ -131,12 +167,17 @@ def _format_http_error(e: httpx.HTTPStatusError) -> str:
     """Build the best available error string for a failed HTTP call.
 
     Priority: backend-supplied detail > code-specific fallback > generic.
+    A 404 detail stands alone: the backend already says what is missing (a
+    domain, an ad account that is not connected), so a generic guess in front
+    of it only misleads.
     """
     code = e.response.status_code
     backend_msg = _extract_detail_message(e.response)
     fallback = ERROR_MESSAGES.get(code, f"API error: {code}")
     if backend_msg:
-        return f"{fallback} — {backend_msg}" if code in ERROR_MESSAGES and backend_msg != fallback else backend_msg
+        if code == 404 or code not in ERROR_MESSAGES or backend_msg == fallback:
+            return backend_msg
+        return f"{fallback} — {backend_msg}"
     return fallback
 
 

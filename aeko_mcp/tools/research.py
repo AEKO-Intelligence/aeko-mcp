@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 from ..server import mcp, client
 from ._annotations import ADDITIVE, DESTRUCTIVE_IDEMPOTENT, READ_ONLY, tool_spec
+from ._paging import exact_ids, fit_page, id_key, missing_ids_line, page_line
 
 
 _UUID_RE = re.compile(
@@ -212,12 +213,12 @@ def _cell(text: Any, limit: Optional[int] = None) -> str:
     return _clip(value, limit) if limit is not None else value
 
 
-def _format_tracked_prompts(data: list) -> str:
+def _format_tracked_prompts(data: list, summary: Optional[list[str]] = None, start: int = 1) -> str:
     if not data:
         return "No tracked prompts found. Add prompts to track how AI engines respond to queries relevant to your products."
 
     lines = ["# Tracked Prompts", ""]
-    lines.append(f"Tracked prompts: {len(data)}")
+    lines.extend(summary or [f"Tracked prompts: {len(data)}"])
     lines.append("")
 
     # The reconciliation block comes before the table so a client-side output cap cuts the table, not the block.
@@ -256,7 +257,7 @@ def _format_tracked_prompts(data: list) -> str:
     lines.append("| # | id | prompt | platform | country | context | funnel | type | status |")
     lines.append("|---|----|--------|----------|---------|---------|--------|------|--------|")
 
-    for i, p in enumerate(data, 1):
+    for i, p in enumerate(data, start):
         prompt_id = _cell(p.get("id", "N/A"))
         prompt_text = _cell(p.get("prompt_en") or p.get("raw_prompt") or "N/A", 60)
         platform = _cell(PLATFORM_DISPLAY.get(p.get("ai_platform", ""), p.get("ai_platform") or "N/A"))
@@ -321,18 +322,122 @@ def aeko_search_research_prompts(
     return _format_prompts(data)
 
 
-@mcp.tool(**tool_spec("List tracked prompts", READ_ONLY))
-def aeko_get_tracked_prompts() -> str:
-    """List all prompts you are actively tracking.
+TRACKED_PROMPTS_PAGE_DEFAULT = 50
+TRACKED_PROMPTS_PAGE_MAX = 200
 
-    The list is complete (every tracked prompt, never capped or paged)
-    and light: AI platform, country, context, funnel stage, query type
-    and tags, with no responses or metrics. Use aeko_get_tracked_prompt
-    for one prompt's responses. These prompts are periodically re-queried
-    to monitor changes in AI engine responses over time.
+
+def _tracked_prompt_matches(
+    p: dict,
+    needle: str,
+    ai_platform: Optional[str],
+    country: Optional[str],
+    context_id: Optional[str],
+    wanted_ids: Optional[dict[str, str]],
+) -> bool:
+    if wanted_ids is not None and id_key(p.get("id")) not in wanted_ids:
+        return False
+    # A prompt saved without a platform is an OpenAI prompt, as the backend reads it.
+    if ai_platform and str(p.get("ai_platform") or "openai").lower() != ai_platform:
+        return False
+    if country and str(p.get("country") or "").upper() != country:
+        return False
+    if context_id and id_key(p.get("context_id")) != context_id:
+        return False
+    if needle:
+        fields = [p.get(key) for key in ("raw_prompt", "prompt_en", "prompt_ko", "context_title")]
+        fields.extend(p.get("tags") or [])
+        haystack = _normalize_prompt_text(" ".join(str(f) for f in fields if f))
+        if needle not in haystack:
+            return False
+    return True
+
+
+@mcp.tool(**tool_spec("List tracked prompts", READ_ONLY))
+def aeko_get_tracked_prompts(
+    search: Optional[str] = None,
+    ai_platform: Optional[str] = None,
+    country: Optional[str] = None,
+    context_id: Optional[str] = None,
+    prompt_ids: Optional[list[str]] = None,
+    limit: int = TRACKED_PROMPTS_PAGE_DEFAULT,
+    offset: int = 0,
+) -> str:
+    """List the prompts you are actively tracking, newest first, one page at a time.
+
+    Rows are light: AI platform, country, context, funnel stage, query type
+    and tags, with no responses or metrics. The header gives the account's
+    total tracked count and, when more rows match, the offset of the next
+    page. Narrow a large account with the filters instead of paging through
+    everything. Use aeko_get_tracked_prompt for one prompt's responses.
+
+    Args:
+        search: Text to find in the prompt, its translations, context title or tags.
+        ai_platform: openai, anthropic, google or perplexity.
+        country: Country code, e.g. "US", "KR".
+        context_id: Only prompts grounded in this Context.
+        prompt_ids: Exact tracked-prompt IDs, e.g. to confirm prompts you just
+            tracked. IDs with no tracked row are listed in the header.
+        limit: Rows per page (default 50, max 200).
+        offset: Rows to skip; pass the header's next offset to continue.
     """
+    if not 1 <= limit <= TRACKED_PROMPTS_PAGE_MAX:
+        return f"# `limit` must be between 1 and {TRACKED_PROMPTS_PAGE_MAX}."
+    if offset < 0:
+        return "# `offset` must be 0 or more."
+
     data = client.get("/api/tracked-prompts/index")
-    return _format_tracked_prompts(data)
+    rows = data if isinstance(data, list) else []
+    if not rows:
+        return _format_tracked_prompts([])
+
+    platform_key = ai_platform.strip().lower() if ai_platform and ai_platform.strip() else None
+    country_key = country.strip().upper() if country and country.strip() else None
+    context_key = id_key(context_id) or None
+    needle = _normalize_prompt_text(search) if search else ""
+    wanted_ids = exact_ids(prompt_ids)
+
+    filters = []
+    if needle:
+        filters.append(f'search="{search.strip()}"')
+    if platform_key:
+        filters.append(f"ai_platform={platform_key}")
+    if country_key:
+        filters.append(f"country={country_key}")
+    if context_key:
+        filters.append(f"context_id={context_id.strip()}")
+    if wanted_ids is not None:
+        filters.append(f"{len(wanted_ids)} prompt_ids")
+
+    matched = [
+        p for p in rows
+        if _tracked_prompt_matches(p, needle, platform_key, country_key, context_key, wanted_ids)
+    ]
+
+    summary = [f"Tracked prompts: {len(rows)}"]
+    if filters:
+        summary.append(f"Matching {', '.join(filters)}: {len(matched)}")
+    if wanted_ids is not None:
+        missing = missing_ids_line(
+            "Not tracked (no row for these IDs)", wanted_ids, {id_key(p.get("id")) for p in matched}
+        )
+        if missing:
+            summary.append(missing)
+
+    if not matched:
+        return "\n".join(["# Tracked Prompts", "", *summary, "", "No tracked prompts match these filters."])
+    if offset >= len(matched):
+        return "\n".join([
+            "# Tracked Prompts", "", *summary, "",
+            f"Offset {offset} is past the last matching prompt. Start again from offset 0.",
+        ])
+
+    page = matched[offset:offset + limit]
+
+    def render(count: int) -> str:
+        summary_lines = [*summary, page_line(offset, count, len(matched), "prompts")]
+        return _format_tracked_prompts(page[:count], summary_lines, start=offset + 1)
+
+    return fit_page(render, len(page))
 
 
 @mcp.tool(**tool_spec("Resolve prompt texts to UUIDs", READ_ONLY))

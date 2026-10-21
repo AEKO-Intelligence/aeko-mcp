@@ -4,6 +4,28 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.30.1] — 2026-10-22
+
+Fixes from a read-only sweep of the 0.30.0 tools on a large account (2,343 tracked prompts). MCP only; no backend change is needed.
+
+### Fixed
+- `aeko_get_tracked_prompts`, `aeko_list_contexts` and `aeko_list_context_opportunities` return one page at a time. On a large account their whole result ran to 1.7–4.0 million characters and failed in the client. Each page holds at most `limit` rows and shrinks to stay under 20,000 characters. The header gives the total and the next `offset`; row numbers match it.
+- New filters narrow those lists instead of paging through them:
+  - Tracked prompts take `search`, `ai_platform`, `country`, `context_id` and `prompt_ids`.
+  - Contexts take `search` (sent to the backend) and `context_ids`.
+  - Opportunities take `context_ids` (up to 100). The Focused and Recommended tables stay complete; only the full ranking is paged.
+  - Exact IDs match without regard to case or surrounding spaces; IDs with no row are listed in the header. An empty ID list means no filter.
+  - `ai_platform=openai` includes older prompts saved without a platform, as the backend reads them.
+  - The opportunity ranking breaks score ties by Context ID, so pages never overlap or skip rows.
+- Backend errors read as plain sentences:
+  - Text tools no longer print a `RuntimeError:` label.
+  - A 404 shows the backend's own message alone. It used to be prefixed with "Check the domain_id or analysis_id", for example in front of "Connect an OpenAI Ads account first".
+  - A 422 field list renders as `conditions[0].window: Input should be …` instead of a raw validation dump.
+- `aeko_list_action_outputs` on a plain action item now explains that only assistant tasks have outputs and points to `aeko_get_action_plan`, instead of returning a bare not-found.
+
+### Changed
+- `aeko_get_tracked_prompts` is no longer a single complete list. Callers that need every row page with `offset`, or confirm specific rows with `prompt_ids`.
+
 ## [0.30.0] — 2026-10-21
 
 Directory readiness for Anthropic's Claude connector review and OpenAI's ChatGPT/Codex app review.

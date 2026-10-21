@@ -104,8 +104,9 @@ though the backend itself releases the claim fence.
 ## Client and legacy behavior
 
 `AekoClient` raises `AekoAPIError(RuntimeError)` with `http_status`, `code`, `audit_id` and
-`request_sent`. `str(error)` is unchanged. Text tools still print `RuntimeError: …` through
-`legacy_error_name`, and Brand Wiki reads keep their messages.
+`request_sent`. Text tools print `str(error)` through `error_text`, without a Python class
+label: a 404 detail stands alone and a 422 field list reads as `field: message` pairs. Brand
+Wiki reads keep their messages.
 
 Tool modules keep runtime annotations for MCP 1.11/1.12. The suite was run on MCP 1.11.0, 1.12.4
 and 1.15.0; the ambient 1.27.0 environment is outside the supported range and is not a

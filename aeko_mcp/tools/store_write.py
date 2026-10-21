@@ -41,7 +41,7 @@ from uuid import UUID
 
 import httpx
 
-from ..client import AekoAPIError, legacy_error_name
+from ..client import AekoAPIError, error_text
 from ..server import mcp, client
 from ._annotations import (
     DESTRUCTIVE_EXTERNAL,
@@ -170,7 +170,7 @@ def _safe(method, *args, **kwargs) -> tuple[dict | None, str | None]:
     try:
         return method(*args, **kwargs), None
     except Exception as e:  # noqa: BLE001
-        return None, f"{legacy_error_name(e)}: {e}"
+        return None, error_text(e)
 
 
 def _json_block(title: str, payload: Any) -> str:
