@@ -26,7 +26,6 @@ MAX_DESCRIPTION_CHARS = 1024
 
 # Tools that overwrite live data, change spend, publish, or change existing state.
 MUST_BE_DESTRUCTIVE = {
-    "aeko_update_campaign_budget",
     "aeko_update_ad_group",
     "aeko_update_ad_creative",
     "aeko_update_ad_rule",
@@ -72,7 +71,6 @@ MUST_BE_OPEN_WORLD = {
     "aeko_get_ad_insights",
     "aeko_get_product_insights",
     "aeko_create_ad_group_from_context",
-    "aeko_update_campaign_budget",
     "aeko_update_ad_group",
     "aeko_update_ad_creative",
     "aeko_set_campaign_state",
@@ -189,6 +187,13 @@ def test_descriptions_do_not_name_internal_symbols(tool):
         "WebFetch",
     ):
         assert symbol not in tool.description, f"{tool.name}: {symbol}"
+
+
+def test_campaign_budget_tool_is_not_registered():
+    """Product decision: MCP and skills do not set ad budgets."""
+    assert "aeko_update_campaign_budget" not in BY_NAME
+    for tool in TOOLS:
+        assert "aeko_update_campaign_budget" not in (tool.description or "")
 
 
 def test_known_destructive_tools_are_flagged():

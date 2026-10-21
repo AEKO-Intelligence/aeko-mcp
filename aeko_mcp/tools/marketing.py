@@ -6,9 +6,8 @@ manual-review-inject routes under ``/api/review-integrations/*``) so a plugin sk
   - pull contextual reviews across a whole domain and compose broader, cross-product ad groups
     (``aeko_list_contextual_reviews`` -> ``aeko_create_ad_group_from_context``),
   - inject real reviews it gathered for merchants without a review app (``aeko_inject_reviews``),
-  - read ad performance and reallocate budget by performance (``aeko_get_ad_insights`` +
-    ``aeko_update_campaign_budget``), and pause wasteful ads/campaigns (``aeko_set_ad_state`` /
-    ``aeko_set_campaign_state``),
+  - read ad performance (``aeko_get_ad_insights``) and pause wasteful ads/campaigns
+    (``aeko_set_ad_state`` / ``aeko_set_campaign_state``),
   - validate, preview, explicitly arm, audit, and globally stop automated pacing rules.
 
 Design rules (mirror the skill/tool split):
@@ -20,8 +19,9 @@ Design rules (mirror the skill/tool split):
     caller-supplied ``idempotency_key`` (the skill mints ONE per logical action, reused on retries).
     The pacing-rule routes instead expose idempotent state transitions and a separately explicit
     enable step, matching their backend contract without an idempotency header.
-  - Spend is real: ``aeko_update_campaign_budget`` defaults to dry-run and enforces an absolute
-    ceiling + max per-call delta at the TOOL layer (the backend only enforces a floor).
+  - Campaign budgets are not settable through MCP (product decision); change them in the AEKO
+    dashboard. Bid changes in ``aeko_update_ad_group`` default to dry-run and enforce an absolute
+    ceiling + max per-call delta at the TOOL layer.
   - State changes can pause, confirm-gated resume, or confirm-gated archive.
 
 All routes are Pro+ gated server-side; an under-tier account surfaces the backend 403 verbatim.
@@ -272,7 +272,7 @@ def aeko_get_ad_insights(
     limit: int = 200,
     ad_account_id: Optional[str] = None,
 ) -> str:
-    """Read OpenAI Ads delivery metrics (impressions, clicks, spend_micros, ctr, cpc_micros, cpm_micros) for reporting or budget decisions.
+    """Read OpenAI Ads delivery metrics (impressions, clicks, spend_micros, ctr, cpc_micros, cpm_micros) for reporting and performance review.
 
     scope: account, campaign, ad_group or ad (all but account need scope_id).
     segment: optional product, country or device. date_from/date_to:
@@ -922,74 +922,6 @@ def aeko_create_ad_group_from_context(
     return _json_block("Ad group created (paused)", result)
 
 
-@mcp.tool(**tool_spec("Update campaign budget", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
-def aeko_update_campaign_budget(
-    campaign_id: str,
-    lifetime_spend_limit_micros: int,
-    idempotency_key: str,
-    dry_run: bool = True,
-    current_budget_micros: Optional[int] = None,
-    max_budget_micros: Optional[int] = None,
-    max_delta_pct: float = 25.0,
-) -> str:
-    """Set an OpenAI Ads campaign's lifetime budget. Ad groups carry only bids, so this is the budget lever.
-
-    Spend is real, so this tool enforces guards itself:
-    - dry_run=True by default: returns a before/after preview and writes nothing;
-    - rejects budgets below 1,000,000 micros;
-    - rejects budgets above max_budget_micros (never clamps);
-    - rejects a change larger than max_delta_pct vs current_budget_micros.
-
-    A real write (dry_run=false) requires both current_budget_micros (from
-    aeko_list_campaigns) and max_budget_micros.
-    """
-    new = int(lifetime_spend_limit_micros)
-    if new < MIN_BUDGET_MICROS:
-        return f"# Rejected — budget {new} is below the minimum {MIN_BUDGET_MICROS} micros."
-    # HARD guard: a real write must carry both caps, else the delta + ceiling checks below are
-    # skippable and only the backend's tiny floor applies. Dry-run has no such requirement.
-    if not dry_run and (current_budget_micros is None or max_budget_micros is None):
-        return (
-            "# Rejected — a real write (dry_run=false) requires BOTH `current_budget_micros` (for the "
-            "delta guard) AND `max_budget_micros` (the ceiling). Dry-run first, then re-call with both."
-        )
-    if max_budget_micros is not None and new > int(max_budget_micros):
-        return (
-            f"# Rejected — budget {new} exceeds the ceiling {int(max_budget_micros)} micros. "
-            "Raise `max_budget_micros` deliberately if this is intended."
-        )
-    delta_note = ""
-    if current_budget_micros is not None and int(current_budget_micros) > 0:
-        current = int(current_budget_micros)
-        delta_pct = abs(new - current) / current * 100.0
-        delta_note = f"{'+' if new >= current else '-'}{abs(new - current)} micros ({delta_pct:.1f}%)"
-        if delta_pct > float(max_delta_pct):
-            return (
-                f"# Rejected — change {delta_note} exceeds max_delta_pct {max_delta_pct}%. "
-                "Split into smaller steps or raise the cap deliberately."
-            )
-    if dry_run:
-        return _json_block(
-            "DRY RUN — no write performed",
-            {
-                "campaign_id": campaign_id,
-                "current_budget_micros": current_budget_micros,
-                "proposed_budget_micros": new,
-                "delta": delta_note or "n/a (pass current_budget_micros to compute)",
-                "note": "Re-call with dry_run=false to apply.",
-            },
-        )
-    result, err = _safe(
-        client.post,
-        f"/api/marketing/campaigns/{campaign_id}",
-        json={"budget": {"lifetime_spend_limit_micros": new}},
-        headers=_idem_headers(idempotency_key),
-    )
-    if err:
-        return f"# Failed to update budget\n\n```\n{err}\n```"
-    return _json_block(f"Budget updated (Δ {delta_note or 'n/a'})", result)
-
-
 @mcp.tool(**tool_spec("Update ad group", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
 def aeko_update_ad_group(
     ad_group_id: str,
@@ -1005,7 +937,7 @@ def aeko_update_ad_group(
 ) -> str:
     """Update an OpenAI Ads ad group's name, description, Context hints or maximum bid. The billing event is kept.
 
-    A bid is real spend, so the campaign-budget guards apply: dry_run=True by
+    A bid is real spend, so this tool enforces guards: dry_run=True by
     default (preview only); a real bid change needs current_max_bid_micros and
     max_bid_ceiling_micros; bids above the ceiling or beyond max_delta_pct are
     rejected, never clamped. Edits without a bid skip the bid guards but still

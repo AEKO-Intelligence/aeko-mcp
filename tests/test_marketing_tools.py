@@ -53,7 +53,7 @@ def test_client_post_forwards_idempotency_key_over_auth():
     assert hdr["Authorization"] == "Bearer tok123"  # auth preserved alongside the extra header
 
 
-# --- Budget guardrails live in the tool, not just skill prose ----------------------
+# --- Spend guardrails live in the tool, not just skill prose -----------------------
 
 
 def _no_write(monkeypatch):
@@ -77,44 +77,6 @@ def _mock_ad_group_billing(monkeypatch, billing_event_type="impression"):
 
     monkeypatch.setattr(marketing.client, "get", fake_get)
     return calls
-
-
-def test_budget_dry_run_default_writes_nothing(monkeypatch):
-    flag = _no_write(monkeypatch)
-    out = marketing.aeko_update_campaign_budget(
-        "c1", 5_000_000, "idem", current_budget_micros=4_000_000, max_delta_pct=50
-    )
-    assert "DRY RUN" in out and flag["posted"] is False
-
-
-def test_budget_rejects_below_floor(monkeypatch):
-    flag = _no_write(monkeypatch)
-    out = marketing.aeko_update_campaign_budget("c1", 500_000, "idem", dry_run=False)
-    assert "below the minimum" in out and flag["posted"] is False
-
-
-def test_budget_real_write_requires_both_caps(monkeypatch):
-    # HARD guard: a real write with a cap omitted is rejected outright (can't bypass delta/ceiling).
-    flag = _no_write(monkeypatch)
-    out = marketing.aeko_update_campaign_budget("c1", 2_000_000, "idem", dry_run=False)
-    assert "requires BOTH" in out and flag["posted"] is False
-
-
-def test_budget_rejects_over_ceiling(monkeypatch):
-    flag = _no_write(monkeypatch)
-    out = marketing.aeko_update_campaign_budget(
-        "c1", 9_000_000, "idem", dry_run=False, current_budget_micros=4_000_000, max_budget_micros=5_000_000
-    )
-    assert "ceiling" in out and flag["posted"] is False
-
-
-def test_budget_rejects_over_delta(monkeypatch):
-    flag = _no_write(monkeypatch)
-    out = marketing.aeko_update_campaign_budget(
-        "c1", 10_000_000, "idem", dry_run=False,
-        current_budget_micros=1_000_000, max_budget_micros=100_000_000, max_delta_pct=25,
-    )
-    assert "exceeds max_delta_pct" in out and flag["posted"] is False
 
 
 # --- Ad-group bid + creative update guardrails ------------------------------------
