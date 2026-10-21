@@ -32,11 +32,11 @@ module as runtime types for MCP 1.11/1.12.
 import base64
 import hashlib
 import json
-import mimetypes
 import os
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 from uuid import UUID
 
 import httpx
@@ -125,6 +125,38 @@ def _is_utf8_text(value: Any) -> bool:
 
 class _MissingImageDomain(RuntimeError):
     """Local image references need a domain for the aeko.shop media presign."""
+
+
+class _LocalImagesDisabled(RuntimeError):
+    """The server does not read local image files unless explicitly enabled."""
+
+
+class _LocalImageRejected(RuntimeError):
+    """An opted-in local image reference failed the path, type or size checks."""
+
+
+# Local ``<img src>`` references (file://, ./, ../) in caller-supplied HTML.
+_LOCAL_IMAGE_SRC = re.compile(
+    r'(<img\b[^>]*\bsrc=["\'])(file://[^"\']+|\./[^"\']+|\.\./[^"\']+)(["\'])',
+    re.IGNORECASE,
+)
+# Reading local files is for self-hosted stdio servers only. The hosted
+# connector runs inside AEKO's backend, where "local" means the server's disk.
+LOCAL_IMAGE_FILES_ENV = "AEKO_MCP_ALLOW_LOCAL_IMAGE_FILES"
+LOCAL_IMAGE_ROOT_ENV = "AEKO_MCP_LOCAL_IMAGE_ROOT"
+MAX_LOCAL_IMAGE_BYTES = 10 * 1024 * 1024  # matches the aeko.shop media presign cap
+_LOCAL_IMAGE_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+_LOCAL_IMAGES_DISABLED_MESSAGE = (
+    "This server does not read local image files (file://, ./ or ../ paths in <img src>). "
+    "Upload each image with aeko_request_media_upload, PUT the bytes to the returned "
+    "upload_url, and use the returned public https URL in <img src>. Nothing was written."
+)
 
 
 def _safe(method, *args, **kwargs) -> tuple[dict | None, str | None]:
@@ -315,24 +347,85 @@ def aeko_list_store_products(
     return _json_block("Store products", result)
 
 
+def _local_image_files_allowed() -> bool:
+    """Local image reads are opt-in for self-hosted (stdio) servers only."""
+    raw = os.environ.get(LOCAL_IMAGE_FILES_ENV, "")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _local_image_root() -> Path:
+    configured = os.environ.get(LOCAL_IMAGE_ROOT_ENV, "").strip()
+    return Path(configured).expanduser().resolve() if configured else Path.cwd().resolve()
+
+
+def _resolve_local_image(src: str) -> tuple[Path, str]:
+    """Resolve an opted-in local image reference inside the allowed root.
+
+    Returns the resolved path and its image content type. Raises
+    ``_LocalImageRejected`` for anything outside the root, any non-regular
+    file, an unsupported extension, or a file over the size limit.
+    """
+    root = _local_image_root()
+    if src.lower().startswith("file://"):
+        parsed = urlparse(src)
+        if parsed.netloc not in ("", "localhost"):
+            raise _LocalImageRejected("Only file:// paths on this machine can be read.")
+        candidate = Path(unquote(parsed.path))
+    else:
+        candidate = root / src
+    try:
+        path = candidate.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise _LocalImageRejected("A local image file was not found.") from None
+    if not path.is_relative_to(root):
+        raise _LocalImageRejected(
+            f"Local images must be inside {LOCAL_IMAGE_ROOT_ENV} (default: the server's "
+            "working directory)."
+        )
+    content_type = _LOCAL_IMAGE_TYPES.get(path.suffix.lower())
+    if content_type is None:
+        raise _LocalImageRejected("Local images must be .jpg, .jpeg, .png, .webp or .gif files.")
+    if not path.is_file():
+        raise _LocalImageRejected("A local image reference is not a regular file.")
+    if path.stat().st_size > MAX_LOCAL_IMAGE_BYTES:
+        raise _LocalImageRejected("A local image is larger than 10 MiB.")
+    return path, content_type
+
+
+def _read_local_image(path: Path) -> bytes:
+    with path.open("rb") as handle:
+        data = handle.read(MAX_LOCAL_IMAGE_BYTES + 1)
+    if len(data) > MAX_LOCAL_IMAGE_BYTES:
+        raise _LocalImageRejected("A local image is larger than 10 MiB.")
+    return data
+
+
 def _upload_local_images_for_aeko_shop(
     source_content_id: str,
     html: str,
     domain_id: str | None = None,
 ) -> str:
-    pattern = re.compile(r'(<img\b[^>]*\bsrc=["\'])(file://[^"\']+|\./[^"\']+|\.\./[^"\']+)(["\'])', re.IGNORECASE)
+    """Replace local ``<img src>`` references with uploaded aeko.shop URLs.
+
+    The hosted server never reads its own disk: any local reference is
+    rejected with ``_LocalImagesDisabled`` unless the operator set
+    ``AEKO_MCP_ALLOW_LOCAL_IMAGE_FILES=1`` (self-hosted stdio use).
+    """
+    if not _LOCAL_IMAGE_SRC.search(html):
+        return html
+    if not _local_image_files_allowed():
+        raise _LocalImagesDisabled(_LOCAL_IMAGES_DISABLED_MESSAGE)
 
     def repl(match: re.Match[str]) -> str:
         if not domain_id:
             raise _MissingImageDomain(
-                "Local <img src> requires domain_id (the AEKO domain UUID for media presign). "
-                "Either pass domain_id to aeko_update_product_description, or set skip_aeko_shop=True "
-                "to leave local image references untouched."
+                "Local <img src> requires domain_id (the AEKO domain UUID used for the media "
+                "upload). Pass domain_id, or set skip_aeko_shop=True to leave local image "
+                "references untouched."
             )
         prefix, src, suffix = match.groups()
-        path = Path(src[7:]) if src.startswith("file://") else Path.cwd() / src
-        data = path.read_bytes()
-        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        path, content_type = _resolve_local_image(src)
+        data = _read_local_image(path)
         sha256 = hashlib.sha256(data).hexdigest()
         content_md5 = base64.b64encode(hashlib.md5(data).digest()).decode()
         presign = client.post(
@@ -361,7 +454,7 @@ def _upload_local_images_for_aeko_shop(
             resp.raise_for_status()
         return f"{prefix}{presign['public_url']}{suffix}"
 
-    return pattern.sub(repl, html)
+    return _LOCAL_IMAGE_SRC.sub(repl, html)
 
 
 @mcp.tool(title="List connected stores", annotations=READ_ONLY)
@@ -784,6 +877,12 @@ def aeko_update_product_page(
                 description_html,
                 domain_id,
             )
+        except _LocalImagesDisabled:
+            raise AekoToolInputError(
+                "LOCAL_IMAGES_DISABLED", _LOCAL_IMAGES_DISABLED_MESSAGE
+            ) from None
+        except _LocalImageRejected as exc:
+            raise AekoToolInputError("LOCAL_IMAGE_REJECTED", str(exc)) from None
         except _MissingImageDomain:
             raise AekoToolInputError(
                 "INVALID_ARGUMENT",

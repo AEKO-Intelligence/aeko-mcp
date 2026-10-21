@@ -79,6 +79,8 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 | `AEKO_MCP_STREAMABLE_HTTP_PATH` | No | `/` | Path served by the streamable HTTP app. Defaults to `/` so the embedding ASGI app's own mount prefix (e.g. `app.mount("/mcp", create_streamable_http_app())`) is not doubled. Set to `/mcp` only when running the HTTP server standalone. |
 | `AEKO_MCP_STATELESS_HTTP` | No | `true` | Run streamable HTTP in stateless mode |
 | `AEKO_MCP_JSON_RESPONSE` | No | `true` | Prefer JSON HTTP responses over SSE chunks |
+| `AEKO_MCP_ALLOW_LOCAL_IMAGE_FILES` | No | off | Self-hosted stdio servers only. When `1`/`true`, the product-description write tools may read local `<img src>` files (`file://`, `./`, `../`) and upload them to the aeko.shop CDN. Leave unset on any hosted or shared server: when unset, local image references are refused and the caller is told to use `aeko_request_media_upload`. |
+| `AEKO_MCP_LOCAL_IMAGE_ROOT` | No | working directory | Directory that opted-in local image reads must stay inside (symlinks are resolved first). Only regular `.jpg`/`.jpeg`/`.png`/`.webp`/`.gif` files up to 10 MiB are read. |
 
 ## Available Tools
 
