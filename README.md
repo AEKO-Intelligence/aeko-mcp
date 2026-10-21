@@ -78,6 +78,8 @@ AEKO is the authorization server and resource server. Tokens are opaque (not JWT
 
 `token_validator` is an async callable `(token: str) -> bool` supplied by the embedding app. The hosted AEKO backend passes one that looks up AEKO OAuth access tokens (hash, expiry, revocation) with a short in-process cache.
 
+`initialize` reports `serverInfo` as `{"name": "AEKO", "version": "<installed aeko-mcp version>"}`.
+
 ## Configuration
 
 | Variable | Required | Default | Description |
