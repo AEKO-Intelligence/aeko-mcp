@@ -4,6 +4,25 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.30.0] — 2026-10-21
+
+Directory readiness for Anthropic's Claude connector review and OpenAI's ChatGPT/Codex app review.
+
+### Security
+- The hosted transport accepts an optional `token_validator`; an invalid or expired bearer now gets `401 invalid_token` with a `WWW-Authenticate` challenge, so clients prompt to reconnect. The backend supplies the validator; standalone servers keep the old behavior.
+- Local `<img src>` paths (`file://`, `./`, `../`) in store-write HTML are refused unless `AEKO_MCP_ALLOW_LOCAL_IMAGE_FILES=1` (self-hosted only), with root, type and 10 MiB checks.
+- `aeko_connect_store` no longer accepts store tokens; it returns the dashboard OAuth steps and changes nothing.
+
+### Changed
+- Every tool sets explicit `readOnlyHint`, `destructiveHint`, `openWorldHint` and `idempotentHint`, with the title repeated in `annotations.title`. 41 tools are destructive; 31 are open-world.
+- Brand-document tool descriptions read as plain document reads; no description asks the model to load and follow server-side instructions.
+- Descriptions are platform-neutral and at most 1,024 characters (no plugin slash commands, internal names or removed tools). Plan-limit messages say a feature is "not included in your current AEKO plan".
+- Server instructions are platform-neutral (508 chars) and `serverInfo` reports `AEKO` and the package version.
+- `pydantic` capped below 2.13, which removed a helper mcp <1.16 imports.
+
+### Removed
+- `aeko_update_campaign_budget`: budgets are no longer set through MCP. 133 tools remain.
+
 ## [0.29.0] — 2026-10-06 (release candidate)
 
 - Add seven adapters for the 15-action `assistant-task-v1` catalog: save an approved task, track exact saved Context suggestion rows under a claim, save/read bounded reports and typed proposals (including selected Context groups and ad-rule review), and read/create brand-scoped ad writing formats.
