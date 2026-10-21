@@ -67,6 +67,19 @@ Browser OAuth 2.1 flow with PKCE. Two paths depending on client:
 
 AEKO is the authorization server and resource server. Tokens are opaque (not JWTs) and persist in the `oauth_access_tokens` / `oauth_refresh_tokens` tables. OAuth discovery lives at `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource`.
 
+### Transport gate
+
+`create_streamable_http_app(streamable_http_path=None, issuer_url=None, token_validator=None)` checks every non-`OPTIONS` request before any MCP method runs:
+
+- **No bearer token** (when `issuer_url` is set): `401` with `WWW-Authenticate: Bearer realm="aeko", resource_metadata="<issuer_url>/.well-known/oauth-protected-resource"`, so clients start OAuth discovery (RFC 9728).
+- **Bearer the validator rejects**: `401` with body `{"error":"invalid_token","error_description":"The access token is invalid or expired"}` and `WWW-Authenticate: Bearer error="invalid_token", error_description="…", resource_metadata="…"` (RFC 6750 §3.1). Clients refresh the token or re-run OAuth instead of showing tool errors.
+- **Validator raises**: a warning is logged and the request continues. The backend still authenticates every tool call.
+- **No validator** (standalone or self-hosted): any bearer is forwarded unchanged.
+
+`token_validator` is an async callable `(token: str) -> bool` supplied by the embedding app. The hosted AEKO backend passes one that looks up AEKO OAuth access tokens (hash, expiry, revocation) with a short in-process cache.
+
+`initialize` reports `serverInfo` as `{"name": "AEKO", "version": "<installed aeko-mcp version>"}`.
+
 ## Configuration
 
 | Variable | Required | Default | Description |
