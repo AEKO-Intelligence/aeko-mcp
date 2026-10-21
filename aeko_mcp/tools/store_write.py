@@ -173,45 +173,48 @@ def _update_product(
     return "\n".join(lines)
 
 
-@mcp.tool(title="Connect store", annotations=WRITE_ONCE)
-def aeko_connect_store(
-    domain_id: str,
-    platform: str,
-    store_identifier: str,
-    access_token: str,
-    refresh_token: str | None = None,
-    token_expires_at: str | None = None,
-    scopes: str | None = None,
-) -> str:
-    """Connect a Cafe24 or Shopify store to a domain.
+STORE_SETTINGS_URL = "https://aeko-intelligence.com/dashboard/settings"
 
-    Manual/custom stores are created by `aeko_inject_products`, not this
-    OAuth/token connect route.
+
+@mcp.tool(title="Get store connection steps", annotations=READ_ONLY)
+def aeko_connect_store(
+    domain_id: str | None = None,
+    platform: str | None = None,
+) -> str:
+    """Explain how to connect a Cafe24 or Shopify store to AEKO. Changes nothing.
+
+    Store connections use OAuth in the AEKO dashboard, so this tool never asks
+    for or accepts store passwords, API keys or tokens. It returns the
+    dashboard steps; after the user connects, call
+    `aeko_list_store_integrations` to get the integration ID. For a custom
+    store without Cafe24 or Shopify, use `aeko_inject_products` instead.
     """
-    normalized_platform = platform.strip().lower()
+    normalized_platform = (platform or "").strip().lower()
     if normalized_platform == "manual":
         return (
             "# Manual stores use product inject\n\n"
             "Call `aeko_inject_products(domain_id=..., products=[...])`; it "
             "creates the credential-less manual store internally."
         )
-    if normalized_platform not in {"cafe24", "shopify"}:
-        return "Platform must be `cafe24` or `shopify`. Use `aeko_inject_products` for manual stores."
-
-    body = {
-        "domain_id": domain_id,
-        "platform": normalized_platform,
-        "store_identifier": store_identifier,
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_expires_at": token_expires_at,
-        "scopes": scopes,
-    }
-    payload = {k: v for k, v in body.items() if v is not None}
-    result, err = _safe(client.post, "/api/store-integrations", json=payload)
-    if err:
-        return f"# Failed to connect store\n\n```\n{err}\n```"
-    return _json_block("Store connected", result)
+    store_label = {"cafe24": "Cafe24", "shopify": "Shopify"}.get(
+        normalized_platform, "Cafe24 or Shopify"
+    )
+    domain_note = f" for domain `{domain_id}`" if domain_id else ""
+    return "\n".join(
+        [
+            f"# Connect a {store_label} store",
+            "",
+            "Store connections are made in the AEKO dashboard with the platform's own "
+            "sign-in (OAuth). Do not paste store passwords, API keys or tokens into chat.",
+            "",
+            f"1. Open {STORE_SETTINGS_URL} and go to **Store Integrations**.",
+            f"2. Choose {store_label}{domain_note} and approve access on the platform's page.",
+            "3. Come back here and call `aeko_list_store_integrations` to get the "
+            "integration ID.",
+            "",
+            "Custom store without Cafe24 or Shopify? Use `aeko_inject_products` instead.",
+        ]
+    )
 
 
 @mcp.tool(title="Sync store products", annotations=DESTRUCTIVE)

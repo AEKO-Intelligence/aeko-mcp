@@ -54,7 +54,7 @@ Tier shorthand:
 | `aeko_track_suggested_prompts` | Batch-track top review-derived prompts. | No | Pro+ |
 | `aeko_dismiss_suggested_prompt` | Dismiss a review-derived prompt suggestion. | No | Pro+ |
 | `aeko_inject_reviews` | Inject real reviews into a manual review source. | No | Pro+ |
-| `aeko_connect_store` | Connect Cafe24 or Shopify store credentials. | Yes | No |
+| `aeko_connect_store` | Return the dashboard OAuth steps for connecting Cafe24 or Shopify. Accepts no credentials and makes no call. | Yes | No |
 | `aeko_sync_store` | Sync connected store products. | Yes | No |
 | `aeko_inject_products` | Inject manual/custom-store products. | Yes | No |
 | `aeko_list_store_products` | List synced or injected store products. | Yes | No |

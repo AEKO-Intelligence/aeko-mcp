@@ -157,6 +157,8 @@ The `contexts` group surfaces curated **AEKO Context memories** saved in the Con
 
 All tools carry MCP `ToolAnnotations` (`readOnlyHint`, `destructiveHint`, `openWorldHint`) so clients can offer per-tool approval policy (e.g. "always allow" for read-only GETs, approval-per-call for writes).
 
+Store connections never pass credentials through MCP: `aeko_connect_store` returns the dashboard OAuth steps (Settings → Store Integrations) and accepts no tokens.
+
 Inside Claude Code or Codex, run the `list tools` equivalent to see the live set with descriptions.
 
 ## Self-Hosting (optional)
