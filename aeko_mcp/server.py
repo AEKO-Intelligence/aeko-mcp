@@ -1,6 +1,8 @@
 import argparse
 import atexit
 import contextlib
+import functools
+import inspect
 import json
 import logging
 import os
@@ -8,6 +10,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _distribution_version
 
+import anyio.to_thread
 from mcp.server.fastmcp import FastMCP
 
 from .client import AekoClient
@@ -63,13 +66,47 @@ def package_version() -> str:
         return "0.0.0+unknown"
 
 
+class _AekoFastMCP(FastMCP):
+    """FastMCP that runs synchronous tools in a worker thread.
+
+    FastMCP 1.11–1.15 calls a synchronous tool directly on the event loop.
+    Every AEKO tool is synchronous and calls the AEKO backend over HTTP; when
+    this server is embedded in the backend, that call returns to the same
+    process (``AEKO_API_URL=http://localhost:3100``). While a tool waits, its
+    worker cannot serve that request, so two concurrent tool calls on a
+    two-worker replica wait on each other until the HTTP timeout, and gunicorn
+    kills workers whose loop stops answering. Running the tool in a thread
+    keeps the loop free. Context variables, including the request's bearer
+    token, are copied into the thread.
+
+    The decorator registers the threaded wrapper and returns the original
+    function, so modules and tests that call a tool directly stay synchronous.
+    """
+
+    def tool(self, *args, **kwargs):
+        register = super().tool(*args, **kwargs)
+
+        def decorator(fn):
+            if inspect.iscoroutinefunction(fn):
+                return register(fn)
+
+            @functools.wraps(fn)
+            async def run_in_thread(*call_args, **call_kwargs):
+                return await anyio.to_thread.run_sync(functools.partial(fn, *call_args, **call_kwargs))
+
+            register(run_in_thread)
+            return fn
+
+        return decorator
+
+
 def _build_mcp() -> FastMCP:
     # ``website_url`` was added to FastMCP.__init__ in a recent mcp release;
     # pyproject pins ``mcp>=1.11.0,<1.16.0`` because the backend embeds this
     # package under FastAPI 0.115.x (Starlette <0.42). Older mcp versions in
     # that range don't accept the kwarg yet — set it via settings after
     # construction when supported, otherwise skip.
-    server = FastMCP(
+    server = _AekoFastMCP(
         SERVER_NAME,
         instructions=SERVER_INSTRUCTIONS,
         stateless_http=_env_flag("AEKO_MCP_STATELESS_HTTP", True),
