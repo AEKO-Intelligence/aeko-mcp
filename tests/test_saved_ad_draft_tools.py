@@ -281,3 +281,15 @@ def test_backend_codes_have_authored_messages(monkeypatch, backend_code, status)
     with pytest.raises(AekoToolError) as exc:
         tools.aeko_get_saved_ad_draft(DOMAIN, CREATIVE)
     assert code(exc) == backend_code and "raw backend text" not in str(exc.value)
+
+
+def test_medium_inline_rules_do_not_shrink_source_reads_to_tiny_chunks(monkeypatch):
+    # 6,000 Korean characters of rules fit format_limit, so they start inline; resending
+    # them whole on every call used to squeeze the source chunk to ~500 characters.
+    rules = {"name": "브랜드 규칙", "accepted_brand_constraints": ["과장 금지 " * 1000]}
+    source = {"evidence": "리뷰 근거 문장" * 5000}
+    calls = []
+    serve(monkeypatch, [draft(source_snapshot=source, ad_copy_format_snapshot=rules)], calls)
+    assert json.loads(read_all(field="source")) == source
+    source_chars = len(json.dumps(source, ensure_ascii=False, separators=(",", ":")))
+    assert len(calls) <= source_chars // 2000 + 1

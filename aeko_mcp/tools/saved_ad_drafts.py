@@ -11,6 +11,9 @@ from ._annotations import READ_ONLY, tool_spec
 from ._paging import MAX_PAGE_CHARS
 from ._structured import AekoToolError, AekoToolInputError, read_boundary, text_bytes, uuid_arg
 
+# Smallest snapshot chunk worth one call before the other snapshot is chunked too.
+MIN_CHUNK_CHARS = 2000
+
 
 class SavedAdDraft(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -213,11 +216,13 @@ def aeko_get_saved_ad_draft(
         while text_bytes(result) > MAX_PAGE_CHARS:
             inline = [name for name, (text, _, _) in parts.items() if text is not None and not chunked[name]]
             shrinkable = [name for name in lengths if chunked[name] and lengths[name] > 1]
-            if shrinkable:  # shrink existing chunks before chunking a snapshot that fits whole
-                widest = max(shrinkable, key=lambda name: lengths[name])
-                lengths[widest] = max(1, lengths[widest] // 2)
-            elif inline:
+            widest = max(shrinkable, key=lambda name: lengths[name]) if shrinkable else None
+            # Halve a chunk while it stays a useful read; below that, chunk the snapshot
+            # still sent whole instead, or every call resends it in full.
+            if inline and (widest is None or lengths[widest] // 2 < MIN_CHUNK_CHARS):
                 chunked[max(inline, key=lambda name: len(parts[name][0]))] = True
+            elif widest is not None:
+                lengths[widest] = max(1, lengths[widest] // 2)
             else:
                 raise _too_large()
             result = build()
