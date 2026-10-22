@@ -4,6 +4,14 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.30.2] — 2026-10-22
+
+### Fixed
+- Concurrent tool calls no longer stall the hosted server. FastMCP 1.11–1.15 runs a synchronous tool on the event loop. Every AEKO tool is synchronous and calls the backend over HTTP, and in the hosted backend that call returns to the same process (`localhost:3100`). Two concurrent calls on a two-worker replica therefore waited on each other until the 30-second HTTP timeout. Gunicorn then killed both workers (`WORKER TIMEOUT`), which surfaced as Cloudflare 502s during a burst of about 15 calls on 2026-10-21.
+  - Tools now run in a worker thread, with the request's bearer token copied in.
+  - In a local copy of the production layout (2 workers, localhost callback), 6 concurrent calls went from 4 timeouts and 60 seconds to all succeeding in 0.2 seconds. 40 concurrent calls also succeed.
+  - Module functions stay synchronous for direct callers.
+
 ## [0.30.1] — 2026-10-22
 
 Fixes from a read-only sweep of the 0.30.0 tools on a large account (2,343 tracked prompts). MCP only; no backend change is needed.
