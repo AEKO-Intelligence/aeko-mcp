@@ -130,6 +130,10 @@ _BACKEND_CODE_MESSAGES = {
         "prepared or placed."
     ),
     "FEATURE_LOCKED": "This feature is not unlocked for this AEKO account.",
+    "MARKETING_BID_ABOVE_CAP": (
+        "The max bid is above the limit for this ad account's currency (USD 100 converted, "
+        "e.g. ₩140,000 in KRW). Lower max_bid_micros."
+    ),
     "ASSISTANT_TASK_NOT_FOUND": (
         "This action item is not a saved assistant task. Only assistant tasks have saved outputs; "
         "read a plain action item with aeko_get_action_plan."

@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from ..client import AekoAPIError
 from ..server import client, mcp
 from ._annotations import ADDITIVE_ONCE, READ_ONLY, tool_spec
+from ._bids import MAX_BID_CEILING_MICROS
 from ._structured import AekoToolError, AekoToolInputError, api_error
 
 AutomationKey = Literal[
@@ -60,7 +61,7 @@ class ContextFilter(BaseModel):
 
 class ReviewBasedAdsParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    creative_strategy: Literal["auto", "context", "conversational"] = "context"
+    creative_strategy: Literal["auto", "context", "conversational", "experience"] = "context"
     filter: ContextFilter = Field(default_factory=ContextFilter)
     filter_text: str | None = None
     ad_account_id: UUID
@@ -68,7 +69,10 @@ class ReviewBasedAdsParams(BaseModel):
     target_language: str = Field(min_length=2, max_length=16)
     target_market: str = Field(min_length=2, max_length=8)
     ad_group_name: str = Field(min_length=3, max_length=1000)
-    max_bid_micros: int = Field(ge=1, le=100_000_000)
+    # The backend narrows this to the ad account's own currency cap.
+    max_bid_micros: int = Field(ge=1, le=MAX_BID_CEILING_MICROS)
+    # Set only by AEKO's Workflows card; accepted so read-back params validate, never sent.
+    workflow_card: Literal["context_ads"] | None = Field(default=None, exclude=True)
 
 
 _PARAM_MODELS: dict[str, type[BaseModel]] = {

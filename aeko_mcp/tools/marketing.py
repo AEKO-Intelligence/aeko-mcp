@@ -39,12 +39,14 @@ from ._annotations import (
     READ_ONLY_EXTERNAL,
     tool_spec,
 )
+from ._bids import MAX_BID_CEILING_MICROS
 
 # Backend enforces this floor on campaign budgets (schemas/marketing.py MarketingBudget).
 MIN_BUDGET_MICROS = 1_000_000
-# Backend bidding schema accepts 1..100_000_000 micros per billing event.
+# Largest bid the backend accepts in any currency (USD 100 converted to KRW); the
+# backend rejects a bid above the ad account's own currency cap.
 MIN_BID_MICROS = 1
-MAX_BID_MICROS = 100_000_000
+MAX_BID_MICROS = MAX_BID_CEILING_MICROS
 # Backend caps one inject request at 200 reviews (schemas/review.py ReviewInjectRequest).
 INJECT_REVIEWS_BATCH_SIZE = 200
 # Backend caps ads per ad group at 100 (schemas/marketing.py MarketingAdGroupFromContextRequest).
@@ -803,10 +805,10 @@ def aeko_create_ad_group_from_context(
     conversions needs one eligible ID from aeko_list_conversion_event_settings; targeting uses IDs
     from aeko_lookup_ad_locations; start_time/end_time are epoch seconds.
 
-    max_bid_micros is per billing event: 60,000 = $0.06 per impression ($60 CPM), per click for
-    clicks, target CPA for conversions. ads: up to 100, each with store_product_id and optional
-    source_review_id, title, body, target_language (omit title and body to have AEKO write
-    them). Reuse the same idempotency_key on retries.
+    max_bid_micros is per billing event, in account currency: 60,000 = $0.06 per impression,
+    per click for clicks, target CPA for conversions. ads: up to 100, each with
+    store_product_id and optional source_review_id, title, body, target_language (omit title
+    and body to have AEKO write them). Reuse the same idempotency_key on retries.
     """
     if len(ads or []) > MAX_ADS_PER_AD_GROUP:
         return (

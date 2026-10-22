@@ -155,3 +155,20 @@ def test_run_result_exposes_bounded_strategy_provenance_without_document_bodies(
     assert result["skill_ref"]["version_id"] == "sv1"
     assert result["eval_ref"]["version_id"] == "ev1"
     assert "private" not in rendered
+
+
+def test_review_ads_params_accept_experience_style_krw_bid_and_drop_card_marker(monkeypatch):
+    calls = []
+    monkeypatch.setattr(tools.client, "post", lambda *a, **kw: calls.append((a, kw)) or {
+        "ready": True, "reason_code": None, "job_contract": {}, "credits_remaining": 9})
+    params = {"ad_account_id": ACCOUNT, "target_language": "ko", "target_market": "KR",
+              "ad_group_name": "Review context", "max_bid_micros": 3_400_000_000,
+              "creative_strategy": "experience", "workflow_card": "context_ads"}
+    tools.aeko_resolve_automation_contract(DOMAIN, "review_based_ads", params)
+    sent = calls[0][1]["json"]["params"]
+    assert sent["creative_strategy"] == "experience"
+    assert sent["max_bid_micros"] == 3_400_000_000
+    assert "workflow_card" not in sent
+    with pytest.raises(tools.AekoToolInputError):
+        tools.aeko_resolve_automation_contract(
+            DOMAIN, "review_based_ads", {**params, "max_bid_micros": 140_000_000_001})
