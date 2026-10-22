@@ -4,6 +4,10 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.31.0] — Unreleased
+
+- Add read-only saved ad draft list and detail tools. They expose current saved copy, version, and accessible source provenance with bounded page metadata, chunked large source snapshots, and structured errors.
+
 ## [0.30.2] — 2026-10-22
 
 ### Fixed
