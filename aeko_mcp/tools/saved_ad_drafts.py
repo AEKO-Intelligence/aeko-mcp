@@ -1,6 +1,7 @@
 """Read current, owned saved ad copy without generating or changing it."""
 
 import json
+import re
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict
@@ -15,12 +16,16 @@ class SavedAdDraft(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     id: str
+    domain_id: str
     title: str
     body: str
     saved_version: str
     source_snapshot: Optional[dict[str, Any]] = None
     source_snapshot_omitted: bool = False
     source_snapshot_json_chunk: Optional[dict[str, Any]] = None
+    ad_copy_format_snapshot: Optional[dict[str, Any]] = None
+    ad_copy_format_snapshot_omitted: bool = False
+    ad_copy_format_snapshot_json_chunk: Optional[dict[str, Any]] = None
 
 
 class SavedAdDraftPage(BaseModel):
@@ -43,28 +48,39 @@ def _draft(value: Any) -> SavedAdDraft:
 
 def _owned_draft(value: Any, domain_id: str) -> SavedAdDraft:
     result = _draft(value)
-    if result.model_extra and "domain_id" in result.model_extra:
-        try:
-            backend_domain_id = uuid_arg(result.model_extra["domain_id"], "backend domain_id")
-        except AekoToolInputError:
-            raise AekoToolError("INVALID_BACKEND_RESPONSE", "AEKO returned an invalid saved ad draft domain.") from None
-        if backend_domain_id != domain_id:
-            raise AekoToolError("INVALID_BACKEND_RESPONSE", "AEKO returned a saved ad draft from another domain.")
+    try:
+        backend_domain_id = uuid_arg(result.domain_id, "backend domain_id")
+    except AekoToolInputError:
+        raise AekoToolError("INVALID_BACKEND_RESPONSE", "AEKO returned an invalid saved ad draft domain.") from None
+    if backend_domain_id != domain_id:
+        raise AekoToolError("INVALID_BACKEND_RESPONSE", "AEKO returned a saved ad draft from another domain.")
     return result
 
 
-def _snapshot_text(draft: SavedAdDraft) -> Optional[str]:
-    if draft.source_snapshot is None:
+def _json_text(value: Optional[dict[str, Any]]) -> Optional[str]:
+    if value is None:
         return None
-    return json.dumps(draft.source_snapshot, ensure_ascii=False, separators=(",", ":"), default=str)
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
 def _list_item(draft: SavedAdDraft) -> SavedAdDraft:
+    """Drop both snapshots from a large row so one row can never fail a page."""
     if text_bytes(draft) <= 8000:
         return draft
-    if draft.source_snapshot is None:
-        return draft
-    return draft.model_copy(update={"source_snapshot": None, "source_snapshot_omitted": True})
+    update: dict[str, Any] = {}
+    if draft.source_snapshot is not None:
+        update.update(source_snapshot=None, source_snapshot_omitted=True)
+    if draft.ad_copy_format_snapshot is not None:
+        update.update(ad_copy_format_snapshot=None, ad_copy_format_snapshot_omitted=True)
+    return draft.model_copy(update=update) if update else draft
+
+
+def _chunk(text: str, offset: int, length: int, version: str) -> dict[str, Any]:
+    next_offset = offset + length
+    return {
+        "text": text[offset:next_offset], "offset": offset, "total_chars": len(text),
+        "next_offset": next_offset if next_offset < len(text) else None, "saved_version": version,
+    }
 
 
 def _too_large() -> AekoToolError:
@@ -79,10 +95,10 @@ def aeko_list_saved_ad_drafts(domain_id: str, limit: int = 50, offset: int = 0) 
     """Read one page of current saved, unplaced ad drafts for a domain.
 
     Copy, saved_version, and accessible source provenance come from the saved
-    creative, not a review preparation cache. Large source snapshots are omitted
-    from list rows with source_snapshot_omitted=true; get that draft to read its
-    source evidence. Continue at next_offset when
-    has_more is true. A page can contain fewer than limit rows when its output
+    creative, not a review preparation cache. Large rows omit source_snapshot and
+    ad_copy_format_snapshot (source_snapshot_omitted /
+    ad_copy_format_snapshot_omitted = true); get that draft to read them.
+    Continue at next_offset when has_more is true. A page can contain fewer than limit rows when its output
     is large; no copy within a returned row is shortened. No ad account is needed.
     """
     with read_boundary():
@@ -124,56 +140,85 @@ def aeko_list_saved_ad_drafts(domain_id: str, limit: int = 50, offset: int = 0) 
 
 @mcp.tool(**tool_spec("Get current saved ad draft", READ_ONLY, structured_output=True))
 def aeko_get_saved_ad_draft(
-    domain_id: str, creative_id: str, source_offset: int = 0, source_limit: int = 8000
+    domain_id: str, creative_id: str, source_offset: int = 0, source_limit: int = 8000,
+    format_offset: int = 0, format_limit: int = 8000, saved_version: Optional[str] = None,
 ) -> SavedAdDraft:
     """Read the latest saved copy, version and accessible provenance of one draft.
 
-    This is a fresh backend read. Small source snapshots are returned whole.
-    Large snapshots are returned as JSON text chunks with total_chars and
-    next_offset. Pass next_offset as source_offset until it is null; keep the
-    saved_version the same across calls to avoid mixing edited snapshots.
-    It neither regenerates nor publishes the ad.
+    This is a fresh backend read. Small source_snapshot and ad_copy_format_snapshot
+    (which holds the accepted brand constraints) are returned whole. A large one
+    is returned as source_snapshot_json_chunk / ad_copy_format_snapshot_json_chunk
+    ({text, offset, total_chars, next_offset, saved_version}); when both are large
+    the chunks shrink so the response fits. Read each snapshot separately: pass its
+    next_offset as source_offset / format_offset until it is null, and join the
+    chunk texts to get the JSON. Pass the first read's saved_version on later reads;
+    if the draft changed, the call fails with SAVED_AD_CHANGED and you restart from
+    offset 0 with the new version. saved_version also changes when the product's
+    catalog title changes, for example after a store sync. It neither regenerates
+    nor publishes the ad.
     """
     with read_boundary():
         domain_id = uuid_arg(domain_id, "domain_id")
         creative_id = uuid_arg(creative_id, "creative_id")
-        if type(source_offset) is not int or source_offset < 0:
-            raise AekoToolInputError("INVALID_ARGUMENT", "source_offset must be a nonnegative integer.")
-        if type(source_limit) is not int or not 1 <= source_limit <= 8000:
-            raise AekoToolInputError("INVALID_ARGUMENT", "source_limit must be an integer from 1 to 8000.")
+        for name, value in (("source_offset", source_offset), ("format_offset", format_offset)):
+            if type(value) is not int or value < 0:
+                raise AekoToolInputError("INVALID_ARGUMENT", f"{name} must be a nonnegative integer.")
+        for name, value in (("source_limit", source_limit), ("format_limit", format_limit)):
+            if type(value) is not int or not 1 <= value <= 8000:
+                raise AekoToolInputError("INVALID_ARGUMENT", f"{name} must be an integer from 1 to 8000.")
+        if saved_version is not None and (
+            not isinstance(saved_version, str) or not re.fullmatch(r"[0-9a-f]{64}", saved_version)
+        ):
+            raise AekoToolInputError("INVALID_ARGUMENT", "saved_version must be 64 lowercase hex characters.")
         data = client.get(
             f"/api/marketing/ad-creatives/saved/{creative_id}", params={"domain_id": domain_id}
         )
-        result = _owned_draft(data, domain_id)
-        if result.id != creative_id:
+        original = _owned_draft(data, domain_id)
+        if original.id != creative_id:
             raise AekoToolError("INVALID_BACKEND_RESPONSE", "AEKO returned a different saved ad draft.")
-        source_text = _snapshot_text(result)
-        if source_text is None:
-            if source_offset:
-                raise AekoToolInputError("INVALID_ARGUMENT", "source_offset exceeds the saved source snapshot.")
-        elif source_offset > len(source_text):
-            raise AekoToolInputError("INVALID_ARGUMENT", "source_offset exceeds the saved source snapshot.")
-        if source_text is not None and (source_offset > 0 or text_bytes(result) > MAX_PAGE_CHARS or len(source_text) > source_limit):
-            original = result
-            chunk_length = min(source_limit, len(source_text) - source_offset)
-            while True:
-                next_offset = source_offset + chunk_length
-                result = original.model_copy(update={
-                    "source_snapshot": None,
-                    "source_snapshot_omitted": True,
-                    "source_snapshot_json_chunk": {
-                        "text": source_text[source_offset:next_offset],
-                        "offset": source_offset,
-                        "total_chars": len(source_text),
-                        "next_offset": next_offset if next_offset < len(source_text) else None,
-                        "saved_version": original.saved_version,
-                    },
-                })
-                if text_bytes(result) <= MAX_PAGE_CHARS:
-                    break
-                if chunk_length <= 1:
-                    raise _too_large()
-                chunk_length = max(1, chunk_length // 2)
-        if text_bytes(result) > MAX_PAGE_CHARS:
-            raise _too_large()
+        if saved_version is not None and saved_version != original.saved_version:
+            raise AekoToolError(
+                "SAVED_AD_CHANGED",
+                "The saved ad changed since you started reading it. Restart from offset 0 with the "
+                f"new saved_version {original.saved_version}.",
+            )
+        # name -> (text, offset, limit); None text means the snapshot is absent.
+        parts = {
+            "source": (_json_text(original.source_snapshot), source_offset, source_limit),
+            "ad_copy_format": (_json_text(original.ad_copy_format_snapshot), format_offset, format_limit),
+        }
+        for arg, (text, offset, _) in zip(("source_offset", "format_offset"), parts.values()):
+            if offset > (0 if text is None else len(text)):
+                raise AekoToolInputError("INVALID_ARGUMENT", f"{arg} exceeds the saved snapshot.")
+        chunked = {
+            name: text is not None and (offset > 0 or len(text) > limit)
+            for name, (text, offset, limit) in parts.items()
+        }
+        lengths = {
+            name: min(limit, len(text) - offset) for name, (text, offset, limit) in parts.items()
+            if text is not None
+        }
+
+        def build() -> SavedAdDraft:
+            update: dict[str, Any] = {}
+            for name, (text, offset, _) in parts.items():
+                if chunked[name]:
+                    update.update({
+                        f"{name}_snapshot": None, f"{name}_snapshot_omitted": True,
+                        f"{name}_snapshot_json_chunk": _chunk(text, offset, lengths[name], original.saved_version),
+                    })
+            return original.model_copy(update=update)
+
+        result = build()
+        while text_bytes(result) > MAX_PAGE_CHARS:
+            inline = [name for name, (text, _, _) in parts.items() if text is not None and not chunked[name]]
+            shrinkable = [name for name in lengths if chunked[name] and lengths[name] > 1]
+            if shrinkable:  # shrink existing chunks before chunking a snapshot that fits whole
+                widest = max(shrinkable, key=lambda name: lengths[name])
+                lengths[widest] = max(1, lengths[widest] // 2)
+            elif inline:
+                chunked[max(inline, key=lambda name: len(parts[name][0]))] = True
+            else:
+                raise _too_large()
+            result = build()
         return result

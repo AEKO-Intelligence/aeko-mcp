@@ -13,13 +13,44 @@ CREATIVE = str(uuid4())
 
 
 def draft(**updates):
+    """A row shaped like the backend's MarketingAdCreativeResponse."""
     row = {
-        "id": CREATIVE, "title": "Edited headline", "body": "Latest saved copy",
-        "saved_version": "a" * 64, "source_snapshot": {"origin": "review", "query": "why?"},
-        "store_product_id": str(uuid4()), "market": "US", "language": "en",
+        "id": CREATIVE, "domain_id": DOMAIN, "ad_account_id": None,
+        "title": "Edited headline", "body": "Latest saved copy for this product",
+        "image_url": None, "target_language": "en", "status": "saved", "placed_ad_id": None,
+        "created_at": "2026-10-20T01:02:03Z", "saved_version": "a" * 64, "origin": "review",
+        "store_product_id": str(uuid4()), "product_title": "Moisture Cream",
+        "source_review_id": str(uuid4()), "source_context_id": None, "placement_input": None,
+        "source_snapshot": {"origin": "review", "query": "why?"},
+        "ad_copy_format_snapshot": {"name": "Short", "accepted_brand_constraints": ["no hype"]},
     }
     row.update(updates)
     return row
+
+
+def serve(monkeypatch, rows, calls=None):
+    """Backend stub: list returns every row, detail returns the row matching the path."""
+    def get(path, params):
+        if calls is not None:
+            calls.append((path, params))
+        if path.endswith("/saved"):
+            start = params["offset"]
+            return {"items": rows[start:start + params["limit"]], "total": len(rows),
+                    "limit": params["limit"], "offset": start}
+        return next(row for row in rows if path.endswith(row["id"]))
+    monkeypatch.setattr(tools.client, "get", get)
+
+
+def read_all(monkeypatch_unused=None, field="source", **kwargs):
+    texts, offset = [], 0
+    while True:
+        result = tools.aeko_get_saved_ad_draft(
+            DOMAIN, CREATIVE, **{f"{'source' if field == 'source' else 'format'}_offset": offset}, **kwargs)
+        chunk = getattr(result, f"{'source' if field == 'source' else 'ad_copy_format'}_snapshot_json_chunk")
+        texts.append(chunk["text"])
+        if chunk["next_offset"] is None:
+            return "".join(texts)
+        offset = chunk["next_offset"]
 
 
 def code(exc):
@@ -41,7 +72,7 @@ def test_list_requests_one_backend_page_and_preserves_copy(monkeypatch):
     monkeypatch.setattr(tools.client, "get", get)
     result = tools.aeko_list_saved_ad_drafts(DOMAIN, limit=2, offset=1)
     assert calls == [("/api/marketing/ad-creatives/saved", {"domain_id": DOMAIN, "limit": 2, "offset": 1})]
-    assert result.items[0].model_dump()["market"] == "US"
+    assert result.items[0].model_dump()["product_title"] == "Moisture Cream"
     assert result.items[0].title == "Edited headline"
     assert result.items[0].source_snapshot["query"] == "why?"
     assert result.total == 3 and result.next_offset == 2 and result.has_more
@@ -100,7 +131,7 @@ def test_backend_failure_is_bounded_and_not_a_success(monkeypatch):
 
 def test_large_korean_snapshot_is_omitted_from_list_and_chunked_in_detail(monkeypatch):
     snapshot = {"evidence": "리뷰 근거" * 12000}
-    row = draft(domain_id=DOMAIN, source_snapshot=snapshot)
+    row = draft(source_snapshot=snapshot)
     def get(path, params):
         if path.endswith("/saved"):
             return {"items": [row], "total": 1, "limit": 50, "offset": 0}
@@ -157,7 +188,7 @@ def test_empty_page_beyond_end_is_valid(monkeypatch):
 
 
 def test_large_nonsnapshot_field_fails_without_copy_truncation(monkeypatch):
-    row = draft(source_snapshot=None, extra_metadata="x" * 30000)
+    row = draft(source_snapshot=None, ad_copy_format_snapshot=None, extra_metadata="x" * 30000)
     def get(path, params):
         if path.endswith("/saved"):
             return {"items": [row], "total": 1, "limit": 50, "offset": 0}
@@ -169,3 +200,84 @@ def test_large_nonsnapshot_field_fails_without_copy_truncation(monkeypatch):
     with pytest.raises(AekoToolError) as detail:
         tools.aeko_get_saved_ad_draft(DOMAIN, CREATIVE)
     assert code(detail) == "OUTPUT_TOO_LARGE"
+
+
+BIG_RULES = {"name": "Brand", "accepted_brand_constraints": ["규칙 " + "가나다라마바사" * 3000 + str(i) for i in range(2)]}
+
+
+def test_list_omits_large_format_snapshot_and_paging_continues(monkeypatch):
+    big = draft(id=str(uuid4()), ad_copy_format_snapshot=BIG_RULES)
+    rows = [draft(id=str(uuid4())), big, draft(id=str(uuid4()))]
+    serve(monkeypatch, rows)
+    result = tools.aeko_list_saved_ad_drafts(DOMAIN, limit=3)
+    flagged = result.items[1]
+    assert flagged.ad_copy_format_snapshot is None and flagged.ad_copy_format_snapshot_omitted
+    assert flagged.title == big["title"] and flagged.body == big["body"]
+    assert result.items[0].ad_copy_format_snapshot_omitted is False
+    assert result.returned_count == 3 and not result.has_more
+    page = tools.aeko_list_saved_ad_drafts(DOMAIN, limit=1, offset=1)
+    assert page.returned_count == 1 and page.items[0].ad_copy_format_snapshot_omitted
+
+
+def test_get_chunks_large_format_snapshot_exactly(monkeypatch):
+    serve(monkeypatch, [draft(ad_copy_format_snapshot=BIG_RULES)])
+    first = tools.aeko_get_saved_ad_draft(DOMAIN, CREATIVE)
+    assert first.ad_copy_format_snapshot is None and first.ad_copy_format_snapshot_omitted
+    assert first.source_snapshot == {"origin": "review", "query": "why?"}
+    assert json.loads(read_all(field="format")) == BIG_RULES
+
+
+def test_get_with_both_snapshots_large_fits_page(monkeypatch):
+    source = {"evidence": "리뷰 근거" * 6000}
+    serve(monkeypatch, [draft(source_snapshot=source, ad_copy_format_snapshot=BIG_RULES)])
+    result = tools.aeko_get_saved_ad_draft(DOMAIN, CREATIVE)
+    assert tools.text_bytes(result) <= tools.MAX_PAGE_CHARS
+    assert result.source_snapshot_json_chunk and result.ad_copy_format_snapshot_json_chunk
+    assert json.loads(read_all(field="source")) == source
+    assert json.loads(read_all(field="format")) == BIG_RULES
+
+
+def test_saved_version_match_mismatch_and_format(monkeypatch):
+    serve(monkeypatch, [draft()])
+    assert tools.aeko_get_saved_ad_draft(DOMAIN, CREATIVE, saved_version="a" * 64).id == CREATIVE
+    with pytest.raises(AekoToolError) as exc:
+        tools.aeko_get_saved_ad_draft(DOMAIN, CREATIVE, saved_version="b" * 64)
+    assert code(exc) == "SAVED_AD_CHANGED" and "a" * 64 in str(exc.value)
+    monkeypatch.setattr(tools.client, "get", lambda *a, **k: pytest.fail("backend called"))
+    for bad in ("A" * 64, "a" * 63, "xyz", 5):
+        with pytest.raises(AekoToolInputError) as exc:
+            tools.aeko_get_saved_ad_draft(DOMAIN, CREATIVE, saved_version=bad)
+        assert code(exc) == "INVALID_ARGUMENT"
+
+
+def test_row_missing_domain_id_is_invalid_backend_response(monkeypatch):
+    row = draft()
+    del row["domain_id"]
+    serve(monkeypatch, [row])
+    for call in (lambda: tools.aeko_list_saved_ad_drafts(DOMAIN), lambda: tools.aeko_get_saved_ad_draft(DOMAIN, CREATIVE)):
+        with pytest.raises(AekoToolError) as exc:
+            call()
+        assert code(exc) == "INVALID_BACKEND_RESPONSE"
+
+
+@pytest.mark.parametrize("detail,status,expected", [
+    ("Saved ad not found", 404, "SAVED_AD_NOT_FOUND"),
+    ("Saved ad source unavailable", 404, "SAVED_AD_SOURCE_UNAVAILABLE"),
+])
+def test_not_found_variants_are_distinguishable(monkeypatch, detail, status, expected):
+    def fail(*args, **kwargs):
+        raise AekoAPIError(detail, http_status=status)
+    monkeypatch.setattr(tools.client, "get", fail)
+    with pytest.raises(AekoToolError) as exc:
+        tools.aeko_get_saved_ad_draft(DOMAIN, CREATIVE)
+    assert code(exc) == expected
+
+
+@pytest.mark.parametrize("backend_code,status", [("AD_SOURCE_UNAVAILABLE", 400), ("FEATURE_LOCKED", 403)])
+def test_backend_codes_have_authored_messages(monkeypatch, backend_code, status):
+    def fail(*args, **kwargs):
+        raise AekoAPIError("raw backend text", http_status=status, code=backend_code)
+    monkeypatch.setattr(tools.client, "get", fail)
+    with pytest.raises(AekoToolError) as exc:
+        tools.aeko_get_saved_ad_draft(DOMAIN, CREATIVE)
+    assert code(exc) == backend_code and "raw backend text" not in str(exc.value)
