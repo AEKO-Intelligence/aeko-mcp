@@ -120,11 +120,11 @@ def test_ad_group_bid_rejects_outside_backend_bounds(monkeypatch):
         "ag1", "idem", max_bid_micros=0, dry_run=False
     )
     above = marketing.aeko_update_ad_group(
-        "ag1", "idem", max_bid_micros=100_000_001, dry_run=False
+        "ag1", "idem", max_bid_micros=140_000_000_001, dry_run=False
     )
 
-    assert "must be between 1 and 100000000" in below
-    assert "must be between 1 and 100000000" in above
+    assert "must be between 1 and 140000000000" in below
+    assert "must be between 1 and 140000000000" in above
     assert flag["posted"] is False
 
 
