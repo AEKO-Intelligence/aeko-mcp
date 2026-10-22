@@ -4,6 +4,13 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.31.0] — 2026-10-23
+
+- Add read-only saved ad draft list and detail tools. They expose current saved copy, version, and accessible source provenance with bounded page metadata, chunked large source and ad-copy-format snapshots, and structured errors.
+  - Large list rows omit `source_snapshot` and `ad_copy_format_snapshot` (flagged `*_omitted`), so one row never fails a page. The detail read returns either snapshot in chunks (`source_offset`/`source_limit`, `format_offset`/`format_limit`) and shrinks them so the response fits.
+  - `aeko_get_saved_ad_draft` takes an optional `saved_version`; if the draft changed since, it fails with `SAVED_AD_CHANGED` so a chunked read restarts from offset 0. `saved_version` also changes when the product's catalog title changes.
+  - `Saved ad not found`, `Saved ad source unavailable`, `AD_SOURCE_UNAVAILABLE` and `FEATURE_LOCKED` now return distinct authored errors.
+
 ## [0.30.2] — 2026-10-22
 
 ### Fixed

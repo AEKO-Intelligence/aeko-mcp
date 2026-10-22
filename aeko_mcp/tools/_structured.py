@@ -125,9 +125,28 @@ _BACKEND_CODE_MESSAGES = {
     "NETWORK_ERROR": "The connection between AEKO and the store failed during the write.",
     "PLATFORM_ERROR": "The connected store returned an error during the write.",
     "BRAND_PACKAGE_NOT_INITIALIZED": "This brand has no accepted package yet.",
+    "AD_SOURCE_UNAVAILABLE": (
+        "The original product or review behind this ad is no longer available, so it cannot be "
+        "prepared or placed."
+    ),
+    "FEATURE_LOCKED": "This feature is not unlocked for this AEKO account.",
     "ASSISTANT_TASK_NOT_FOUND": (
         "This action item is not a saved assistant task. Only assistant tasks have saved outputs; "
         "read a plain action item with aeko_get_action_plan."
+    ),
+}
+
+
+# Plain-text 404 details from the saved ad routes carry no code; tell them apart.
+_NOT_FOUND_TEXT_ERRORS = {
+    "Saved ad not found": (
+        "SAVED_AD_NOT_FOUND",
+        "Saved ad not found: it was deleted or already placed. List saved drafts again.",
+    ),
+    "Saved ad source unavailable": (
+        "SAVED_AD_SOURCE_UNAVAILABLE",
+        "Saved ad source unavailable: its source review or document was removed, or access to it "
+        "was revoked. The draft still exists but cannot be read.",
     ),
 }
 
@@ -165,6 +184,8 @@ def api_error(
         fallback_code, fallback_message = _STATUS_ERRORS.get(
             status, ("HTTP_ERROR", "AEKO returned an unexpected HTTP error.")
         )
+    if status == 404 and not (code or backend_code) and str(exc) in _NOT_FOUND_TEXT_ERRORS:
+        code, message = _NOT_FOUND_TEXT_ERRORS[str(exc)]
     return AekoToolError(
         code or backend_code or fallback_code,
         message or _BACKEND_CODE_MESSAGES.get(backend_code or "", fallback_message),
