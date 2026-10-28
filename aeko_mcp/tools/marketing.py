@@ -782,8 +782,6 @@ def aeko_create_ad_group_from_context(
     domain_id: str,
     ad_group_name: Optional[str] = None,
     context_hints: Optional[list[str]] = None,
-    ads: Optional[list[dict]] = None,
-    idempotency_key: Optional[str] = None,
     max_bid_micros: Optional[int] = None,
     campaign_id: Optional[str] = None,
     new_campaign_name: Optional[str] = None,
@@ -795,22 +793,29 @@ def aeko_create_ad_group_from_context(
     start_time: Optional[int] = None,
     end_time: Optional[int] = None,
     ad_group_id: Optional[str] = None,
+    *,
+    ads: list[dict],
+    idempotency_key: str,
 ) -> str:
-    """Create product ads from context, all PAUSED: in a new ad group, or in an existing one.
+    """Create paused product ads from context, in a new ad group or an existing one.
 
-    New group: ad_group_name, context_hints (broader, e.g. sensitive-skin reviews of two products
-    become ["민감성 피부에 좋은 제품"]) and one ad per product. Existing group: pass ad_group_id
+    New group: ad_group_name, broader context_hints (e.g. ["민감성 피부에 좋은 제품"]), one ad per product. Existing group: pass ad_group_id
     (a standard group) plus campaign_id (its campaign); leave out ad_group_name, context_hints,
-    max_bid_micros and new_campaign_*. The group keeps its own bid and goal.
+    max_bid_micros and new_campaign_*. The group keeps its own bid.
 
     New-group placement: campaign_id, or new_campaign_name plus new_campaign_budget_micros (min
     1,000,000). New campaigns only: bidding_type impressions (default), clicks or conversions (one
     ID from aeko_list_conversion_event_settings); targeting from aeko_lookup_ad_locations;
-    start_time/end_time epoch seconds. max_bid_micros (default 1,000,000) is per billing event.
+    start_time/end_time epoch s. max_bid_micros (default 1,000,000), account currency:
+    60,000 = $0.06 per impression; per click for clicks; target CPA for conversions.
 
-    ads: up to 100, each store_product_id plus optional source_review_id, title, body,
-    target_language (omit title and body to have AEKO write them). Reuse idempotency_key on retries.
+    ads (up to 100): store_product_id, optional source_review_id, title, body, target_language
+    (omit title/body to have AEKO write them). Reuse idempotency_key on retries.
     """
+    def blank(value: Any) -> bool:
+        # Some clients send "" or [] for every optional argument they leave out.
+        return value is None or (isinstance(value, str) and not value.strip()) or value in ([], {})
+
     if not isinstance(idempotency_key, str) or not idempotency_key.strip():
         return "# `idempotency_key` is required (reuse the same one on retries)."
     if not isinstance(ads, list) or not ads:
@@ -820,7 +825,7 @@ def aeko_create_ad_group_from_context(
             f"# OpenAI Ads allows at most {MAX_ADS_PER_AD_GROUP} ads per ad group; split the "
             f"cluster into multiple ad groups (got {len(ads)})."
         )
-    if ad_group_id is not None:
+    if not blank(ad_group_id):
         # Backend: placement needs campaign_id or new_campaign; an existing group cannot attach to a
         # new campaign (OPENAI_ADS_PLACEMENT_INVALID), and a given campaign must own the group
         # (OPENAI_ADS_AD_GROUP_CAMPAIGN_MISMATCH).
@@ -828,17 +833,17 @@ def aeko_create_ad_group_from_context(
             ad_group_id = str(UUID(str(ad_group_id)))
         except ValueError:
             return "# `ad_group_id` must be an existing ad group's UUID."
-        if not campaign_id:
+        if blank(campaign_id):
             return "# `ad_group_id` needs `campaign_id`, the campaign that owns that ad group."
-        if new_campaign_name or new_campaign_budget_micros is not None:
+        if not blank(new_campaign_name) or not blank(new_campaign_budget_micros):
             return "# `ad_group_id` cannot be combined with `new_campaign_name` or `new_campaign_budget_micros`."
-        if ad_group_name is not None or context_hints is not None or max_bid_micros is not None:
+        if not (blank(ad_group_name) and blank(context_hints) and blank(max_bid_micros)):
             return (
                 "# `ad_group_id` adds ads to an existing group, so `ad_group_name`, `context_hints` "
                 "and `max_bid_micros` must be left out; the group keeps its own."
             )
-        if any(
-            value is not None
+        if not all(
+            blank(value)
             for value in (bidding_type, conversion_event_setting_ids, targeting, start_time, end_time)
         ):
             return (
@@ -851,7 +856,7 @@ def aeko_create_ad_group_from_context(
             "ad_group": {"id": ad_group_id},
             "ads": ads,
         }
-        if ad_account_id:
+        if not blank(ad_account_id):
             payload["ad_account_id"] = ad_account_id
         result, err = _safe(
             client.post,

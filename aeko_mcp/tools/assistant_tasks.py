@@ -6,6 +6,7 @@ the item/claim/selected-row tuple instead of reusing independent legacy tools.
 
 import json
 from typing import Any, Optional
+from uuid import UUID
 
 from ..server import client, mcp
 from ._annotations import ADDITIVE_ONCE, READ_ONLY, tool_spec
@@ -170,14 +171,16 @@ def aeko_save_action_output(
         cap = data["per_product_daily_cap"]
         if isinstance(cap, bool) or not isinstance(cap, int) or not 1 <= cap <= 10:
             raise AekoToolInputError("INVALID_ARGUMENT", "per_product_daily_cap must be an integer from 1 to 10.")
-        if not isinstance(data["rationale"], str) or not 1 <= len(data["rationale"].strip()) <= 1200:
+        if not isinstance(data["rationale"], str) or not data["rationale"].strip() or len(data["rationale"]) > 1200:
             raise AekoToolInputError("INVALID_ARGUMENT", "rationale must be 1–1200 characters.")
         ids = data.get("campaign_ids")
         if ids is not None:
             if not isinstance(ids, list) or not ids or len(ids) > 200:
                 raise AekoToolInputError("INVALID_ARGUMENT", "campaign_ids must be null or a non-empty list of campaign UUIDs.")
             for cid in ids:
-                uuid_arg(cid, "campaign_id")
+                uuid_arg(cid, "campaign_ids entry")
+            if len({str(UUID(cid)) for cid in ids}) != len(ids):
+                raise AekoToolInputError("INVALID_ARGUMENT", "campaign_ids must not repeat a campaign.")
         single = data.get("campaign_id")
         if data["placement"] == "fixed":
             if ids is not None or single is None:

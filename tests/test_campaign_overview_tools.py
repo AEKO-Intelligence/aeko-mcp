@@ -1,6 +1,7 @@
 import json
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from aeko_mcp.client import AekoAPIError
@@ -79,6 +80,8 @@ def test_registered_with_right_annotations():
     assert write.readOnlyHint is False and write.destructiveHint is True and write.openWorldHint is True
     doc = registered["aeko_answer_open_placement"].description
     assert "PAUSED" in doc and "explicit yes" in doc
+    flat = " ".join(doc.split())
+    assert "identical answer returns the first result" in flat and "Not repeatable" not in flat
 
 
 def test_overview_merges_three_reads_and_keeps_absent_numbers_null(monkeypatch):
@@ -122,23 +125,58 @@ def test_overview_without_account_params_omits_ad_account_id(monkeypatch):
     assert result.campaigns == [] and result.account is None
 
 
+def _big_campaigns(campaigns, products, ads, text="x"):
+    return [{
+        "id": str(uuid4()), "name": f"Campaign {i} " + text * 20, "status": "active", "countries": [],
+        "products": [{
+            "store_product_id": str(uuid4()), "title": text * 20, "ad_count": ads, "ad_groups": [],
+            "ads": [ad(str(uuid4()), name=text * 30, creative={"title": text * 25, "body": text * 50})
+                    for _ in range(ads)],
+        } for _ in range(products)],
+    } for i in range(campaigns)]
+
+
 def test_overview_truncates_large_accounts_with_flags(monkeypatch):
-    campaigns = []
-    for index in range(40):
-        campaigns.append({
-            "id": str(uuid4()), "name": f"Campaign {index} " + "x" * 200, "status": "active", "countries": [],
-            "products": [{
-                "store_product_id": str(uuid4()), "title": "P" * 200, "ad_count": 5, "ad_groups": [],
-                "ads": [ad(str(uuid4()), name="n" * 250) for _ in range(5)],
-            } for _ in range(8)],
-        })
-    serve(monkeypatch, overview=overview_payload(campaigns))
+    serve(monkeypatch, overview=overview_payload(_big_campaigns(40, 8, 5)))
     result = tools.aeko_get_campaign_overview(DOMAIN, ads_per_product=5)
     assert result.output_limited is True
     assert tools.text_bytes(result) <= tools.MAX_PAGE_CHARS
-    shown_products = sum(len(c.products) for c in result.campaigns)
-    assert result.campaigns_omitted > 0 or shown_products < 320 or any(
-        p.ads_omitted for c in result.campaigns for p in c.products)
+    assert len(result.campaigns) + result.campaigns_omitted == 40
+    for campaign in result.campaigns:
+        assert len(campaign.products) + campaign.products_omitted == 8
+        for product in campaign.products:
+            assert len(product.ads) + product.ads_omitted == 5
+
+
+def test_overview_korean_text_keeps_ads_before_dropping_them(monkeypatch):
+    # 3 campaigns x 5 products x 3 Korean ads: shrinks ad by ad, not straight to zero ads.
+    serve(monkeypatch, overview=overview_payload(_big_campaigns(3, 5, 3, text="가")))
+    result = tools.aeko_get_campaign_overview(DOMAIN, ads_per_product=3)
+    assert tools.text_bytes(result) <= tools.MAX_PAGE_CHARS
+    shown = [len(p.ads) for c in result.campaigns for p in c.products]
+    assert len(result.campaigns) == 3 and len(shown) == 15
+    assert min(shown) >= 1
+    assert result.output_limited is (max(shown) < 3)
+
+
+def test_overview_many_long_rejected_ads_still_fit(monkeypatch):
+    rejected = [{"ad": {"id": str(uuid4()), "name": "가" * 400}, "campaign_name": "나" * 400,
+                 "product_title": "다" * 400, "reason": "라" * 2000} for _ in range(200)]
+    serve(monkeypatch, attention={"total": 200, "rejected_total": 200, "rejected_ads": rejected, "pending_placements": []})
+    result = tools.aeko_get_campaign_overview(DOMAIN)
+    assert tools.text_bytes(result) <= tools.MAX_PAGE_CHARS
+    assert all(len(r.reason) <= tools.MAX_REJECTED_TEXT for r in result.attention.rejected_ads)
+    assert result.attention.rejected_ads_omitted == 200 - len(result.attention.rejected_ads)
+
+
+def test_overview_rejected_list_drops_before_campaigns(monkeypatch):
+    rejected = [{"ad": {"id": str(uuid4()), "name": "가" * 100}, "campaign_name": "나" * 100,
+                 "product_title": "다" * 100, "reason": "라" * 100} for _ in range(20)]
+    serve(monkeypatch, overview=overview_payload(_big_campaigns(5, 5, 3, text="가")),
+          attention={"total": 20, "rejected_total": 20, "rejected_ads": rejected, "pending_placements": []})
+    result = tools.aeko_get_campaign_overview(DOMAIN)
+    assert tools.text_bytes(result) <= tools.MAX_PAGE_CHARS
+    assert result.attention.rejected_ads_omitted == 20 - len(result.attention.rejected_ads)
 
 
 def test_overview_caps_rejected_list(monkeypatch):
@@ -316,6 +354,26 @@ def test_answer_failure_reports_mutation_state(monkeypatch, status, request_sent
     assert payload["mutation_state"] == state
     if status == 409:
         assert payload["code"] == "PLACEMENT_NOT_PENDING"
+
+
+@pytest.mark.parametrize("exc,state,err", [
+    (httpx.ReadTimeout("t"), "unknown", "WRITE_RESULT_UNKNOWN"),
+    (httpx.WriteTimeout("t"), "unknown", "WRITE_RESULT_UNKNOWN"),
+    (httpx.ConnectTimeout("t"), "not_attempted", "BACKEND_UNREACHABLE"),
+    (httpx.PoolTimeout("t"), "not_attempted", "BACKEND_UNREACHABLE"),
+    (httpx.ConnectError("t"), "not_attempted", "BACKEND_UNREACHABLE"),
+    (json.JSONDecodeError("bad", "x", 0), "unknown", "WRITE_RESULT_UNKNOWN"),
+    (RuntimeError("boom secret"), "unknown", "WRITE_RESULT_UNKNOWN"),
+])
+def test_answer_transport_failures_are_structured(monkeypatch, exc, state, err):
+    def post(*a, **k):
+        raise exc
+    monkeypatch.setattr(tools.client, "post", post)
+    with pytest.raises(AekoToolError) as caught:
+        tools.aeko_answer_open_placement(DOMAIN, ITEM, skip=True)
+    payload = code(caught)
+    assert payload["code"] == err and payload["mutation_state"] == state
+    assert "secret" not in str(caught.value)
 
 
 def test_answer_unexpected_response_is_unknown_state(monkeypatch):

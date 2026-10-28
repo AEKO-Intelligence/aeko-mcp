@@ -5,9 +5,9 @@ write. Numbers are the stored daily collection, never live provider data: a numb
 backend does not report stays null here, never 0.
 """
 
-import uuid
 from typing import Any, Optional
 
+import httpx
 from pydantic import BaseModel, ConfigDict
 
 from ..client import AekoAPIError
@@ -26,8 +26,14 @@ from ._structured import (
 BASE = "/api/marketing/campaign-overview"
 MAX_REJECTED_SHOWN = 20
 MAX_TEXT = 300
-# (ads per product, products per campaign, campaigns) tried in order until the page fits.
-_LADDER = ((None, None, None), (1, 10, None), (0, 5, 10), (0, 2, 3), (0, 0, 1), (0, 0, 0))
+MAX_REJECTED_TEXT = 120
+# (ads per product, products per campaign, campaigns, rejected ads) tried in order until the
+# page fits. Korean text is about 3 UTF-8 bytes a character, so ads shrink one at a time first.
+_LADDER = (
+    (None, None, None, MAX_REJECTED_SHOWN), (3, None, None, MAX_REJECTED_SHOWN),
+    (2, None, None, MAX_REJECTED_SHOWN), (1, None, None, MAX_REJECTED_SHOWN), (1, None, None, 5),
+    (1, 5, None, 5), (0, None, None, 5), (0, 5, 10, 5), (0, 2, 3, 0), (0, 0, 1, 0), (0, 0, 0, 0),
+)
 
 
 class _Model(BaseModel):
@@ -228,7 +234,7 @@ def _ad(raw: Any, numbers: dict[str, Any], mention: dict[str, Any]) -> OverviewA
 def _overview(
     data: dict[str, Any], numbers: dict[str, Any], attention: dict[str, Any], caps: tuple
 ) -> CampaignOverview:
-    ad_cap, product_cap, campaign_cap = caps
+    ad_cap, product_cap, campaign_cap, rejected_cap = caps
     campaign_numbers = _dict(numbers.get("campaigns") or {})
     product_numbers = _dict(numbers.get("products") or {})
     ad_numbers = _dict(numbers.get("ads") or {})
@@ -274,7 +280,7 @@ def _overview(
             products_omitted=max(len(raw_products) - len(products), 0),
         ))
     rejected = [_dict(item) for item in _list(attention.get("rejected_ads"))]
-    shown_rejected = rejected[:MAX_REJECTED_SHOWN]
+    shown_rejected = rejected[:rejected_cap]
     window = numbers.get("window")
     return CampaignOverview(
         account=data.get("account") if isinstance(data.get("account"), dict) else None,
@@ -295,10 +301,10 @@ def _overview(
                 RejectedAd(
                     ad_id=str(_dict(item.get("ad")).get("id") or ""),
                     campaign_id=_str(item.get("campaign_id")),
-                    campaign_name=_str(item.get("campaign_name")),
-                    product_title=_str(item.get("product_title")),
-                    ad_name=_str(_dict(item.get("ad")).get("name")),
-                    reason=_str(item.get("reason")),
+                    campaign_name=_str(item.get("campaign_name"), MAX_REJECTED_TEXT),
+                    product_title=_str(item.get("product_title"), MAX_REJECTED_TEXT),
+                    ad_name=_str(_dict(item.get("ad")).get("name"), MAX_REJECTED_TEXT),
+                    reason=_str(item.get("reason"), MAX_REJECTED_TEXT),
                 )
                 for item in shown_rejected
             ],
@@ -308,6 +314,15 @@ def _overview(
         ),
         campaigns=campaigns,
         campaigns_omitted=max(len(rows) - len(campaigns), 0),
+    )
+
+
+def _shown(result: CampaignOverview) -> tuple[int, int, int, int]:
+    """Campaigns, products, ads and rejected ads a result lists, to tell whether it was trimmed."""
+    products = [p for c in result.campaigns for p in c.products]
+    return (
+        len(result.campaigns), len(products), sum(len(p.ads) for p in products),
+        len(result.attention.rejected_ads),
     )
 
 
@@ -348,15 +363,13 @@ def aeko_get_campaign_overview(
         data = _dict(client.get(BASE, params={**params, "ads_per_product": per_product}))
         numbers = _dict(client.get(f"{BASE}/numbers", params={**params, "days": days}))
         attention = _dict(client.get(f"{BASE}/attention", params=params))
-        result = None
+        full = _overview(data, numbers, attention, _LADDER[0])
         for caps in _LADDER:
-            result = _overview(data, numbers, attention, caps)
+            result = full if caps == _LADDER[0] else _overview(data, numbers, attention, caps)
             if text_bytes(result) <= MAX_PAGE_CHARS:
-                result.output_limited = caps != _LADDER[0]
-                break
-        else:
-            raise AekoToolError("OUTPUT_TOO_LARGE", "The campaign overview is too large to return.")
-        return result
+                result.output_limited = _shown(result) != _shown(full)
+                return result
+        raise AekoToolError("OUTPUT_TOO_LARGE", "The campaign overview is too large to return.")
 
 
 @mcp.tool(**tool_spec("List a product's ads in a campaign", READ_ONLY, structured_output=True))
@@ -413,7 +426,7 @@ def aeko_list_open_placements(domain_id: str, ad_account_id: Optional[str] = Non
 
     Each item has the saved ad's copy, the product, why it is open, and the ad groups it may go
     into (options with campaign_id, ad_group_id, label, score). Newest first, up to 200 on the
-    backend. Use ad_set_item_id and an options ad_group_id with aeko_answer_open_placement. An
+    backend; if more are open, the rest appear once earlier ones are answered (no offset). Use ad_set_item_id and an options ad_group_id with aeko_answer_open_placement. An
     item with no options left can only be skipped. ad_account_id defaults to the connected account.
     """
     with read_boundary():
@@ -456,14 +469,15 @@ def aeko_answer_open_placement(
     ad_group_id: Optional[str] = None,
     skip: bool = False,
 ) -> PlacementAnswer:
-    """WRITE: place one open ad into a chosen ad group, or skip it for good. Not repeatable.
+    """WRITE: place one open ad into a chosen ad group, or skip it for good.
 
-    Show the person the exact choice (the ad's copy and the campaign > ad group label, or that
-    it will be skipped) and get an explicit yes first. Give exactly one of ad_group_id (from that
+    Show the person the exact choice (ad copy plus the campaign > ad group label, or the skip)
+    and get an explicit yes first. Give exactly one of ad_group_id (from that
     item's options in aeko_list_open_placements) or skip=true. Placing creates the ad at OpenAI
-    now, always PAUSED; it does not follow the workflow's turn-on setting, and nothing starts
-    delivering until the person turns it on. Skipping leaves the ad out for good. An already
-    answered item fails with PLACEMENT_NOT_PENDING. Pro+ only.
+    now, always PAUSED; it does not follow the workflow's turn-on setting, and nothing delivers
+    until the person turns it on. Skipping leaves the ad out for good. Repeating the identical
+    answer returns the first result, so after mutation_state=unknown repeat the same call to
+    recover; a different answer fails with PLACEMENT_NOT_PENDING. Pro+ only.
     """
     domain = uuid_arg(domain_id, "domain_id")
     item = uuid_arg(ad_set_item_id, "ad_set_item_id")
@@ -482,6 +496,24 @@ def aeko_answer_open_placement(
         else:
             state = "unknown"
         raise api_error(exc, mutation_state=state) from None
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout):
+        raise AekoToolError(
+            "BACKEND_UNREACHABLE", "AEKO could not be reached, so the answer was not sent."
+        ) from None
+    except httpx.TimeoutException:
+        raise AekoToolError(
+            "WRITE_RESULT_UNKNOWN",
+            "AEKO did not respond before the timeout. The answer may have been applied; repeat the "
+            "identical call to learn the result.",
+            mutation_state="unknown",
+        ) from None
+    except Exception:  # noqa: BLE001 - JSON decode errors and anything else after submission
+        raise AekoToolError(
+            "WRITE_RESULT_UNKNOWN",
+            "The request failed after it may have reached AEKO. Repeat the identical call to "
+            "learn the result.",
+            mutation_state="unknown",
+        ) from None
     try:
         data = _dict(data)
         if data.get("status") not in {"placed", "skipped"} or data.get("ad_set_item_id") != item:
