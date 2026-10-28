@@ -1,4 +1,6 @@
 """aeko-mcp: F0 idempotency-header forwarding + marketing tool guardrails (no network)."""
+import pytest
+
 from aeko_mcp import client as client_mod
 from aeko_mcp.tools import marketing
 
@@ -368,7 +370,7 @@ def test_ad_creative_name_only_update_does_not_blank_creative(monkeypatch):
 
 def test_create_ad_group_requires_exactly_one_placement():
     out = marketing.aeko_create_ad_group_from_context(
-        "d1", "Ad Group A", ["hint"], [{"store_product_id": "p1"}], "idem",
+        "d1", ad_group_name="Ad Group A", context_hints=["hint"], ads=[{"store_product_id": "p1"}], idempotency_key="idem",
         campaign_id="c1", new_campaign_name="Xyz",  # both -> invalid
     )
     assert "exactly one placement" in out
@@ -376,7 +378,7 @@ def test_create_ad_group_requires_exactly_one_placement():
 
 def test_create_ad_group_rejects_short_name():
     out = marketing.aeko_create_ad_group_from_context(
-        "d1", "AG", ["hint"], [{"store_product_id": "p1"}], "idem", campaign_id="c1",
+        "d1", ad_group_name="AG", context_hints=["hint"], ads=[{"store_product_id": "p1"}], idempotency_key="idem", campaign_id="c1",
     )
     assert "at least 3 characters" in out
 
@@ -384,9 +386,123 @@ def test_create_ad_group_rejects_short_name():
 def test_create_ad_group_rejects_too_many_ads():
     ads = [{"store_product_id": f"p{i}"} for i in range(101)]
     out = marketing.aeko_create_ad_group_from_context(
-        "d1", "Ad Group A", ["hint"], ads, "idem", campaign_id="c1",
+        "d1", ad_group_name="Ad Group A", context_hints=["hint"], ads=ads, idempotency_key="idem", campaign_id="c1",
     )
     assert "at most 100 ads" in out
+
+
+EXISTING_GROUP = "11111111-1111-4111-8111-111111111111"
+EXISTING_CAMPAIGN = "22222222-2222-4222-8222-222222222222"
+
+
+def test_create_ads_in_existing_group_sends_group_id_and_campaign(monkeypatch):
+    calls = []
+
+    def fake_post(path, json=None, headers=None):
+        calls.append({"path": path, "json": json, "headers": headers})
+        return {"ads": []}
+
+    monkeypatch.setattr(marketing.client, "post", fake_post)
+    monkeypatch.setattr(marketing.client, "get", lambda *a, **k: pytest.fail("no campaign read needed"))
+    out = marketing.aeko_create_ad_group_from_context(
+        "d1", ads=[{"store_product_id": "p1"}], idempotency_key="idem-existing",
+        campaign_id=EXISTING_CAMPAIGN, ad_group_id=EXISTING_GROUP, ad_account_id="acct",
+    )
+    assert "existing ad group (paused)" in out
+    assert calls == [{
+        "path": "/api/marketing/ad-groups/from-context",
+        "json": {
+            "domain_id": "d1", "ad_account_id": "acct",
+            "placement": {"campaign_id": EXISTING_CAMPAIGN},
+            "ad_group": {"id": EXISTING_GROUP},
+            "ads": [{"store_product_id": "p1"}],
+        },
+        "headers": {"Idempotency-Key": "idem-existing"},
+    }]
+
+
+@pytest.mark.parametrize("kwargs,needle", [
+    ({"campaign_id": None}, "needs `campaign_id`"),
+    ({"ad_group_id": "not-a-uuid"}, "UUID"),
+    ({"new_campaign_name": "New one", "new_campaign_budget_micros": 2_000_000}, "new_campaign_name"),
+    ({"ad_group_name": "Name"}, "must be left out"),
+    ({"context_hints": ["h"]}, "must be left out"),
+    ({"max_bid_micros": 60_000}, "must be left out"),
+    ({"bidding_type": "clicks"}, "only when creating a new campaign"),
+    ({"start_time": 1_800_000_000}, "only when creating a new campaign"),
+])
+def test_create_ads_in_existing_group_rejects_new_group_fields(monkeypatch, kwargs, needle):
+    monkeypatch.setattr(marketing.client, "post", lambda *a, **k: pytest.fail("backend called"))
+    args = {"campaign_id": EXISTING_CAMPAIGN, "ad_group_id": EXISTING_GROUP}
+    args.update(kwargs)
+    out = marketing.aeko_create_ad_group_from_context(
+        "d1", ads=[{"store_product_id": "p1"}], idempotency_key="idem", **args,
+    )
+    assert needle in out
+
+
+def test_create_ads_in_existing_group_still_needs_ads_and_key(monkeypatch):
+    monkeypatch.setattr(marketing.client, "post", lambda *a, **k: pytest.fail("backend called"))
+    common = {"campaign_id": EXISTING_CAMPAIGN, "ad_group_id": EXISTING_GROUP}
+    assert "`ads` is required" in marketing.aeko_create_ad_group_from_context(
+        "d1", ads=None, idempotency_key="idem", **common)
+    assert "`idempotency_key` is required" in marketing.aeko_create_ad_group_from_context(
+        "d1", ads=[{"store_product_id": "p1"}], idempotency_key=None, **common)
+
+
+def test_create_ads_blank_values_count_as_left_out(monkeypatch):
+    calls = []
+    monkeypatch.setattr(marketing.client, "post", lambda path, json=None, headers=None: calls.append(json) or {})
+    marketing.aeko_create_ad_group_from_context(
+        "d1", ads=[{"store_product_id": "p1"}], idempotency_key="idem",
+        campaign_id=EXISTING_CAMPAIGN, ad_group_id=EXISTING_GROUP, ad_group_name="", context_hints=[],
+        new_campaign_name="", conversion_event_setting_ids=[], targeting={}, bidding_type="", ad_account_id="",
+    )
+    assert calls == [{
+        "domain_id": "d1", "placement": {"campaign_id": EXISTING_CAMPAIGN},
+        "ad_group": {"id": EXISTING_GROUP}, "ads": [{"store_product_id": "p1"}],
+    }]
+
+
+def test_blank_ad_group_id_stays_in_new_group_mode(monkeypatch):
+    calls = []
+    monkeypatch.setattr(marketing.client, "get", lambda path: {"bidding_type": "impressions"})
+    monkeypatch.setattr(marketing.client, "post", lambda path, json=None, headers=None: calls.append(json) or {})
+    marketing.aeko_create_ad_group_from_context(
+        "d1", ad_group_name="Ad Group A", context_hints=["hint"], ads=[{"store_product_id": "p1"}],
+        idempotency_key="idem", campaign_id="c1", ad_group_id="",
+    )
+    assert "new" in calls[0]["ad_group"] and "id" not in calls[0]["ad_group"]
+
+
+def test_create_schema_requires_domain_ads_and_key():
+    registered = {tool.name: tool for tool in marketing.mcp._tool_manager.list_tools()}
+    schema = registered["aeko_create_ad_group_from_context"].parameters
+    assert sorted(schema["required"]) == ["ads", "domain_id", "idempotency_key"]
+
+
+def test_create_ads_in_existing_group_surfaces_backend_error(monkeypatch):
+    def fake_post(*a, **k):
+        raise RuntimeError("OPENAI_ADS_AD_GROUP_CAMPAIGN_MISMATCH")
+
+    monkeypatch.setattr(marketing.client, "post", fake_post)
+    out = marketing.aeko_create_ad_group_from_context(
+        "d1", ads=[{"store_product_id": "p1"}], idempotency_key="idem",
+        campaign_id=EXISTING_CAMPAIGN, ad_group_id=EXISTING_GROUP,
+    )
+    assert "Failed to add ads to the ad group" in out
+
+
+def test_create_new_group_default_bid_unchanged(monkeypatch):
+    calls = []
+    monkeypatch.setattr(marketing.client, "get", lambda path: {"bidding_type": "impressions"})
+    monkeypatch.setattr(
+        marketing.client, "post", lambda path, json=None, headers=None: calls.append(json) or {}
+    )
+    marketing.aeko_create_ad_group_from_context(
+        "d1", ad_group_name="Ad Group A", context_hints=["hint"], ads=[{"store_product_id": "p1"}], idempotency_key="idem", campaign_id="c1",
+    )
+    assert calls[0]["ad_group"]["new"]["bidding_config"]["max_bid_micros"] == 1_000_000
 
 
 def test_create_new_conversion_campaign_forwards_goal_targeting_and_schedule(monkeypatch):
@@ -399,10 +515,10 @@ def test_create_new_conversion_campaign_forwards_goal_targeting_and_schedule(mon
     monkeypatch.setattr(marketing.client, "post", fake_post)
     out = marketing.aeko_create_ad_group_from_context(
         "d1",
-        "Conversion group",
-        ["ready to buy"],
-        [{"store_product_id": "p1"}],
-        "idem-conversion",
+        ad_group_name="Conversion group",
+        context_hints=["ready to buy"],
+        ads=[{"store_product_id": "p1"}],
+        idempotency_key="idem-conversion",
         max_bid_micros=3_000_000,
         new_campaign_name="Conversion campaign",
         new_campaign_budget_micros=20_000_000,
@@ -443,10 +559,10 @@ def test_create_new_campaign_preserves_legacy_impression_default(monkeypatch):
 
     marketing.aeko_create_ad_group_from_context(
         "d1",
-        "Legacy CPM group",
-        ["hint"],
-        [{"store_product_id": "p1"}],
-        "idem-cpm",
+        ad_group_name="Legacy CPM group",
+        context_hints=["hint"],
+        ads=[{"store_product_id": "p1"}],
+        idempotency_key="idem-cpm",
         new_campaign_name="Legacy CPM campaign",
         new_campaign_budget_micros=10_000_000,
     )
@@ -472,10 +588,10 @@ def test_create_in_existing_campaign_reads_goal_before_write(monkeypatch):
 
     out = marketing.aeko_create_ad_group_from_context(
         "d1",
-        "Existing CPC group",
-        ["hint"],
-        [{"store_product_id": "p1"}],
-        "idem-cpc",
+        ad_group_name="Existing CPC group",
+        context_hints=["hint"],
+        ads=[{"store_product_id": "p1"}],
+        idempotency_key="idem-cpc",
         campaign_id="c1",
     )
 
@@ -495,10 +611,10 @@ def test_existing_campaign_rejects_new_campaign_fields_without_io(monkeypatch):
 
     out = marketing.aeko_create_ad_group_from_context(
         "d1",
-        "Existing group",
-        ["hint"],
-        [{"store_product_id": "p1"}],
-        "idem",
+        ad_group_name="Existing group",
+        context_hints=["hint"],
+        ads=[{"store_product_id": "p1"}],
+        idempotency_key="idem",
         campaign_id="c1",
         bidding_type="clicks",
     )
@@ -510,29 +626,29 @@ def test_existing_campaign_rejects_new_campaign_fields_without_io(monkeypatch):
 
 def test_new_campaign_goal_and_schedule_validation_happens_before_write(monkeypatch):
     flag = _no_write(monkeypatch)
-    base = (
-        "d1",
-        "New campaign group",
-        ["hint"],
-        [{"store_product_id": "p1"}],
-        "idem",
-    )
+    base = {
+        "domain_id": "d1",
+        "ad_group_name": "New campaign group",
+        "context_hints": ["hint"],
+        "ads": [{"store_product_id": "p1"}],
+        "idempotency_key": "idem",
+    }
 
     missing_event = marketing.aeko_create_ad_group_from_context(
-        *base,
+        **base,
         new_campaign_name="Conversion campaign",
         new_campaign_budget_micros=10_000_000,
         bidding_type="conversions",
     )
     wrong_event = marketing.aeko_create_ad_group_from_context(
-        *base,
+        **base,
         new_campaign_name="Clicks campaign",
         new_campaign_budget_micros=10_000_000,
         bidding_type="clicks",
         conversion_event_setting_ids=["event-1"],
     )
     bad_schedule = marketing.aeko_create_ad_group_from_context(
-        *base,
+        **base,
         new_campaign_name="Scheduled campaign",
         new_campaign_budget_micros=10_000_000,
         start_time=1_800_000_000,
@@ -756,6 +872,7 @@ def test_campaign_discovery_tools_register_with_runtime_schemas():
         "targeting",
         "start_time",
         "end_time",
+        "ad_group_id",
     } <= create_schema.keys()
 
 

@@ -182,3 +182,52 @@ def test_writing_format_create_carries_stable_optional_idempotency_key(monkeypat
     with pytest.raises(AekoToolInputError):
         assistant_tasks.aeko_create_ad_copy_format(domain, "Answer", "Title", "Body", [], ["en"], "")
     assert len(calls) == 1
+
+
+def _auto_add(**updates):
+    data = {"placement": "by_product", "campaign_ids": None, "per_product_daily_cap": 2,
+            "policy": "paused", "rationale": "Most ads land in one campaign."}
+    data.update(updates)
+    return data
+
+
+def test_auto_add_settings_proposal_is_saved_with_one_evidence_id(monkeypatch):
+    calls = []
+    monkeypatch.setattr(assistant_tasks.client, "post", lambda path, *, json: calls.append((path, json)) or {"id": "o1"})
+    for data in (
+        _auto_add(),
+        _auto_add(campaign_ids=[CONTEXT]),
+        _auto_add(placement="ask", per_product_daily_cap=10, policy="active"),
+        _auto_add(placement="fixed", campaign_id=CONTEXT),
+    ):
+        assistant_tasks.aeko_save_action_output(
+            ITEM, CLAIM, "k", "auto_add_settings_proposal", "assistant-output-v1", data=data, evidence_ids=[EVIDENCE])
+    assert len(calls) == 4
+    assert calls[0][1]["kind"] == "auto_add_settings_proposal" and calls[0][1]["markdown"] is None
+    assert calls[0][1]["evidence_ids"] == [EVIDENCE]
+
+
+def test_auto_add_settings_proposal_validation_branches(monkeypatch):
+    monkeypatch.setattr(assistant_tasks.client, "post", lambda *a, **k: pytest.fail("backend called"))
+    invalid = [
+        _auto_add(placement="everywhere"), _auto_add(policy="on"),
+        _auto_add(per_product_daily_cap=0), _auto_add(per_product_daily_cap=11),
+        _auto_add(per_product_daily_cap=True), _auto_add(rationale="  "), _auto_add(rationale="x" * 1201),
+        _auto_add(campaign_ids=[]), _auto_add(campaign_ids=["bad"]), _auto_add(campaign_ids=[CONTEXT, CONTEXT.upper()]),
+        _auto_add(rationale=" " * 2 + "x" * 1200), _auto_add(campaign_ids="all"),
+        _auto_add(placement="fixed"), _auto_add(placement="fixed", campaign_id=CONTEXT, campaign_ids=[CONTEXT]),
+        _auto_add(placement="fixed", campaign_id="bad"), _auto_add(campaign_id=CONTEXT),
+        _auto_add(extra=1),
+    ]
+    missing = _auto_add()
+    del missing["policy"]
+    invalid.append(missing)
+    for data in invalid:
+        with pytest.raises(AekoToolInputError):
+            assistant_tasks.aeko_save_action_output(
+                ITEM, CLAIM, "k", "auto_add_settings_proposal", "assistant-output-v1", data=data, evidence_ids=[EVIDENCE])
+    for kwargs in ({"data": _auto_add()}, {"data": _auto_add(), "evidence_ids": [EVIDENCE, EVIDENCE]},
+                   {"data": _auto_add(), "evidence_ids": [EVIDENCE], "markdown": "text"}, {"evidence_ids": [EVIDENCE]}):
+        with pytest.raises(AekoToolInputError):
+            assistant_tasks.aeko_save_action_output(
+                ITEM, CLAIM, "k", "auto_add_settings_proposal", "assistant-output-v1", **kwargs)
