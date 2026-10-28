@@ -28,6 +28,7 @@ All routes are Pro+ gated server-side; an under-tier account surfaces the backen
 """
 import json
 from typing import Any, Optional
+from uuid import UUID
 
 from ..client import error_text
 from ..server import client, mcp
@@ -779,11 +780,11 @@ def aeko_set_ad_automation_enabled(domain_id: str, enabled: bool) -> str:
 @mcp.tool(**tool_spec("Create ad group from context", ADDITIVE_ONCE_EXTERNAL))
 def aeko_create_ad_group_from_context(
     domain_id: str,
-    ad_group_name: str,
-    context_hints: list[str],
-    ads: list[dict],
-    idempotency_key: str,
-    max_bid_micros: int = 1_000_000,
+    ad_group_name: Optional[str] = None,
+    context_hints: Optional[list[str]] = None,
+    ads: Optional[list[dict]] = None,
+    idempotency_key: Optional[str] = None,
+    max_bid_micros: Optional[int] = None,
     campaign_id: Optional[str] = None,
     new_campaign_name: Optional[str] = None,
     new_campaign_budget_micros: Optional[int] = None,
@@ -793,28 +794,76 @@ def aeko_create_ad_group_from_context(
     targeting: Optional[dict] = None,
     start_time: Optional[int] = None,
     end_time: Optional[int] = None,
+    ad_group_id: Optional[str] = None,
 ) -> str:
-    """Create one OpenAI Ads ad group with several product ads, all created paused for review.
+    """Create product ads from context, all PAUSED: in a new ad group, or in an existing one.
 
-    Use it to turn a cluster of reviews across products into one ad group: write broader
-    context_hints (e.g. sensitive-skin reviews of two products become ["민감성 피부에 좋은 제품"])
-    and add one ad per product.
+    New group: ad_group_name, context_hints (broader, e.g. sensitive-skin reviews of two products
+    become ["민감성 피부에 좋은 제품"]) and one ad per product. Existing group: pass ad_group_id
+    (a standard group) plus campaign_id (its campaign); leave out ad_group_name, context_hints,
+    max_bid_micros and new_campaign_*. The group keeps its own bid and goal.
 
-    Placement: campaign_id, or new_campaign_name plus new_campaign_budget_micros (at least
-    1,000,000). New campaigns only: bidding_type impressions (default), clicks or conversions;
-    conversions needs one eligible ID from aeko_list_conversion_event_settings; targeting uses IDs
-    from aeko_lookup_ad_locations; start_time/end_time are epoch seconds.
+    New-group placement: campaign_id, or new_campaign_name plus new_campaign_budget_micros (min
+    1,000,000). New campaigns only: bidding_type impressions (default), clicks or conversions (one
+    ID from aeko_list_conversion_event_settings); targeting from aeko_lookup_ad_locations;
+    start_time/end_time epoch seconds. max_bid_micros (default 1,000,000) is per billing event.
 
-    max_bid_micros is per billing event, in account currency: 60,000 = $0.06 per impression,
-    per click for clicks, target CPA for conversions. ads: up to 100, each with
-    store_product_id and optional source_review_id, title, body, target_language (omit title
-    and body to have AEKO write them). Reuse the same idempotency_key on retries.
+    ads: up to 100, each store_product_id plus optional source_review_id, title, body,
+    target_language (omit title and body to have AEKO write them). Reuse idempotency_key on retries.
     """
-    if len(ads or []) > MAX_ADS_PER_AD_GROUP:
+    if not isinstance(idempotency_key, str) or not idempotency_key.strip():
+        return "# `idempotency_key` is required (reuse the same one on retries)."
+    if not isinstance(ads, list) or not ads:
+        return "# `ads` is required: at least one ad with a `store_product_id`."
+    if len(ads) > MAX_ADS_PER_AD_GROUP:
         return (
             f"# OpenAI Ads allows at most {MAX_ADS_PER_AD_GROUP} ads per ad group; split the "
             f"cluster into multiple ad groups (got {len(ads)})."
         )
+    if ad_group_id is not None:
+        # Backend: placement needs campaign_id or new_campaign; an existing group cannot attach to a
+        # new campaign (OPENAI_ADS_PLACEMENT_INVALID), and a given campaign must own the group
+        # (OPENAI_ADS_AD_GROUP_CAMPAIGN_MISMATCH).
+        try:
+            ad_group_id = str(UUID(str(ad_group_id)))
+        except ValueError:
+            return "# `ad_group_id` must be an existing ad group's UUID."
+        if not campaign_id:
+            return "# `ad_group_id` needs `campaign_id`, the campaign that owns that ad group."
+        if new_campaign_name or new_campaign_budget_micros is not None:
+            return "# `ad_group_id` cannot be combined with `new_campaign_name` or `new_campaign_budget_micros`."
+        if ad_group_name is not None or context_hints is not None or max_bid_micros is not None:
+            return (
+                "# `ad_group_id` adds ads to an existing group, so `ad_group_name`, `context_hints` "
+                "and `max_bid_micros` must be left out; the group keeps its own."
+            )
+        if any(
+            value is not None
+            for value in (bidding_type, conversion_event_setting_ids, targeting, start_time, end_time)
+        ):
+            return (
+                "# `bidding_type`, `conversion_event_setting_ids`, `targeting`, `start_time`, and "
+                "`end_time` apply only when creating a new campaign."
+            )
+        payload = {
+            "domain_id": domain_id,
+            "placement": {"campaign_id": campaign_id},
+            "ad_group": {"id": ad_group_id},
+            "ads": ads,
+        }
+        if ad_account_id:
+            payload["ad_account_id"] = ad_account_id
+        result, err = _safe(
+            client.post,
+            "/api/marketing/ad-groups/from-context",
+            json=payload,
+            headers=_idem_headers(idempotency_key),
+        )
+        if err:
+            return f"# Failed to add ads to the ad group\n\n```\n{err}\n```"
+        return _json_block("Ads added to the existing ad group (paused)", result)
+    if max_bid_micros is None:
+        max_bid_micros = 1_000_000
     if len((ad_group_name or "").strip()) < MIN_NAME_LENGTH:
         return (
             f"# `ad_group_name` must be at least {MIN_NAME_LENGTH} characters "

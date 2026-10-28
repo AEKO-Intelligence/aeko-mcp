@@ -108,7 +108,11 @@ Tier shorthand:
 | `aeko_sync_feed` | Queue OpenAI Ads product-feed sync. | No | Pro+ |
 | `aeko_list_conversion_event_settings` | List account-scoped conversion events with optimization eligibility. | No | Pro+ |
 | `aeko_lookup_ad_locations` | Resolve account-scoped OpenAI Ads location IDs for targeting. | No | Pro+ |
-| `aeko_create_ad_group_from_context` | Create a paused CPM, CPC, or oCPC context-grounded campaign/ad group and ads. | No | Pro+ |
+| `aeko_create_ad_group_from_context` | Create a paused CPM, CPC, or oCPC context-grounded campaign/ad group and ads, or add paused ads to an existing standard ad group (`ad_group_id`). | No | Pro+ |
+| `aeko_get_campaign_overview` | Read the 캠페인 page: campaigns, products, newest ads, stored daily numbers (null = no number yet) and 확인 필요. | No | Pro+ |
+| `aeko_list_product_ads` | Page a product's live ads inside one campaign. | No | Pro+ |
+| `aeko_list_open_placements` | List ads that auto-add left open for a person to place (확인 필요). | No | Pro+ |
+| `aeko_answer_open_placement` | Place one open ad into a chosen ad group (created paused) or skip it, after the person confirms. | No | Pro+ |
 | `aeko_update_ad_group` | Preview or apply guarded ad-group copy, Context-hint, and maximum-bid changes. | No | Pro+ |
 | `aeko_update_ad_creative` | Replace an existing ad's complete creative after a read-before-write. | No | Pro+ |
 | `aeko_set_campaign_state` | Pause, resume, or archive a campaign. | No | Pro+ |

@@ -4,6 +4,14 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.32.0] — 2026-10-28
+
+- Add the 캠페인 page for agents. `aeko_get_campaign_overview` merges the overview, stored daily numbers and 확인 필요 into one bounded result (campaigns -> products -> newest ads; large accounts are trimmed and flagged with `*_omitted` / `output_limited`). `aeko_list_product_ads` pages one product's ads in a campaign.
+  - Numbers are the stored daily collection, not live provider data. A number AEKO has not collected is `null`, never 0.
+- Add `aeko_list_open_placements` and `aeko_answer_open_placement` for the ads 컨텍스트 광고 자동 추가 left open. Answering places the ad into a chosen group, created paused (it does not follow the workflow's turn-on setting), or skips it for good. It needs the person's explicit yes, fails with `mutation_state` on error, and is not repeatable. Requires backend support for MCP tokens on `/api/marketing/campaign-overview/placements`.
+- `aeko_create_ad_group_from_context` takes `ad_group_id` to add paused ads to an existing standard ad group. It needs `campaign_id` (that group's campaign) and excludes `ad_group_name`, `context_hints`, `max_bid_micros` and `new_campaign_*`. `ad_group_name`, `context_hints`, `ads` and `idempotency_key` are now checked in the tool instead of required by the schema; `max_bid_micros` still defaults to 1,000,000 for a new group.
+- `aeko_save_action_output` accepts the `auto_add_settings_proposal` kind (placement, campaign ids, per-product daily cap, policy, rationale; one frozen evidence ID).
+
 ## [0.31.2] — 2026-10-28
 
 - `review_based_ads` accepts `creative_strategy: "review_default"` and uses it when none is given. It is AEKO's one ad writer and the backend's own default since 2026-10-28. Before this, the MCP rejected the value the backend advertises as default and sent `context` instead.

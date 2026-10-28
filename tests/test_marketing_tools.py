@@ -1,4 +1,6 @@
 """aeko-mcp: F0 idempotency-header forwarding + marketing tool guardrails (no network)."""
+import pytest
+
 from aeko_mcp import client as client_mod
 from aeko_mcp.tools import marketing
 
@@ -389,6 +391,89 @@ def test_create_ad_group_rejects_too_many_ads():
     assert "at most 100 ads" in out
 
 
+EXISTING_GROUP = "11111111-1111-4111-8111-111111111111"
+EXISTING_CAMPAIGN = "22222222-2222-4222-8222-222222222222"
+
+
+def test_create_ads_in_existing_group_sends_group_id_and_campaign(monkeypatch):
+    calls = []
+
+    def fake_post(path, json=None, headers=None):
+        calls.append({"path": path, "json": json, "headers": headers})
+        return {"ads": []}
+
+    monkeypatch.setattr(marketing.client, "post", fake_post)
+    monkeypatch.setattr(marketing.client, "get", lambda *a, **k: pytest.fail("no campaign read needed"))
+    out = marketing.aeko_create_ad_group_from_context(
+        "d1", ads=[{"store_product_id": "p1"}], idempotency_key="idem-existing",
+        campaign_id=EXISTING_CAMPAIGN, ad_group_id=EXISTING_GROUP, ad_account_id="acct",
+    )
+    assert "existing ad group (paused)" in out
+    assert calls == [{
+        "path": "/api/marketing/ad-groups/from-context",
+        "json": {
+            "domain_id": "d1", "ad_account_id": "acct",
+            "placement": {"campaign_id": EXISTING_CAMPAIGN},
+            "ad_group": {"id": EXISTING_GROUP},
+            "ads": [{"store_product_id": "p1"}],
+        },
+        "headers": {"Idempotency-Key": "idem-existing"},
+    }]
+
+
+@pytest.mark.parametrize("kwargs,needle", [
+    ({"campaign_id": None}, "needs `campaign_id`"),
+    ({"ad_group_id": "not-a-uuid"}, "UUID"),
+    ({"new_campaign_name": "New one", "new_campaign_budget_micros": 2_000_000}, "new_campaign_name"),
+    ({"ad_group_name": "Name"}, "must be left out"),
+    ({"context_hints": ["h"]}, "must be left out"),
+    ({"max_bid_micros": 60_000}, "must be left out"),
+    ({"bidding_type": "clicks"}, "only when creating a new campaign"),
+    ({"start_time": 1_800_000_000}, "only when creating a new campaign"),
+])
+def test_create_ads_in_existing_group_rejects_new_group_fields(monkeypatch, kwargs, needle):
+    monkeypatch.setattr(marketing.client, "post", lambda *a, **k: pytest.fail("backend called"))
+    args = {"campaign_id": EXISTING_CAMPAIGN, "ad_group_id": EXISTING_GROUP}
+    args.update(kwargs)
+    out = marketing.aeko_create_ad_group_from_context(
+        "d1", ads=[{"store_product_id": "p1"}], idempotency_key="idem", **args,
+    )
+    assert needle in out
+
+
+def test_create_ads_in_existing_group_still_needs_ads_and_key(monkeypatch):
+    monkeypatch.setattr(marketing.client, "post", lambda *a, **k: pytest.fail("backend called"))
+    common = {"campaign_id": EXISTING_CAMPAIGN, "ad_group_id": EXISTING_GROUP}
+    assert "`ads` is required" in marketing.aeko_create_ad_group_from_context(
+        "d1", idempotency_key="idem", **common)
+    assert "`idempotency_key` is required" in marketing.aeko_create_ad_group_from_context(
+        "d1", ads=[{"store_product_id": "p1"}], **common)
+
+
+def test_create_ads_in_existing_group_surfaces_backend_error(monkeypatch):
+    def fake_post(*a, **k):
+        raise RuntimeError("OPENAI_ADS_AD_GROUP_CAMPAIGN_MISMATCH")
+
+    monkeypatch.setattr(marketing.client, "post", fake_post)
+    out = marketing.aeko_create_ad_group_from_context(
+        "d1", ads=[{"store_product_id": "p1"}], idempotency_key="idem",
+        campaign_id=EXISTING_CAMPAIGN, ad_group_id=EXISTING_GROUP,
+    )
+    assert "Failed to add ads to the ad group" in out
+
+
+def test_create_new_group_default_bid_unchanged(monkeypatch):
+    calls = []
+    monkeypatch.setattr(marketing.client, "get", lambda path: {"bidding_type": "impressions"})
+    monkeypatch.setattr(
+        marketing.client, "post", lambda path, json=None, headers=None: calls.append(json) or {}
+    )
+    marketing.aeko_create_ad_group_from_context(
+        "d1", "Ad Group A", ["hint"], [{"store_product_id": "p1"}], "idem", campaign_id="c1",
+    )
+    assert calls[0]["ad_group"]["new"]["bidding_config"]["max_bid_micros"] == 1_000_000
+
+
 def test_create_new_conversion_campaign_forwards_goal_targeting_and_schedule(monkeypatch):
     calls = []
 
@@ -756,6 +841,7 @@ def test_campaign_discovery_tools_register_with_runtime_schemas():
         "targeting",
         "start_time",
         "end_time",
+        "ad_group_id",
     } <= create_schema.keys()
 
 

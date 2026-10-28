@@ -125,13 +125,14 @@ def aeko_save_action_output(
 
     Client-written kinds are ``report_markdown``,
     ``ad_copy_format_proposal``, ``context_group_proposal`` and
-    ``ad_rule_proposal``. Tracking receipts are server-created by
+    ``ad_rule_proposal`` and ``auto_add_settings_proposal`` (its one frozen
+    workflow-card evidence ID; proposes settings only, never applies them). Tracking receipts are server-created by
     ``aeko_track_task_suggestions``; client success summaries cannot create
     them. A local file path is not a report.
     """
     item = _item(item_id)
     claim = uuid_arg(claim_id, "claim_id")
-    if kind not in {"report_markdown", "ad_copy_format_proposal", "context_group_proposal", "ad_rule_proposal"}:
+    if kind not in {"report_markdown", "ad_copy_format_proposal", "context_group_proposal", "ad_rule_proposal", "auto_add_settings_proposal"}:
         raise AekoToolInputError("INVALID_ARGUMENT", "Unsupported client-written output kind.")
     if schema_version != "assistant-output-v1":
         raise AekoToolInputError("INVALID_ARGUMENT", "schema_version must be assistant-output-v1.")
@@ -157,6 +158,35 @@ def aeko_save_action_output(
             raise AekoToolInputError("INVALID_ARGUMENT", "Rule changes must contain concrete values.")
         if not isinstance(evidence_ids, list) or len(evidence_ids) != 1:
             raise AekoToolInputError("INVALID_ARGUMENT", "A rule proposal needs its one frozen rule evidence ID.")
+    if kind == "auto_add_settings_proposal":
+        required = {"placement", "per_product_daily_cap", "policy", "rationale"}
+        optional = {"campaign_ids", "campaign_id"}
+        if markdown is not None or not isinstance(data, dict) or required - set(data) or set(data) - required - optional:
+            raise AekoToolInputError("INVALID_ARGUMENT", "An auto-add proposal needs its exact structured fields and no Markdown.")
+        if data["placement"] not in {"by_product", "fixed", "ask"}:
+            raise AekoToolInputError("INVALID_ARGUMENT", "placement must be by_product, fixed or ask.")
+        if data["policy"] not in {"paused", "active"}:
+            raise AekoToolInputError("INVALID_ARGUMENT", "policy must be paused or active.")
+        cap = data["per_product_daily_cap"]
+        if isinstance(cap, bool) or not isinstance(cap, int) or not 1 <= cap <= 10:
+            raise AekoToolInputError("INVALID_ARGUMENT", "per_product_daily_cap must be an integer from 1 to 10.")
+        if not isinstance(data["rationale"], str) or not 1 <= len(data["rationale"].strip()) <= 1200:
+            raise AekoToolInputError("INVALID_ARGUMENT", "rationale must be 1–1200 characters.")
+        ids = data.get("campaign_ids")
+        if ids is not None:
+            if not isinstance(ids, list) or not ids or len(ids) > 200:
+                raise AekoToolInputError("INVALID_ARGUMENT", "campaign_ids must be null or a non-empty list of campaign UUIDs.")
+            for cid in ids:
+                uuid_arg(cid, "campaign_id")
+        single = data.get("campaign_id")
+        if data["placement"] == "fixed":
+            if ids is not None or single is None:
+                raise AekoToolInputError("INVALID_ARGUMENT", "A fixed placement needs campaign_id and no campaign_ids.")
+            uuid_arg(single, "campaign_id")
+        elif single is not None:
+            raise AekoToolInputError("INVALID_ARGUMENT", "campaign_id is only for a fixed placement; use campaign_ids.")
+        if not isinstance(evidence_ids, list) or len(evidence_ids) != 1:
+            raise AekoToolInputError("INVALID_ARGUMENT", "An auto-add proposal needs its one frozen workflow-card evidence ID.")
     if data is not None and (not isinstance(data, dict) or len(json.dumps(data).encode("utf-8")) > 64 * 1024):
         raise AekoToolInputError("INVALID_ARGUMENT", "data must be an object of at most 64 KiB.")
     if evidence_ids is not None and (not isinstance(evidence_ids, list) or len(evidence_ids) > 200):

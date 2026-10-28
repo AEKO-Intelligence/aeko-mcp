@@ -241,6 +241,10 @@ aeko-mcp holds no state. Every tool maps to one or more backend HTTP calls.
 | `/api/marketing/conversions/event-settings` | GET | `aeko_list_conversion_event_settings` |
 | `/api/marketing/geo-lookup` | GET | `aeko_lookup_ad_locations` |
 | `/api/marketing/ad-groups/from-context` | POST | `aeko_create_ad_group_from_context` |
+| `/api/marketing/campaign-overview` (+ `/numbers`, `/attention`) | GET | `aeko_get_campaign_overview` |
+| `/api/marketing/campaign-overview/ads` | GET | `aeko_list_product_ads` |
+| `/api/marketing/campaign-overview/placements` | GET | `aeko_list_open_placements` |
+| `/api/marketing/campaign-overview/placements/{ad_set_item_id}` | POST | `aeko_answer_open_placement` |
 | `/api/marketing/ad-groups/{ad_group_id}` | GET/POST | `aeko_update_ad_group` |
 | `/api/marketing/ads/{ad_id}` | POST | `aeko_update_ad_creative` |
 | `/api/contexts/opportunities` | GET | `aeko_list_context_opportunities` |
