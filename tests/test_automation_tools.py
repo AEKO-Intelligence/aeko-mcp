@@ -109,7 +109,7 @@ def test_run_result_keeps_safe_shortlist_details_and_drops_snapshot_secrets(monk
     assert "secret" not in text and "review_body" not in text
 
 
-@pytest.mark.parametrize("strategy", ["context", "conversational", "auto"])
+@pytest.mark.parametrize("strategy", ["context", "conversational", "auto", "review_default"])
 def test_ad_strategy_is_preserved_in_resolve_and_create(monkeypatch, strategy):
     calls = []
     monkeypatch.setattr(tools.client, "post", lambda *args, **kwargs: calls.append(kwargs) or {
@@ -124,6 +124,34 @@ def test_ad_strategy_is_preserved_in_resolve_and_create(monkeypatch, strategy):
     tools.aeko_create_automation_instance(DOMAIN, "review_based_ads", "Drafts", params)
     assert all(call["json"]["params"]["creative_strategy"] == strategy for call in calls)
     assert all(call["json"]["destination"] == {"policy": "hold"} for call in calls)
+
+
+def test_ad_strategy_defaults_to_the_aeko_writer(monkeypatch):
+    calls = []
+    monkeypatch.setattr(tools.client, "post", lambda *args, **kwargs: calls.append(kwargs) or {
+        "ready": True, "id": INSTANCE, "automation_key": "review_based_ads",
+    })
+    params = {
+        "ad_account_id": ACCOUNT, "target_language": "ko", "target_market": "KR",
+        "ad_group_name": "Review context", "max_bid_micros": 500000,
+    }
+    tools.aeko_resolve_automation_contract(DOMAIN, "review_based_ads", params)
+    tools.aeko_create_automation_instance(DOMAIN, "review_based_ads", "Drafts", params)
+    assert [call["json"]["params"]["creative_strategy"] for call in calls] == ["review_default"] * 2
+    assert all(call["json"]["model_class"] == "basic" for call in calls)
+
+
+def test_run_result_names_the_writer_stage(monkeypatch):
+    payload = {
+        "automation_key": "review_based_ads", "status": "ok", "output_refs": [], "removed": [],
+        "stages": [{"index": 2, "stage_type": "ai_json_step", "details": {
+            "writer": "review_default", "model": "gpt-4o-mini", "model_class": "basic"}}],
+        "items": [{"id": "item-1", "item_type": "context", "creative_strategy": None}],
+    }
+    monkeypatch.setattr(tools.client, "get", lambda *args, **kwargs: payload)
+    result = json.loads(tools.aeko_get_automation_run(DOMAIN, RUN))
+    assert result["stages"][0]["details"] == {"writer": "review_default"}
+    assert "creative_strategy" not in result["items"][0]
 
 
 def test_response_informed_requires_plugin_evidence_flow_not_context_template(monkeypatch):

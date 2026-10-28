@@ -164,8 +164,10 @@ The platform validates ownership, tier, setup, and run eligibility.
 
 ### Ad creative strategies
 
-The review-based ad starter accepts `creative_strategy`: `context` (the compatible default),
-`conversational`, or `auto`. The backend freezes eligible skill/eval versions for the run;
+The review-based ad starter accepts `creative_strategy`: `review_default` (the default: AEKO's
+one ad writer, with the product name as the title and one sentence from the review context),
+`context`, `conversational`, `experience`, or `auto`. For the skill-based styles the backend
+freezes eligible skill/eval versions for the run;
 `auto` selects an eligible approach per item during the existing generation call. This is
 creative fit, not a forecast of ROAS or a promise of improved performance. Explicit skill
 selection in the dashboard takes precedence. Response-informed creative uses the customer

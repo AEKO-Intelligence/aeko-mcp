@@ -61,7 +61,9 @@ class ContextFilter(BaseModel):
 
 class ReviewBasedAdsParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    creative_strategy: Literal["auto", "context", "conversational", "experience"] = "context"
+    # ``review_default`` is AEKO's one ad writer (the backend default); the others stay
+    # available to agents that ask for a different style.
+    creative_strategy: Literal["auto", "context", "conversational", "experience", "review_default"] = "review_default"
     filter: ContextFilter = Field(default_factory=ContextFilter)
     filter_text: str | None = None
     ad_account_id: UUID
@@ -174,7 +176,7 @@ def _run_view(data: dict[str, Any]) -> dict[str, Any]:
     detail_keys = (
         "target_kpi", "direction", "eligible_count", "selected_count", "minimum_cohort",
         "boundary_tie_count", "reason", "percentile", "ad_changes", "date_from", "date_to",
-        "currency", "timezone", "ad_group_id", "source",
+        "currency", "timezone", "ad_group_id", "source", "writer",
     )
     for stage in stages:
         if not isinstance(stage, dict):

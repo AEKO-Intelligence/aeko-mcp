@@ -4,6 +4,11 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.31.2] — 2026-10-28
+
+- `review_based_ads` accepts `creative_strategy: "review_default"` and uses it when none is given. It is AEKO's one ad writer and the backend's own default since 2026-10-28. Before this, the MCP rejected the value the backend advertises as default and sent `context` instead.
+- Automation run stages show which writer produced the copy (`details.writer`).
+
 ## [0.31.1] — 2026-10-23
 
 - Bids follow the ad account's currency. The ad-group and hosted-workflow tools accept up to USD 100 converted to the account currency (₩140,000 in KRW) instead of 100,000,000 micros everywhere (₩100 in KRW); the backend rejects a bid above the account's own cap with `MARKETING_BID_ABOVE_CAP`, which now has an authored message.
