@@ -4,6 +4,11 @@ All notable changes to `aeko-mcp` are documented here. Format follows [Keep a Ch
 
 The backend at `panomix/aeko` pins this package by git tag in `requirements.txt` (e.g. `aeko-mcp @ git+https://github.com/AEKO-Intelligence/aeko-mcp.git@v0.4.0`). When a release here publishes, the `release-bump-backend` workflow opens a PR against the backend repo to bump the pin.
 
+## [0.32.1] — 2026-11-25
+
+- Direct merchants to Shopify Admin or AEKO Settings according to their store provider.
+- Verify catalog sync status before reporting completion and describe when Cafe24 sync can update the public catalog.
+
 ## [0.32.0] — 2026-10-28
 
 - Add the 캠페인 page for agents. `aeko_get_campaign_overview` merges the overview, stored daily numbers and 확인 필요 into one bounded result (campaigns -> products -> newest ads; large accounts are trimmed and flagged with `*_omitted` / `output_limited`). `aeko_list_product_ads` pages one product's ads in a campaign.
