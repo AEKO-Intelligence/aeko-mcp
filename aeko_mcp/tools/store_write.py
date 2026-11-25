@@ -221,9 +221,9 @@ def aeko_connect_store(
 ) -> str:
     """Explain how to connect a Cafe24 or Shopify store to AEKO. Changes nothing.
 
-    Store connections use OAuth in the AEKO dashboard, so this tool never asks
-    for or accepts store passwords, API keys or tokens. It returns the
-    dashboard steps; after the user connects, call
+    Shopify connects from Shopify Admin and Cafe24 connects from AEKO Settings.
+    This tool never asks for or accepts store passwords, API keys or tokens.
+    After the user completes the platform's OAuth flow, call
     `aeko_list_store_integrations` to get the integration ID. For a custom
     store without Cafe24 or Shopify, use `aeko_inject_products` instead.
     """
@@ -234,42 +234,46 @@ def aeko_connect_store(
             "Call `aeko_inject_products(domain_id=..., products=[...])`; it "
             "creates the credential-less manual store internally."
         )
-    store_label = {"cafe24": "Cafe24", "shopify": "Shopify"}.get(
-        normalized_platform, "Cafe24 or Shopify"
-    )
-    domain_note = f" for domain `{domain_id}`" if domain_id else ""
-    return "\n".join(
-        [
-            f"# Connect a {store_label} store",
-            "",
-            "Store connections are made in the AEKO dashboard with the platform's own "
-            "sign-in (OAuth). Do not paste store passwords, API keys or tokens into chat.",
-            "",
-            f"1. Open {STORE_SETTINGS_URL} and go to **Store Integrations**.",
-            f"2. Choose {store_label}{domain_note} and approve access on the platform's page.",
-            "3. Come back here and call `aeko_list_store_integrations` to get the "
-            "integration ID.",
-            "",
-            "Custom store without Cafe24 or Shopify? Use `aeko_inject_products` instead.",
-        ]
-    )
+    steps = ["# Connect your store", ""]
+    if normalized_platform != "cafe24":
+        steps.append(
+            "- For **Shopify**, open **Apps** in Shopify Admin. Install AEKO from the "
+            "Shopify App Store or open it if already installed, then finish setup in the app."
+        )
+    if normalized_platform != "shopify":
+        steps.append(
+            f"- For **Cafe24**, open {STORE_SETTINGS_URL}, go to **Store Integrations**, "
+            "and choose Cafe24 to approve access."
+        )
+    domain_note = f" and verify domain `{domain_id}`" if domain_id else ""
+    steps.extend([
+        "",
+        "Complete OAuth on the platform's page. Keep passwords, API keys and tokens out of chat.",
+        f"Then call `aeko_list_store_integrations` in the connected workspace{domain_note}.",
+        "",
+        "For a custom store, use `aeko_inject_products`.",
+    ])
+    return "\n".join(steps)
 
 
 @mcp.tool(**tool_spec("Sync store products", DESTRUCTIVE_EXTERNAL))
 def aeko_sync_store(integration_id: str) -> str:
-    """Pull the product catalog from a connected Cafe24 or Shopify store and republish it to the public aeko.shop storefront.
+    """Pull the product catalog from a connected Cafe24 or Shopify store into AEKO.
 
-    AEKO overwrites its copy of the products, then replaces the public
-    aeko.shop catalog snapshot with the active products and the eligible
-    reviews it already stores. Products no longer in the catalog can be removed
-    from the public catalog, so confirm the public effect with the user first,
-    then check last_sync_status with aeko_list_store_integrations. Manual
-    stores are push-only; update them with aeko_inject_products.
+    Shopify sync updates the AEKO catalog only. Cafe24 sync can also replace
+    the public aeko.shop catalog snapshot and mirror eligible reviews. Confirm
+    that public effect before syncing Cafe24. The response lists stored
+    products. Check last_sync_status and last_sync_error_message with
+    aeko_list_store_integrations before reporting success. Manual stores use
+    aeko_inject_products.
     """
     result, err = _safe(client.post, f"/api/store-integrations/{integration_id}/sync")
     if err:
         return f"# Failed to sync store\n\n```\n{err}\n```"
-    return _json_block("Public store catalog and reviews synced", result)
+    return (
+        _json_block("Store catalog sync response", result)
+        + "\n\nCheck `last_sync_status` with `aeko_list_store_integrations` before reporting completion."
+    )
 
 
 @mcp.tool(**tool_spec("Inject manual products", DESTRUCTIVE_IDEMPOTENT_EXTERNAL))
@@ -481,8 +485,8 @@ def aeko_list_store_integrations() -> str:
     Start here for any store write: it gives the integration_id that the
     aeko_update_product_* tools need, the AEKO domain_id, and whether the
     granted scopes allow writes (Cafe24 mall.write_product, Shopify
-    write_products). Without write scopes, the user reconnects the store in the
-    AEKO dashboard (Settings > Store Integrations). Available on every plan;
+    write_products). Reauthorize Shopify from its app in Shopify Admin and
+    Cafe24 from AEKO Settings > Store Integrations. Available on every plan;
     product writes are checked against the claimed action item.
     """
     result, err = _safe(client.get, "/api/store-integrations")
@@ -493,8 +497,8 @@ def aeko_list_store_integrations() -> str:
     if not items:
         return (
             "# No connected stores\n\n"
-            "Connect a Cafe24 or Shopify store from the AEKO dashboard "
-            "Settings → Store Integrations tab, then call this tool again."
+            "Connect Shopify from Apps in Shopify Admin or Cafe24 from AEKO "
+            "Settings → Store Integrations, then call this tool again."
         )
 
     lines = [f"# Connected stores ({len(items)})", ""]
@@ -516,7 +520,8 @@ def aeko_list_store_integrations() -> str:
             else:
                 write_enabled = False
 
-            write_badge = "✅ Write enabled" if write_enabled else "⚠️ Read-only (reconnect in Settings to enable writes)"
+            reauthorize = "Shopify Admin" if platform == "shopify" else "AEKO Settings"
+            write_badge = "✅ Write enabled" if write_enabled else f"⚠️ Read-only (reauthorize in {reauthorize})"
 
         lines.append(f"## `{integration_id}`")
         lines.append(f"- **Domain ID**: `{item.get('domain_id', '?')}`")

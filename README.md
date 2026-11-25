@@ -182,14 +182,16 @@ Every tool sets `readOnlyHint`, `destructiveHint`, `openWorldHint` and `idempote
 
 `tests/test_tool_annotations.py` enforces this for the whole registry, along with a 1,024-character description limit and no plugin slash-command references.
 
-Store connections never pass credentials through MCP: `aeko_connect_store` returns the dashboard OAuth steps (Settings → Store Integrations) and accepts no tokens.
+Use `aeko_connect_store` for the connection steps. Connect Shopify from Apps in Shopify Admin and Cafe24 from AEKO Settings → Store Integrations. Complete OAuth in the browser without sharing tokens with MCP.
 
 Inside Claude Code or Codex, run the `list tools` equivalent to see the live set with descriptions.
 
 ## Self-Hosting (optional)
 
 ```bash
-pip install aeko-mcp
+git clone https://github.com/AEKO-Intelligence/aeko-mcp.git
+cd aeko-mcp
+python -m pip install .
 aeko-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 

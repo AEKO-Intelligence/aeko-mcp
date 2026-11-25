@@ -56,6 +56,8 @@ def test_store_tools_call_expected_routes(monkeypatch):
     list_out = store_write.aeko_list_store_products(domain_id="domain-1", include_citability=True, limit=25)
 
     assert "prod-1" in sync_out
+    assert "last_sync_status" in sync_out
+    assert "Public store catalog and reviews synced" not in sync_out
     assert "sku-1" in list_out
     assert calls == [
         {"method": "POST", "path": "/api/store-integrations/store-1/sync", "json": None, "headers": None},
@@ -81,15 +83,18 @@ def _fail_on_backend_call(*args, **kwargs):
     raise AssertionError("aeko_connect_store must not call the backend")
 
 
-@pytest.mark.parametrize("platform", ["shopify", "cafe24", None])
-def test_connect_store_returns_dashboard_steps_without_any_call(monkeypatch, platform):
+@pytest.mark.parametrize(
+    ("platform", "shopify_steps", "cafe24_steps"),
+    [("shopify", True, False), ("cafe24", False, True), (None, True, True)],
+)
+def test_connect_store_returns_platform_steps_without_any_call(monkeypatch, platform, shopify_steps, cafe24_steps):
     for method in ("get", "post", "put", "patch", "delete"):
         monkeypatch.setattr(store_write.client, method, _fail_on_backend_call)
 
     out = store_write.aeko_connect_store(domain_id="domain-1", platform=platform)
 
-    assert store_write.STORE_SETTINGS_URL in out
-    assert "Store Integrations" in out
+    assert ("Shopify Admin" in out) is shopify_steps
+    assert (store_write.STORE_SETTINGS_URL in out) is cafe24_steps
     assert "aeko_list_store_integrations" in out
     assert "OAuth" in out
 
